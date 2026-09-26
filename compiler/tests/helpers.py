@@ -133,12 +133,12 @@ class FakeRegistry:
     def push_index(self, entries) -> str:
         """entries: (digest, platform or None, annotations or None)."""
         manifests = []
-        for d, platform, annotations in entries:
+        for d, platform, notes in entries:
             m = {"mediaType": OCI_MANIFEST, "digest": d, "size": len(self.manifests.get(d, b""))}
             if platform:
                 m["platform"] = platform
-            if annotations:
-                m["annotations"] = annotations
+            if notes:
+                m["annotations"] = notes
             manifests.append(m)
         return self.push_manifest({"schemaVersion": 2, "mediaType": OCI_INDEX, "manifests": manifests})
 
