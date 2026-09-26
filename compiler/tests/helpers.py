@@ -1,6 +1,7 @@
 """Fixtures built in code: small layer tars, compressed blobs and minimal ELF files."""
 from __future__ import annotations
 
+import base64
 import gzip
 import hashlib
 import io
@@ -10,6 +11,7 @@ import tarfile
 
 import zstandard
 
+from compiler.evidence import CYCLONEDX, SLSA_V1, EvidenceError
 from compiler.layers import FileEntry, LayerBlob
 from compiler.oci import BadInput, ImageConfig
 
@@ -62,6 +64,13 @@ class Tar:
 
     def fifo(self, name):
         return self._add(name, tarfile.FIFOTYPE, 0o644)
+
+    def extend(self, other: "Tar") -> "Tar":
+        """Append another Tar's entries, in order (e.g. two pip installs in one layer)."""
+        with tarfile.open(fileobj=io.BytesIO(other.bytes())) as tf:
+            for m in tf:
+                self._tf.addfile(m, tf.extractfile(m) if m.isfile() else None)
+        return self
 
     def bytes(self) -> bytes:
         self._tf.close()
@@ -147,6 +156,37 @@ class FakeRegistry:
             raise BadInput(f"crane blob {ref} failed: BLOB_UNKNOWN")
         with open(dest, "wb") as f:
             f.write(self.blobs[d])
+
+
+class FakeCosign:
+    """cosign's interface (verify, verify_attestation) serving DSSE envelopes bound to
+    `digest`. `fail` makes verify raise, as a bad signature would."""
+
+    def __init__(self, digest: str, sbom: dict, provenance: dict, log_index: int | None = 123456789,
+                 fail: str | None = None):
+        def envelope(predicate_type, predicate):
+            stmt = {"_type": "https://in-toto.io/Statement/v1",
+                    "subject": [{"name": "localhost:5001/x", "digest": {"sha256": digest.split(":")[1]}}],
+                    "predicateType": predicate_type, "predicate": predicate}
+            return json.dumps({"payloadType": "application/vnd.in-toto+json",
+                               "payload": base64.b64encode(json.dumps(stmt).encode()).decode(),
+                               "signatures": [{"keyid": "", "sig": "MEUC"}]}) + "\n"
+        optional = {"Bundle": {"Payload": {"logIndex": log_index}}} if log_index is not None else None
+        self.out = {"verify": json.dumps([{"critical": {"image": {"docker-manifest-digest": digest}},
+                                           "optional": optional}]),
+                    "cyclonedx": envelope(CYCLONEDX, sbom), "slsaprovenance1": envelope(SLSA_V1, provenance)}
+        self.fail = fail
+        self.refs: list[str] = []
+
+    def verify(self, ref: str) -> str:
+        self.refs.append(ref)
+        if self.fail:
+            raise EvidenceError(self.fail)
+        return self.out["verify"]
+
+    def verify_attestation(self, ref: str, predicate: str) -> str:
+        self.refs.append(ref)
+        return self.out[predicate]
 
 
 class MemFS:

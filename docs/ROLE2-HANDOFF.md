@@ -612,13 +612,13 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 |---|---|---|
 | T1 Keys and provenance | Partly done | Generator test green (`pipeline/tests/`); `uncommittedChanges` added. The key pair is still to generate: no `cosign.pub` yet |
 | T2 Build and attest stand-in | Script ready, not run | Builds linux/amd64, supports `PROVBIND_OFFLINE`; fake-tool test green. Integration tests written; they need Docker and `PROVBIND_STANDIN_REF` |
-| T3 Evidence | Unit done | `compiler/evidence.py`; DSSE, bare and bundle shapes, binding, newest by timestamp (D2), logIndex search (38 tests). Integration test needs cosign and the stand-in |
-| T4 Image fetch | Unit done | `compiler/oci.py`; v_M, v_C, blob cache, index selection skipping attestation manifests, platform check (D6), `--registry-name` (D4) (29 tests). Integration test needs the stand-in |
+| T3 Evidence | Unit done | `compiler/evidence.py`; DSSE, bare and bundle shapes, binding, newest by timestamp (D2), logIndex search (38 tests). Integration test written, not yet run: needs cosign and the stand-in |
+| T4 Image fetch | Unit done | `compiler/oci.py`; v_M, v_C, blob cache, index selection skipping attestation manifests, platform check (D6), `--registry-name` (D4) (29 tests). Integration test written, not yet run: needs the stand-in |
 | T5 Layer union | Done | `compiler/layers.py`; all T5 rows incl. the D1 rows green (36 tests); mutation-checked against single-pass whiteouts |
 | T6 Path resolution | Done | `compiler/paths.py`; T6 table, canonical keys (higher layer wins), symlink targets incl. implicit dirs (20 tests) |
-| T7 Closure | Unit done | `compiler/closure.py`; shebangs incl. `env -S`, PT_INTERP, DT_NEEDED search order, ld.so.conf includes, `$ORIGIN`, python-slim-shaped closure (31 tests). Integration test needs the stand-in |
+| T7 Closure | Unit done | `compiler/closure.py`; shebangs incl. `env -S`, PT_INTERP, DT_NEEDED search order, ld.so.conf includes, `$ORIGIN`, python-slim-shaped closure (31 tests). Integration test written, not yet run: needs the stand-in |
 | T8 SBOM depth | Done | `compiler/sbom.py`; T8 table plus duplicates, OS component, nested and empty SBOMs (15 tests) |
-| T9 Ownership | Unit done | `compiler/owners.py`; dpkg on merged-/usr, `<name>:<arch>.list`, RECORD `../../../bin/foo`, PEP 503, qualifiers ignored, unmatched → null (D5) (19 tests). Integration test needs the stand-in |
+| T9 Ownership | Unit done | `compiler/owners.py`; dpkg on merged-/usr, `<name>:<arch>.list`, RECORD `../../../bin/foo`, PEP 503, qualifiers ignored, unmatched → null (D5) (19 tests). Integration test written, not yet run: needs the stand-in |
 | T10 Capabilities | Done | `compiler/caps.py` (+ `compiler/purls.py` helpers); allowlist hit, 80/tcp vs 8080/tcp (12 tests) |
-| T11 Envelope and CLI | Not started | |
-| T12 Integration | Not started | |
+| T11 Envelope and CLI | Unit done | `compiler/compile.py`; golden-file test, done-when checks, schema rejects missing fields, CLI exit codes 0/1/2/3 with fake crane and cosign (23 tests) |
+| T12 Integration | Not started | Needs Docker, crane, cosign, syft and the registry: run T2, export `PROVBIND_STANDIN_REF`, then `pytest -q -m integration -s` (`compiler/tests/test_standin_integration.py` checks the Section 1 list and prints the compile time) |
