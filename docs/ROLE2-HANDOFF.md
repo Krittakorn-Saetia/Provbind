@@ -612,7 +612,7 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 |---|---|---|
 | T1 Keys and provenance | Partly done | Generator test green (`pipeline/tests/`); `uncommittedChanges` added. The key pair is still to generate: no `cosign.pub` yet |
 | T2 Build and attest stand-in | Script ready, not run | Builds linux/amd64, supports `PROVBIND_OFFLINE`; fake-tool test green. Integration tests written; they need Docker and `PROVBIND_STANDIN_REF` |
-| T3 Evidence | Not started | |
+| T3 Evidence | Unit done | `compiler/evidence.py`; DSSE, bare and bundle shapes, binding, newest by timestamp (D2), logIndex search (38 tests). Integration test needs cosign and the stand-in |
 | T4 Image fetch | Not started | |
 | T5 Layer union | Done | `compiler/layers.py`; all T5 rows incl. the D1 rows green (36 tests); mutation-checked against single-pass whiteouts |
 | T6 Path resolution | Done | `compiler/paths.py`; T6 table, canonical keys (higher layer wins), symlink targets incl. implicit dirs (20 tests) |
