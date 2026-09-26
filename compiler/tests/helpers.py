@@ -1,0 +1,123 @@
+"""Fixtures built in code: small layer tars, compressed blobs and minimal ELF files."""
+from __future__ import annotations
+
+import gzip
+import hashlib
+import io
+import struct
+import tarfile
+
+import zstandard
+
+from compiler.layers import LayerBlob
+
+MEDIA_TYPES = {
+    "gzip": "application/vnd.oci.image.layer.v1.tar+gzip",
+    "zstd": "application/vnd.oci.image.layer.v1.tar+zstd",
+    "tar": "application/vnd.oci.image.layer.v1.tar",
+}
+
+
+def sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+class Tar:
+    """A layer tar built in memory; entries keep the order of the calls."""
+
+    def __init__(self):
+        self._buf = io.BytesIO()
+        self._tf = tarfile.open(fileobj=self._buf, mode="w", format=tarfile.PAX_FORMAT)
+
+    def _add(self, name, kind, mode, data=b"", linkname=""):
+        ti = tarfile.TarInfo(name)
+        ti.type, ti.mode, ti.linkname, ti.size, ti.mtime = kind, mode, linkname, len(data), 0
+        self._tf.addfile(ti, io.BytesIO(data) if data else None)
+        return self
+
+    def file(self, name, data=b"", mode=0o644):
+        return self._add(name, tarfile.REGTYPE, mode, data)
+
+    def dir(self, name, mode=0o755):
+        return self._add(name, tarfile.DIRTYPE, mode)
+
+    def symlink(self, name, target):
+        return self._add(name, tarfile.SYMTYPE, 0o777, linkname=target)
+
+    def hardlink(self, name, target):
+        return self._add(name, tarfile.LNKTYPE, 0o644, linkname=target)
+
+    def whiteout(self, name):
+        return self.file(name)
+
+    def fifo(self, name):
+        return self._add(name, tarfile.FIFOTYPE, 0o644)
+
+    def bytes(self) -> bytes:
+        self._tf.close()
+        return self._buf.getvalue()
+
+
+def compress(data: bytes, kind: str) -> bytes:
+    if kind == "gzip":
+        return gzip.compress(data, mtime=0)
+    if kind == "zstd":
+        return zstandard.ZstdCompressor().compress(data)
+    return data
+
+
+def make_layer(directory, index: int, tar, kind: str = "gzip", media_type: str | None = "") -> LayerBlob:
+    """Write one layer blob. media_type "" means the usual OCI type for `kind`."""
+    raw = compress(tar if isinstance(tar, bytes) else tar.bytes(), kind)
+    path = directory / f"layer-{index}-{kind}-{sha(raw)[:12]}"
+    path.write_bytes(raw)
+    return LayerBlob(index, "sha256:" + sha(raw), MEDIA_TYPES[kind] if media_type == "" else media_type,
+                     str(path))
+
+
+EM_X86_64 = 62
+EM_AARCH64 = 183
+
+
+def make_elf(*, interp: str | None = None, needed=(), rpath: str | None = None,
+             runpath: str | None = None, machine: int = EM_X86_64) -> bytes:
+    """A minimal little-endian ELF64 with PT_LOAD, optional PT_INTERP and PT_DYNAMIC.
+
+    Virtual addresses equal file offsets, so DT_STRTAB points straight at .dynstr.
+    There are no section headers, like a stripped binary.
+    """
+    strtab = bytearray(b"\0")
+    def add_str(s: str) -> int:
+        off = len(strtab)
+        strtab.extend(s.encode() + b"\0")
+        return off
+    dyn = [(1, add_str(n)) for n in needed]                       # DT_NEEDED
+    if rpath is not None:
+        dyn.append((15, add_str(rpath)))                          # DT_RPATH
+    if runpath is not None:
+        dyn.append((29, add_str(runpath)))                        # DT_RUNPATH
+
+    phnum = 2 + (interp is not None)                              # LOAD, [INTERP], DYNAMIC
+    data_off = 64 + 56 * phnum
+    interp_bytes = interp.encode() + b"\0" if interp is not None else b""
+    interp_off = data_off
+    strtab_off = interp_off + len(interp_bytes)
+    dyn_off = (strtab_off + len(strtab) + 7) & ~7
+    dyn += [(5, strtab_off), (10, len(strtab)), (0, 0)]           # DT_STRTAB, DT_STRSZ, DT_NULL
+    dyn_bytes = b"".join(struct.pack("<qQ", tag, val) for tag, val in dyn)
+    total = dyn_off + len(dyn_bytes)
+
+    ident = b"\x7fELF" + bytes([2, 1, 1, 0]) + bytes(8)            # ELFCLASS64, LSB, v1
+    header = ident + struct.pack("<HHIQQQIHHHHHH", 3, machine, 1, 0, 64, 0, 0, 64, 56, phnum, 64, 0, 0)
+    ph = struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0, total, total, 0x1000)                      # PT_LOAD
+    if interp is not None:
+        ph += struct.pack("<IIQQQQQQ", 3, 4, interp_off, interp_off, interp_off,
+                          len(interp_bytes), len(interp_bytes), 1)                           # PT_INTERP
+    ph += struct.pack("<IIQQQQQQ", 2, 6, dyn_off, dyn_off, dyn_off,
+                      len(dyn_bytes), len(dyn_bytes), 8)                                     # PT_DYNAMIC
+    body = bytearray(header + ph)
+    body += interp_bytes + strtab
+    body += bytes(dyn_off - len(body))
+    body += dyn_bytes
+    assert len(body) == total
+    return bytes(body)

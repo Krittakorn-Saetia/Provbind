@@ -614,7 +614,7 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 | T2 Build and attest stand-in | Script ready, not run | Builds linux/amd64, supports `PROVBIND_OFFLINE`; fake-tool test green. Integration tests written; they need Docker and `PROVBIND_STANDIN_REF` |
 | T3 Evidence | Not started | |
 | T4 Image fetch | Not started | |
-| T5 Layer union | Not started | |
+| T5 Layer union | Done | `compiler/layers.py`; all T5 rows incl. the D1 rows green (36 tests); mutation-checked against single-pass whiteouts |
 | T6 Path resolution | Not started | |
 | T7 Closure | Not started | |
 | T8 SBOM depth | Not started | |
