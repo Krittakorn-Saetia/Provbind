@@ -618,7 +618,7 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 | T6 Path resolution | Done | `compiler/paths.py`; T6 table, canonical keys (higher layer wins), symlink targets incl. implicit dirs (20 tests) |
 | T7 Closure | Not started | |
 | T8 SBOM depth | Done | `compiler/sbom.py`; T8 table plus duplicates, OS component, nested and empty SBOMs (15 tests) |
-| T9 Ownership | Not started | |
+| T9 Ownership | Unit done | `compiler/owners.py`; dpkg on merged-/usr, `<name>:<arch>.list`, RECORD `../../../bin/foo`, PEP 503, qualifiers ignored, unmatched → null (D5) (19 tests). Integration test needs the stand-in |
 | T10 Capabilities | Done | `compiler/caps.py` (+ `compiler/purls.py` helpers); allowlist hit, 80/tcp vs 8080/tcp (12 tests) |
 | T11 Envelope and CLI | Not started | |
 | T12 Integration | Not started | |
