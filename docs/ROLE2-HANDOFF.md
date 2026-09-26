@@ -619,6 +619,6 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 | T7 Closure | Not started | |
 | T8 SBOM depth | Done | `compiler/sbom.py`; T8 table plus duplicates, OS component, nested and empty SBOMs (15 tests) |
 | T9 Ownership | Not started | |
-| T10 Capabilities | Not started | |
+| T10 Capabilities | Done | `compiler/caps.py` (+ `compiler/purls.py` helpers); allowlist hit, 80/tcp vs 8080/tcp (12 tests) |
 | T11 Envelope and CLI | Not started | |
 | T12 Integration | Not started | |
