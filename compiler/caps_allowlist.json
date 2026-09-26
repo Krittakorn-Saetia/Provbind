@@ -1,0 +1,6 @@
+{
+  "_comment": "Starter list: package (purl type/namespace/name, no version) -> Linux capabilities it is expected to use. Every entry becomes origin INFERRED. The demo never checks capabilities, so keep this small; placeholders until ML-A exists.",
+  "pkg:pypi/gunicorn": ["CAP_NET_BIND_SERVICE"],
+  "pkg:pypi/uvicorn": ["CAP_NET_BIND_SERVICE"],
+  "pkg:deb/debian/iputils-ping": ["CAP_NET_RAW"]
+}

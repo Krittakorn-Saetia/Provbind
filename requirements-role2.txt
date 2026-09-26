@@ -1,0 +1,5 @@
+pyelftools>=0.31
+zstandard>=0.22
+packageurl-python>=0.15
+jsonschema>=4.21
+pytest>=8

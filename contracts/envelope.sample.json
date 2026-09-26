@@ -1,0 +1,144 @@
+{
+  "schema": "provbind.envelope/v0",
+  "image": {
+    "ref": "localhost:5001/demo-app@sha256:6105d6cc76af400325e94d588ce511be5bfdbb73b437dc51eca43917d7a43e3d",
+    "digest": "sha256:6105d6cc76af400325e94d588ce511be5bfdbb73b437dc51eca43917d7a43e3d",
+    "builder_id": "https://github.com/sf9-26/provbind/builders/local@v1",
+    "source_commit": "9f31ab2c4d5e6f708192a3b4c5d6e7f8091a2b3c",
+    "rekor_log_index": 123456789
+  },
+  "layers": [
+    {
+      "index": 0,
+      "digest": "sha256:4fbec69b941195fd56f8212a5000e304129451d82efca94ff0e0fb2d5355472e",
+      "media_type": "application/vnd.oci.image.layer.v1.tar+gzip"
+    },
+    {
+      "index": 1,
+      "digest": "sha256:77ea7eee3d80b1a38f83906dd3048e2689457eb90e18a7d12f839c5ae37106a2",
+      "media_type": "application/vnd.oci.image.layer.v1.tar+gzip"
+    },
+    {
+      "index": 2,
+      "digest": "sha256:95cf1a2e1698fe3ca1fcc3f653119146b271d0b62e487ec264441e886a11bd06",
+      "media_type": "application/vnd.oci.image.layer.v1.tar+gzip"
+    },
+    {
+      "index": 3,
+      "digest": "sha256:a0e70458d19e37e14d6388030a017c587283e2fb6ef10c0744cad0294c47e8f8",
+      "media_type": "application/vnd.oci.image.layer.v1.tar+gzip"
+    },
+    {
+      "index": 4,
+      "digest": "sha256:6613a3c187efe17fd360f7e26b5d75bcb4e46c889a7d2288e22416fb88327e56",
+      "media_type": "application/vnd.oci.image.layer.v1.tar+gzip"
+    },
+    {
+      "index": 5,
+      "digest": "sha256:eb41a879795969f677a88a79b8da00505fdd24a254b5a79a2fe389ca26661dcc",
+      "media_type": "application/vnd.oci.image.layer.v1.tar+gzip"
+    }
+  ],
+  "files": {
+    "/usr/local/bin/python3.11": {
+      "sha256": "72e78ddac08187448a816f3688b1b27700b00f882d34e6021acdbdbe4c54008b",
+      "layer": 2,
+      "package": null,
+      "mode": "0755"
+    },
+    "/usr/local/lib/libpython3.11.so.1.0": {
+      "sha256": "14505fb3b83499d2ddb00549acb361e368d4cbfeb69c6753a1bbf5711a4e78ee",
+      "layer": 2,
+      "package": null,
+      "mode": "0755"
+    },
+    "/usr/lib/x86_64-linux-gnu/libc.so.6": {
+      "sha256": "16c8c6eb85e05438f5d6c60ff9869072a3a3b1618aa1481ac7a0cb049f06f51d",
+      "layer": 0,
+      "package": "pkg:deb/debian/libc6@2.36-9?arch=amd64&distro=debian-12",
+      "mode": "0755"
+    },
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": {
+      "sha256": "e5a08ffd3d7509c66e79642edbdcd8ed889269a7164c718afca541304188423d",
+      "layer": 0,
+      "package": "pkg:deb/debian/libc6@2.36-9?arch=amd64&distro=debian-12",
+      "mode": "0755"
+    },
+    "/usr/bin/ls": {
+      "sha256": "c7b68ac37f364473e922936708e7f43c293dd07b295171566c07ff5fe024fab9",
+      "layer": 0,
+      "package": "pkg:deb/debian/coreutils@9.1-1?arch=amd64&distro=debian-12",
+      "mode": "0755"
+    },
+    "/usr/bin/dash": {
+      "sha256": "af9d2c92ddc38ca77b3cd29e944c9b61928032808d3a3cb6c3a3c8965067291e",
+      "layer": 0,
+      "package": "pkg:deb/debian/dash@0.5.12-2?arch=amd64&distro=debian-12",
+      "mode": "0755"
+    },
+    "/etc/passwd": {
+      "sha256": "0d6be69b264717f2dd33652e212b173104b4a647b7c11ae72e9885f11cd312fb",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/requests/__init__.py": {
+      "sha256": "c3f7bdf537c46724392c4428e47e04c148c56966190c3c9ed92114800c9f35bb",
+      "layer": 4,
+      "package": "pkg:pypi/requests@2.32.3",
+      "mode": "0644"
+    },
+    "/app/app.py": {
+      "sha256": "a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333",
+      "layer": 5,
+      "package": null,
+      "mode": "0644"
+    }
+  },
+  "symlinks": {
+    "/bin": "/usr/bin",
+    "/usr/bin/sh": "/usr/bin/dash",
+    "/usr/local/bin/python": "/usr/local/bin/python3.11",
+    "/usr/local/bin/python3": "/usr/local/bin/python3.11"
+  },
+  "closure": [
+    "/usr/local/bin/python3.11",
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "/usr/lib/x86_64-linux-gnu/libc.so.6",
+    "/usr/local/lib/libpython3.11.so.1.0"
+  ],
+  "packages": {
+    "pkg:pypi/requests@2.32.3": {
+      "depth": 1
+    },
+    "pkg:pypi/urllib3@2.2.2": {
+      "depth": 2
+    },
+    "pkg:deb/debian/libc6@2.36-9?arch=amd64&distro=debian-12": {
+      "depth": 3
+    },
+    "pkg:deb/debian/coreutils@9.1-1?arch=amd64&distro=debian-12": {
+      "depth": null
+    },
+    "pkg:deb/debian/dash@0.5.12-2?arch=amd64&distro=debian-12": {
+      "depth": null
+    }
+  },
+  "capabilities": [],
+  "unresolved_fraction": 0.4,
+  "compiled_at": "2026-09-28T09:00:00Z",
+  "verification": {
+    "v_sig": true,
+    "v_M": true,
+    "v_C": true,
+    "v_B": true,
+    "v_P": true
+  },
+  "timings_ms": {
+    "fetch": 2100,
+    "union": 3400,
+    "closure": 120,
+    "sbom": 15,
+    "owners": 480
+  }
+}
