@@ -4,22 +4,32 @@ from __future__ import annotations
 import gzip
 import hashlib
 import io
+import json
 import struct
 import tarfile
 
 import zstandard
 
 from compiler.layers import LayerBlob
+from compiler.oci import BadInput
 
 MEDIA_TYPES = {
     "gzip": "application/vnd.oci.image.layer.v1.tar+gzip",
     "zstd": "application/vnd.oci.image.layer.v1.tar+zstd",
     "tar": "application/vnd.oci.image.layer.v1.tar",
 }
+OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+OCI_INDEX = "application/vnd.oci.image.index.v1+json"
+DOCKER_MANIFEST = "application/vnd.docker.distribution.manifest.v2+json"
+DOCKER_LAYER = "application/vnd.docker.image.rootfs.diff.tar.gzip"
 
 
 def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def digest_of(data: bytes) -> str:
+    return "sha256:" + sha(data)
 
 
 class Tar:
@@ -73,6 +83,70 @@ def make_layer(directory, index: int, tar, kind: str = "gzip", media_type: str |
     path.write_bytes(raw)
     return LayerBlob(index, "sha256:" + sha(raw), MEDIA_TYPES[kind] if media_type == "" else media_type,
                      str(path))
+
+
+def image_config(os_="linux", arch="amd64", **config) -> dict:
+    """An image config document; keyword arguments go into its `config` object."""
+    body = {"Env": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+            "Cmd": ["python", "app.py"], "WorkingDir": "/app"}
+    body.update(config)
+    return {"architecture": arch, "os": os_, "config": body, "rootfs": {"type": "layers", "diff_ids": []}}
+
+
+class FakeRegistry:
+    """Manifests and blobs by digest, served through crane's interface (manifest, blob)."""
+
+    def __init__(self):
+        self.manifests: dict[str, bytes] = {}
+        self.blobs: dict[str, bytes] = {}
+        self.calls: list[tuple[str, str]] = []
+
+    def push_image(self, layer_tars, config: dict | None = None, kind: str = "gzip", docker: bool = False) -> str:
+        cfg = json.dumps(config or image_config()).encode()
+        self.blobs[digest_of(cfg)] = cfg
+        layers = []
+        for t in layer_tars:
+            raw = compress(t if isinstance(t, bytes) else t.bytes(), kind)
+            self.blobs[digest_of(raw)] = raw
+            layers.append({"mediaType": DOCKER_LAYER if docker else MEDIA_TYPES[kind],
+                           "digest": digest_of(raw), "size": len(raw)})
+        return self.push_manifest({
+            "schemaVersion": 2, "mediaType": DOCKER_MANIFEST if docker else OCI_MANIFEST,
+            "config": {"mediaType": "application/vnd.oci.image.config.v1+json",
+                       "digest": digest_of(cfg), "size": len(cfg)},
+            "layers": layers})
+
+    def push_manifest(self, doc: dict) -> str:
+        raw = json.dumps(doc).encode()
+        self.manifests[digest_of(raw)] = raw
+        return digest_of(raw)
+
+    def push_index(self, entries) -> str:
+        """entries: (digest, platform or None, annotations or None)."""
+        manifests = []
+        for d, platform, annotations in entries:
+            m = {"mediaType": OCI_MANIFEST, "digest": d, "size": len(self.manifests.get(d, b""))}
+            if platform:
+                m["platform"] = platform
+            if annotations:
+                m["annotations"] = annotations
+            manifests.append(m)
+        return self.push_manifest({"schemaVersion": 2, "mediaType": OCI_INDEX, "manifests": manifests})
+
+    def manifest(self, ref: str) -> bytes:
+        self.calls.append(("manifest", ref))
+        d = ref.rsplit("@", 1)[1]
+        if d not in self.manifests:
+            raise BadInput(f"crane manifest {ref} failed: MANIFEST_UNKNOWN")
+        return self.manifests[d]
+
+    def blob(self, ref: str, dest: str) -> None:
+        self.calls.append(("blob", ref))
+        d = ref.rsplit("@", 1)[1]
+        if d not in self.blobs:
+            raise BadInput(f"crane blob {ref} failed: BLOB_UNKNOWN")
+        with open(dest, "wb") as f:
+            f.write(self.blobs[d])
 
 
 EM_X86_64 = 62
