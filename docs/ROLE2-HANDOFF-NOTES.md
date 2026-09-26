@@ -4,6 +4,8 @@
 
 These notes come from reviewing the handoff against the kit as committed (`80e1972`). The handoff stays the spec, and these notes change nothing in it until Korn agrees. Fold each agreed item into the handoff (§6, §7 or §13) and mark it **Agreed** in the table in Section 2.
 
+Korn agreed D1–D6 with their proposed defaults on 26 September 2026, and they are now folded into the handoff.
+
 Nothing here requires a change to `contracts/`.
 
 ---
@@ -20,12 +22,12 @@ Nothing here requires a change to `contracts/`.
 
 | # | Topic | Proposed default | Status |
 |---|---|---|---|
-| D1 | §7.1 misses three OCI replacement cases | Fix pass 2; add three T5 rows | Open |
-| D2 | "Newest" attestation has no clock | Choose by the predicate's own timestamp | Open |
-| D3 | Exit code 2 vs 3 | Registry preflight gives 3; any hash mismatch gives 2 | Open |
-| D4 | `--registry-name` is undefined | Host to fetch from; `image.ref` unchanged | Open |
-| D5 | File claimed by dpkg or pip, but no matching SBOM component | `package: null`, logged | Open |
-| D6 | Gaps in the given build script and generator | Pin the platform; flag dirty trees; add an offline switch | Open |
+| D1 | §7.1 misses three OCI replacement cases | Fix pass 2; add three T5 rows | **Agreed** |
+| D2 | "Newest" attestation has no clock | Choose by the predicate's own timestamp | **Agreed** |
+| D3 | Exit code 2 vs 3 | Registry preflight gives 3; any hash mismatch gives 2 | **Agreed** |
+| D4 | `--registry-name` is undefined | Host to fetch from; `image.ref` unchanged | **Agreed** |
+| D5 | File claimed by dpkg or pip, but no matching SBOM component | `package: null`, logged | **Agreed** |
+| D6 | Gaps in the given build script and generator | Pin the platform; flag dirty trees; add an offline switch | **Agreed** |
 
 ### D1. The layer union misses three OCI replacement cases (§7.1)
 
@@ -44,7 +46,7 @@ BuildKit seldom writes such layers, because its diffs record real paths. The fix
 - In pass 2, a new non-directory entry at `P` (file, symlink or hardlink) removes lower files, links and dirs at `P` and under `P + "/"`.
 - A new directory at `P` removes a lower file or link at exactly `P`.
 
-**Default:** make this change and add the three rows to the T5 tests. §7.1 says "follow exactly", so this needs Korn's agreement.
+**Default:** make this change and add the three rows to the T5 tests. §7.1 now includes the change, so "follow exactly" still holds.
 
 ### D2. "Use the newest attestation that binds" has no clock (T3)
 
@@ -65,7 +67,7 @@ The flag is in the T11 synopsis but never explained. It can be read two ways:
 - (a) the registry host to fetch from, when that differs from the host in the reference (for example, when the compiler runs on a different machine from the registry);
 - (b) the host to write into `image.ref`.
 
-**Default:** (a), with `image.ref` written exactly as given, since the digest identifies the image. This needs confirmation.
+**Default:** (a), with `image.ref` written exactly as given, since the digest identifies the image. cosign uses the same host, because signatures and attestations live in the same registry.
 
 ### D5. A file claimed by dpkg or pip, but no matching SBOM component (T9)
 
@@ -129,5 +131,5 @@ The sample envelope does not show these. The first real envelope, due Day 2 even
    - Under Role 4's demo rule (unowned files score `rho = 0.5`), the interpreter scores the same as `/app/app.py`.
    - syft's binary cataloger probably lists them as `pkg:generic/python@3.11.x` with their paths, which could become a third ownership source in T9.
    - This affects open decision 3.
-3. **Package references.** If D5's default is agreed, every non-null `files[p].package` is a key of `packages`.
+3. **Package references.** Every non-null `files[p].package` is a key of `packages` (D5).
 4. **Builder ID.** The generator and the schema's `$id` use `https://github.com/sf9-26/provbind/…`, but the team repo is `github.com/Krittakorn-Saetia/Provbind`. They work as identifiers, since `builder_id` only has to be a URI, but choose the value on purpose (open decision 1) and tell Roles 3 and 4 the final one.
