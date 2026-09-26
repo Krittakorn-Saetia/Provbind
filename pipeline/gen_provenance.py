@@ -31,6 +31,16 @@ def run(cmd, cwd=None):
     return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else None
 
 
+def uncommitted_changes(ctx, dockerfile):
+    """True if git sees changes or untracked files in the context or Dockerfile, None if git can't tell."""
+    try:
+        out = subprocess.run(["git", "status", "--porcelain", "--", ctx, dockerfile],
+                             cwd=ctx, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return bool(out.stdout.strip()) if out.returncode == 0 else None
+
+
 def first_from(dockerfile):
     """Image reference of the first FROM line (handles --platform=... and AS name)."""
     with open(dockerfile, encoding="utf-8") as f:
@@ -70,6 +80,10 @@ def main():
     if commit is None:
         print("gen_provenance: WARNING: not a git checkout; source commit recorded as 'unknown'",
               file=sys.stderr)
+    dirty = uncommitted_changes(ctx, dockerfile) if commit else None
+    if dirty:
+        print("gen_provenance: WARNING: the build context has uncommitted changes; "
+              "the recorded commit is not exactly what was built", file=sys.stderr)
 
     base = first_from(dockerfile)
     resolved = [{
@@ -87,6 +101,11 @@ def main():
                   file=sys.stderr)
         resolved.append(entry)
 
+    # internalParameters is free-form in SLSA v1, so cosign's typed struct keeps these keys.
+    internal = {"command": "docker build --platform linux/amd64 --provenance=false --sbom=false"}
+    if dirty is not None:
+        internal["uncommittedChanges"] = dirty
+
     predicate = {
         "buildDefinition": {
             "buildType": BUILD_TYPE,
@@ -95,9 +114,7 @@ def main():
                 "context": os.path.relpath(ctx),
                 "dockerfile": os.path.relpath(dockerfile),
             },
-            "internalParameters": {
-                "command": "docker build --provenance=false --sbom=false",
-            },
+            "internalParameters": internal,
             "resolvedDependencies": resolved,
         },
         "runDetails": {

@@ -610,8 +610,8 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 
 | Task | Status | Notes |
 |---|---|---|
-| T1 Keys and provenance | Not started | |
-| T2 Build and attest stand-in | Not started | |
+| T1 Keys and provenance | Partly done | Generator test green (`pipeline/tests/`); `uncommittedChanges` added. The key pair is still to generate: no `cosign.pub` yet |
+| T2 Build and attest stand-in | Script ready, not run | Builds linux/amd64, supports `PROVBIND_OFFLINE`; fake-tool test green. Integration tests written; they need Docker and `PROVBIND_STANDIN_REF` |
 | T3 Evidence | Not started | |
 | T4 Image fetch | Not started | |
 | T5 Layer union | Not started | |
