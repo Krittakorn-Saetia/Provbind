@@ -617,7 +617,7 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 | T5 Layer union | Done | `compiler/layers.py`; all T5 rows incl. the D1 rows green (36 tests); mutation-checked against single-pass whiteouts |
 | T6 Path resolution | Done | `compiler/paths.py`; T6 table, canonical keys (higher layer wins), symlink targets incl. implicit dirs (20 tests) |
 | T7 Closure | Not started | |
-| T8 SBOM depth | Not started | |
+| T8 SBOM depth | Done | `compiler/sbom.py`; T8 table plus duplicates, OS component, nested and empty SBOMs (15 tests) |
 | T9 Ownership | Not started | |
 | T10 Capabilities | Not started | |
 | T11 Envelope and CLI | Not started | |
