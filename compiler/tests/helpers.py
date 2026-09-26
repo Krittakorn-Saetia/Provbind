@@ -10,8 +10,8 @@ import tarfile
 
 import zstandard
 
-from compiler.layers import LayerBlob
-from compiler.oci import BadInput
+from compiler.layers import FileEntry, LayerBlob
+from compiler.oci import BadInput, ImageConfig
 
 MEDIA_TYPES = {
     "gzip": "application/vnd.oci.image.layer.v1.tar+gzip",
@@ -147,6 +147,29 @@ class FakeRegistry:
             raise BadInput(f"crane blob {ref} failed: BLOB_UNKNOWN")
         with open(dest, "wb") as f:
             f.write(self.blobs[d])
+
+
+class MemFS:
+    """An image filesystem in memory, with the interface closure() uses on a Union."""
+
+    def __init__(self, contents: dict[str, bytes], links: dict[str, str] | None = None,
+                 modes: dict[str, str] | None = None):
+        self.data = contents
+        self.links = links or {}
+        self.files = {p: FileEntry(sha(b), 0, (modes or {}).get(p, "0755"), len(b), 0, 0)
+                      for p, b in contents.items()}
+
+    def read(self, path, n=None):
+        data = self.data.get(path)
+        return None if data is None else (data if n is None else data[:n])
+
+    def open(self, path):
+        return io.BytesIO(self.data[path])
+
+
+def config(entrypoint=(), cmd=(), env=(), working_dir="", exposed_ports=None) -> ImageConfig:
+    return ImageConfig(list(entrypoint), list(cmd), list(env), exposed_ports or {}, "", working_dir,
+                       "linux", "amd64")
 
 
 EM_X86_64 = 62
