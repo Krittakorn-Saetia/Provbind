@@ -101,6 +101,8 @@ You can do all of Role 2 on your own Linux or macOS machine with Docker. Only th
 | `PROVBIND_REGISTRY` | `localhost:5001` | Where images are pushed |
 | `COSIGN_KEY` | `pipeline/keys/cosign.key` | Private key; never committed |
 | `COSIGN_PASSWORD` | must be set (an empty string is fine) | Lets cosign run without prompts |
+| `PROVBIND_OFFLINE` | unset | `1` signs and verifies without Rekor (Section 10); read by the build script and the compiler |
+| `PROVBIND_STANDIN_REF` | unset | The stand-in's `ref@digest` from T2; integration tests skip without it |
 
 Record the installed tool versions in `testbed/VERSIONS.md`.
 
@@ -116,6 +118,7 @@ These replace the VERIFY markers in the sprint handoff. Each was checked against
 3. **No insecure-registry flags are needed for `localhost`.** go-containerregistry, which crane and cosign are built on, uses plain HTTP automatically for registry names starting with `localhost:`, loopback addresses and RFC 1918 addresses. ([registry.go](https://github.com/google/go-containerregistry/blob/main/pkg/name/registry.go))
 4. **`docker build` attaches provenance by default.** Buildx creates a minimal provenance attestation unless told not to, and attestations are attached through an image index. `--provenance=false` (and `--sbom=false`) disables them. ([docker buildx build](https://docs.docker.com/reference/cli/docker/buildx/build/))
    - **Consequence:** the build script passes both flags, so the pushed digest is a single manifest. The compiler must still handle an index (Task 4).
+   - The script also passes `--platform linux/amd64`, so a build on an Apple Silicon Mac still produces the image the demo PC runs. The compiler rejects any other platform with exit code 3.
 5. **Whiteouts apply only to lower layers.** A whiteout never hides a file added in its own layer. An opaque marker is applied before the layer's own entries, however the tar orders them. ([OCI layer spec](https://github.com/opencontainers/image-spec/blob/main/layer.md))
    - **Consequence:** the union must be two-pass per layer (Task 5). Our old Section-Spec pseudocode got this wrong.
 6. **syft's dependency edges are incomplete and keyed by bom-ref.**
@@ -144,6 +147,7 @@ Record each with the `record_result` fixture from the test kit. Tests use `pytes
 - **Provenance generator.** `pipeline/gen_provenance.py` is in the kit and already tested. Review it, run `python3 pipeline/gen_provenance.py --help`, and adjust the builder ID if the team agrees a different one.
   - It prints a **SLSA v1 predicate** (not a full in-toto statement; cosign wraps it).
   - cosign parses `slsaprovenance1` predicates into typed structs, so any field outside the SLSA v1 schema would be silently dropped. The generator uses the exact field names.
+  - It records `buildDefinition.internalParameters.uncommittedChanges`, and warns when it is `true`, so a provenance never silently names a commit that differs from what was built. `internalParameters` is free-form, so cosign keeps it.
 
 **Tests:** its output parses as JSON and has `buildDefinition.buildType`, `buildDefinition.resolvedDependencies[0].digest.gitCommit` and `runDetails.builder.id`.
 
@@ -158,6 +162,8 @@ Run `pipeline/build-and-attest.sh testbed/standin-app standin-app`. It prints th
 - The same with `--type slsaprovenance1` exits 0.
 - `jq '.dependencies | length' run/attest/standin-app/sbom.json` is above 0.
 
+The integration tests take the reference from `PROVBIND_STANDIN_REF` (the script's stdout) and never build or sign anything themselves.
+
 ### T3. Evidence module: `compiler/evidence.py` (Day 1–2)
 
 The module fetches the verified evidence and runs the binding checks from the paper (Eqs. 10–18).
@@ -169,7 +175,9 @@ The module fetches the verified evidence and runs the binding checks from the pa
   - If it already has `predicateType`, it is the statement itself.
   - Support both shapes (fact 2 in Section 5).
 - **Binding (v_B and v_P).** Each statement's `subject[*].digest.sha256` must equal the image digest's hex, and its `predicateType` must be `https://cyclonedx.org/bom` or `https://slsa.dev/provenance/v1` respectively. If several attestations of one type exist, use the newest one that binds.
-- **Rekor log index.** Search the `cosign verify` JSON *recursively* for the first integer under a key named `logIndex` or `log_index`. If there is none, use `null`. Never fail on its absence.
+  - **Newest** means the latest predicate timestamp: `metadata.timestamp` for CycloneDX, `runDetails.metadata.finishedOn` for SLSA. On a tie or a missing timestamp, take the last line of cosign's output. cosign's own output order carries no time.
+- **Rekor log index.** Search the `cosign verify` JSON *recursively* for the first integer under a key named `logIndex` or `log_index`. Accept a string of digits too, since protobuf's JSON encoding writes 64-bit integers as strings. If there is none, use `null`. Never fail on its absence.
+- **Offline.** With `PROVBIND_OFFLINE=1`, every cosign command gets `--insecure-ignore-tlog=true`.
 - **Signing identity.** From the provenance predicate, `builder_id = runDetails.builder.id`, and `source_commit` is the `digest.gitCommit` of the first `resolvedDependencies` entry that has one.
 
 Any failure in v_sig, v_B or v_P raises `EvidenceError`. The CLI exits with **code 2** and a one-line reason, and **writes no envelope**.
@@ -220,6 +228,9 @@ Implement the two-pass union from Section 7.1.
 | Hardlink | L0 `/usr/bin/a` regular, `/usr/bin/b` hardlink to it | `/usr/bin/b` has the same hash as `a` |
 | Symlink | L0 `/bin` → `usr/bin` | `/bin` in `links`, not in `files` |
 | Symlink replaces file | L0 `/x` file; L1 `/x` symlink | `/x` only in `links` |
+| Symlink replaces directory | L0 `/x/a`; L1 `/x` → `/y` | `/x/a` absent |
+| File replaces directory | L0 `/x/a`; L1 `/x` regular file | `/x/a` absent |
+| Directory replaces symlink | L0 `/x` → `/y`; L1 directory `/x` with `/x/b` | `/x` not in `links`; `/x/b` present |
 | Compression | the same layer as gzip, zstd and plain tar | Identical output |
 
 ### T6. Path resolution: `compiler/paths.py` (Day 2)
@@ -285,6 +296,7 @@ Implement Section 7.5. Build `path → purl`:
 - **pip:** for each `*.dist-info/`, read `METADATA` (`Name`, `Version`) and `RECORD`, a CSV of `path,hash,size`. RECORD paths are relative to the directory that contains the dist-info folder, and may start with `../../` for scripts.
 - **Matching to the SBOM:** parse purls with `packageurl-python`. Match deb packages on (name, version). Match pypi packages on (PEP 503-normalised name, version). **Ignore purl qualifiers** such as `?arch=amd64&distro=…`.
 - A file claimed by no record gets `package: null`.
+- A file whose record matches no SBOM component also gets `package: null`, and the compiler logs it. So every non-null `package` is a key of `packages` (Section 8).
 
 **Tests:**
 
@@ -307,7 +319,9 @@ Keep this simple; the demo never checks capabilities, but the contract requires 
 python -m compiler.compile <ref@digest> --run $RUN [--key pipeline/keys/cosign.pub] [--registry-name localhost:5001]
 ```
 
-- Pipeline: evidence → fetch → union → canonicalise → closure → SBOM → owners → caps → assemble.
+- Pipeline: preflight → evidence → fetch → union → canonicalise → closure → SBOM → owners → caps → assemble.
+  - **Preflight:** `crane manifest <ref>`, writing nothing. If it fails, exit 3, so an unreachable registry is never reported as failed evidence.
+- `--registry-name HOST` fetches from `HOST` instead of the reference's own registry host, for example when the compiler runs on a different machine from the registry. crane and cosign both use it; `image.ref` is written exactly as given.
 - Before writing, validate against `contracts/envelope.schema.json` with `jsonschema`.
 - Write the file atomically.
 - stdout: the envelope path. stderr: progress and timings per step.
@@ -316,8 +330,8 @@ python -m compiler.compile <ref@digest> --run $RUN [--key pipeline/keys/cosign.p
 |---|---|
 | 0 | Envelope written |
 | 1 | Unexpected error |
-| 2 | Evidence failed verification or binding; nothing written |
-| 3 | Bad input (reference not by digest, registry unreachable) |
+| 2 | Evidence failed verification or binding, or a v_M, v_C or blob hash mismatch; nothing written |
+| 3 | Bad input (reference not by digest, registry unreachable or image missing, platform other than linux/amd64) |
 
 **Tests:** a golden-file test on a small synthetic image built from the unit fixtures; the schema check rejects a missing field.
 
@@ -382,8 +396,15 @@ def union(layers):                                   # layers in manifest order
         files = {p: v for p, v in files.items() if not hidden(p)}
         links = {p: v for p, v in links.items() if not hidden(p)}
         dirs  = {p for p in dirs if not hidden(p)}
-        # pass 2: add this layer's entries; a new entry replaces any lower one at the same path
-        for p in list(new_files) + list(new_links):
+        # pass 2: add this layer's entries. Unless both are directories, a new entry replaces
+        # the lower one at the same path, and a new non-directory also removes the lower
+        # subtree under it (OCI "changeset over existing files").
+        nondirs = set(new_files) | set(new_links) | {n for n, _ in pending_hardlinks}
+        under = lambda p: any(p == n or p.startswith(n + "/") for n in nondirs)
+        files = {p: v for p, v in files.items() if not under(p)}
+        links = {p: v for p, v in links.items() if not under(p)}
+        dirs  = {p for p in dirs if not under(p)}
+        for p in new_dirs:
             files.pop(p, None); links.pop(p, None)
         files.update(new_files); links.update(new_links); dirs |= new_dirs
         for name, target in pending_hardlinks:       # target may be in this layer or lower
@@ -505,8 +526,10 @@ def owners(files, links, fs):                        # fs reads file bytes from 
 - **Real paths only.** Every path in `files`, `closure` and `symlinks` values is a real absolute path. Role 3 compares them directly with Tetragon's paths.
 - **`files` holds regular files only.** Symlinks live in `symlinks` as `link path → fully resolved real target` (or `null` if the link dangles). Directories are not listed.
 - **`files[p].layer` is the index** of the layer that provided the effective version.
+- **`files[p].mode` is `"0%03o" % (mode & 0o7777)`:** `"0755"` for a normal file, `"04755"` for a setuid one.
 - **`packages` keys are the SBOM's `purl` strings, verbatim,** qualifiers included. Consumers treat them as opaque IDs.
-- **`depth: null` means unresolved;** `package: null` means no record claims the file.
+- **Every non-null `files[p].package` is a key of `packages`.**
+- **`depth: null` means unresolved;** `package: null` means no record claims the file, or the record matches no SBOM component.
 - **`image.builder_id` must be a URI,** because SLSA v1 requires one. The generator uses `https://github.com/sf9-26/provbind/builders/local@v1`. The sprint handoff's sample value `sf9-26/local-build` was only illustrative; tell Roles 3 and 4 the real value.
 - **Optional fields** are allowed, and readers ignore unknown fields. The compiler adds `verification` (the v_sig, v_M, v_C, v_B, v_P results) and `timings_ms`, which are useful on a slide.
 
@@ -519,6 +542,7 @@ pipeline/
   build-and-attest.sh        given, verified flags (Section 5)
   gen_provenance.py          given, tested
   keys/cosign.pub            committed;  keys/cosign.key never committed
+  tests/                     T1 unit test, T2 integration tests
 compiler/
   __init__.py
   compile.py                 CLI and orchestration (T11)
@@ -536,6 +560,7 @@ contracts/
   envelope.schema.json       given
   envelope.sample.json       given
 testbed/standin-app/         given: Dockerfile, app.py, requirements.txt
+pytest.ini                   deselects integration tests unless -m integration is given
 ```
 
 ---
@@ -552,7 +577,7 @@ testbed/standin-app/         given: Dockerfile, app.py, requirements.txt
 - [ ] Ignore purl qualifiers when matching; keep them in the keys.
 - [ ] Write envelopes atomically: a temp file, then rename.
 - [ ] `sh -c "…"` entrypoints: the closure covers only the shell. Say so in the slide notes.
-- [ ] Signing with public Rekor publishes the image reference and signature in a public log. That is fine for test images; never sign anything private this way. Offline, sign with `--tlog-upload=false` and verify with `--insecure-ignore-tlog=true`, and tell the team, since the demo then skips transparency.
+- [ ] Signing with public Rekor publishes the image reference and signature in a public log. That is fine for test images; never sign anything private this way. Offline, set `PROVBIND_OFFLINE=1`: the build script then signs with `--tlog-upload=false`, and the script and the compiler verify with `--insecure-ignore-tlog=true`. Tell the team, since the demo then skips transparency.
 
 ---
 
@@ -608,22 +633,24 @@ testbed/standin-app/         given: Dockerfile, app.py, requirements.txt
 3. **Application files owned by no package** (e.g. `/app/app.py`) score with `rho = 0.5` in Role 4's demo rules. An alternative is to treat them as depth 0. Decide with Role 4.
 4. **Where Eq. (34)'s cap is applied.** Per pod at binding time, which needs `allowed_caps` in `bindings.json`, or per image in the compiler. See T13.
 
+Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September and are folded into this file. That file also lists implementation notes and notes for Roles 3 and 4.
+
 ---
 
 ## 14. Status
 
 | Task | Status | Notes |
 |---|---|---|
-| T1 Keys and provenance | Not started | |
-| T2 Build and attest stand-in | Not started | |
-| T3 Evidence | Not started | |
-| T4 Image fetch | Not started | |
-| T5 Layer union | Not started | |
-| T6 Path resolution | Not started | |
-| T7 Closure | Not started | |
-| T8 SBOM depth | Not started | |
-| T9 Ownership | Not started | |
-| T10 Capabilities | Not started | |
-| T11 Envelope and CLI | Not started | |
-| T12 Integration | Not started | |
+| T1 Keys and provenance | Done | Key pair generated in `pipeline/keys/`; `cosign.pub` committed (`16b52ab`); the private key went to Role 4 outside the repo. Generator test green (`pipeline/tests/`) |
+| T2 Build and attest stand-in | Done | `localhost:5001/standin-app@sha256:0a6bfbb07745da4c50e29e159cf426b05ff4481540a9894c746e1190961944a3`: linux/amd64, signed and attested online (Rekor on) with cosign v3.1.3. T2 integration tests green |
+| T3 Evidence | Done | `compiler/evidence.py`; DSSE, bare and bundle shapes, binding, newest by timestamp (D2), logIndex search (40 tests). Integration green on the stand-in with cosign v3.1.3 |
+| T4 Image fetch | Done | `compiler/oci.py`; v_M, v_C, blob cache, index selection skipping attestation manifests, platform check (D6), `--registry-name` (D4) (29 tests). Integration green: at least 4 layers, `Cmd` is `["python", "app.py"]` |
+| T5 Layer union | Done | `compiler/layers.py`; all T5 rows incl. the D1 rows green (36 tests); mutation-checked against single-pass whiteouts |
+| T6 Path resolution | Done | `compiler/paths.py`; T6 table, canonical keys (higher layer wins), symlink targets incl. implicit dirs (20 tests) |
+| T7 Closure | Done | `compiler/closure.py`; shebangs incl. `env -S`, PT_INTERP, DT_NEEDED search order, ld.so.conf includes, `$ORIGIN`, python-slim-shaped closure (31 tests). Integration green: python3.11, libpython3.11, libc and the loader are in; ls and dash are not |
+| T8 SBOM depth | Done | `compiler/sbom.py`; T8 table plus duplicates, OS component, nested and empty SBOMs (15 tests) |
+| T9 Ownership | Done | `compiler/owners.py`; dpkg on merged-/usr, `<name>:<arch>.list`, RECORD `../../../bin/foo`, PEP 503, qualifiers ignored, unmatched → null (D5) (19 tests). Integration green: every `requests` file owned by `pkg:pypi/requests@…`, `/usr/bin/ls` by coreutils |
+| T10 Capabilities | Done | `compiler/caps.py` (+ `compiler/purls.py` helpers); allowlist hit, 80/tcp vs 8080/tcp (12 tests) |
+| T11 Envelope and CLI | Done | `compiler/compile.py`; golden-file test, done-when checks, schema rejects missing fields, CLI exit codes 0/1/2/3 with fake crane and cosign, atomic write that also works on Windows (25 tests). Integration green: the real CLI writes a schema-valid envelope |
+| T12 Integration | In progress | Step 1 done: stand-in compiled, every Section 1 check green (13 integration tests, WSL2, Python 3.11.16). Compile time 6.9 s on Korn-PC under WSL2 (target < 60 s); evidence 3.3 s, fetch 1.5 s, union 1.4 s. Next: step 3, write `run/envelopes/0a6bfbb0….json` with the CLI and give it to Role 3 (the integration test writes only to a pytest temp folder); step 2 when Role 1 delivers `testbed/demo-app/`; time it on the demo PC |
 | T13 ML-A | Not started | |

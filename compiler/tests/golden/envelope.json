@@ -1,0 +1,263 @@
+{
+  "schema": "provbind.envelope/v0",
+  "image": {
+    "ref": "localhost:5001/standin-app@sha256:5fc10169e6d7e0eaf1cc615277833be6b6ae6008d3b19e5379a9a1f2048b263f",
+    "digest": "sha256:5fc10169e6d7e0eaf1cc615277833be6b6ae6008d3b19e5379a9a1f2048b263f",
+    "builder_id": "https://github.com/sf9-26/provbind/builders/local@v1",
+    "source_commit": "9f31ab2c4d5e6f708192a3b4c5d6e7f8091a2b3c",
+    "rekor_log_index": 123456789
+  },
+  "layers": [
+    {
+      "index": 0,
+      "digest": "sha256:3392bd5de0710104fe3995618925063fef6bc773fa16158e62affc5ede464d83",
+      "media_type": "application/vnd.oci.image.layer.v1.tar"
+    },
+    {
+      "index": 1,
+      "digest": "sha256:f59d333d5481699e39228964f4a11b1903a6e09e4464f6dac05a7fcd9497f273",
+      "media_type": "application/vnd.oci.image.layer.v1.tar"
+    },
+    {
+      "index": 2,
+      "digest": "sha256:0520de0f78afb7cd581f214bca15a01b619152708cfce6b86640b20607f14ea8",
+      "media_type": "application/vnd.oci.image.layer.v1.tar"
+    },
+    {
+      "index": 3,
+      "digest": "sha256:7466b4caa47834316777e17a5587828acef008b2fbd1edcf28abb514a9c22e5c",
+      "media_type": "application/vnd.oci.image.layer.v1.tar"
+    }
+  ],
+  "files": {
+    "/app/app.py": {
+      "sha256": "333d1b652ae64febaa8b71b12c8fa33598ab9a6593d74ae7abf6bac592ef4884",
+      "layer": 3,
+      "package": null,
+      "mode": "0644"
+    },
+    "/etc/ld.so.conf": {
+      "sha256": "27d7ebd402e1b9a20fd3a0663ccc10e1b1feff2d9dfb1ad7dd12bb76cfe0880a",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/etc/ld.so.conf.d/libc.conf": {
+      "sha256": "f283a326962a77447bcb562fe2c4a81ca556ae2ffaacc35375207fd378574ccd",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/etc/ld.so.conf.d/x86_64-linux-gnu.conf": {
+      "sha256": "8e2f89f081064f2156773e756bb3b9565303b71124431f2b5ef57b40fcdab502",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/etc/passwd": {
+      "sha256": "e787b373a74594b33b77892a903647d7a6cf519d427a0b0790e11be4482696e0",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/usr/bin/dash": {
+      "sha256": "3c3e6309e74cb41cb68c6e2d54cefa0e48321822bd24c2c54369db701b370403",
+      "layer": 0,
+      "package": "pkg:deb/debian/dash@0.5.12-2?arch=amd64&distro=debian-12",
+      "mode": "0755"
+    },
+    "/usr/bin/ls": {
+      "sha256": "3c3e6309e74cb41cb68c6e2d54cefa0e48321822bd24c2c54369db701b370403",
+      "layer": 0,
+      "package": "pkg:deb/debian/coreutils@9.1-1?arch=amd64&distro=debian-12",
+      "mode": "0755"
+    },
+    "/usr/bin/su": {
+      "sha256": "3c3e6309e74cb41cb68c6e2d54cefa0e48321822bd24c2c54369db701b370403",
+      "layer": 0,
+      "package": "pkg:deb/debian/login@1%3A4.13%2Bdfsg1-1?arch=amd64&distro=debian-12",
+      "mode": "04755"
+    },
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": {
+      "sha256": "427d9f38d069074c16b61a4ce756f28e05e3fd9ebca3d137205584cd4961c09e",
+      "layer": 0,
+      "package": "pkg:deb/debian/libc6@2.36-9?arch=amd64&distro=debian-12",
+      "mode": "0755"
+    },
+    "/usr/lib/x86_64-linux-gnu/libc.so.6": {
+      "sha256": "ade9a2029a946955d10ef4432d1c8ffabad83f7b18ac08c9ce90a5a34a188dfc",
+      "layer": 0,
+      "package": "pkg:deb/debian/libc6@2.36-9?arch=amd64&distro=debian-12",
+      "mode": "0755"
+    },
+    "/usr/lib/x86_64-linux-gnu/libm.so.6": {
+      "sha256": "b985ed603e9bd356c129f24ba958d717e649bb6c17f0867d84cbdf0fe170868a",
+      "layer": 0,
+      "package": "pkg:deb/debian/libc6@2.36-9?arch=amd64&distro=debian-12",
+      "mode": "0644"
+    },
+    "/usr/local/bin/python3.11": {
+      "sha256": "591766e6a3e5373f7ef3f7dddfcedc22a868b6498069572f5f4b614590df059e",
+      "layer": 1,
+      "package": null,
+      "mode": "0755"
+    },
+    "/usr/local/lib/libpython3.11.so.1.0": {
+      "sha256": "fdad232ca44b22bf7e1b70e7f3c5bf35577edf7ef018f47baaa4f0801d954bf5",
+      "layer": 1,
+      "package": null,
+      "mode": "0755"
+    },
+    "/usr/local/lib/python3.11/site-packages/pip-24.0.dist-info/METADATA": {
+      "sha256": "f9ca08c574ba534476e3246f1a708a88db747bd0c783d4e0729f63e7b5faebb2",
+      "layer": 1,
+      "package": "pkg:pypi/pip@24.0",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/pip-24.0.dist-info/RECORD": {
+      "sha256": "ac63966c1f866d4b322ee692d81cd55ec118ef50a17f4f85b912260ae334c2e4",
+      "layer": 1,
+      "package": "pkg:pypi/pip@24.0",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/pip/__init__.py": {
+      "sha256": "a47df4b8b72b677d1ca7fd11767d405632d46b9afeafff2e7c20504cf3aa8380",
+      "layer": 1,
+      "package": "pkg:pypi/pip@24.0",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/requests-2.32.3.dist-info/METADATA": {
+      "sha256": "db1edc8e827f5e510ac61155c6194a8d5ac52ccd2e95d35af3a73a922ceda5b4",
+      "layer": 2,
+      "package": "pkg:pypi/requests@2.32.3",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/requests-2.32.3.dist-info/RECORD": {
+      "sha256": "16a286cfdf64b3b044b40d9224a0a2a58abdd10e01d5a9f41da59a0af0f5d466",
+      "layer": 2,
+      "package": "pkg:pypi/requests@2.32.3",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/requests/__init__.py": {
+      "sha256": "8fc89b1ed8040b6fa644c6a7beb9e97e3403700b2921a53206f06fd4bd64afbb",
+      "layer": 2,
+      "package": "pkg:pypi/requests@2.32.3",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/requests/api.py": {
+      "sha256": "b3b8f20e1bc9a6700abcd74eed606c039a22def748026c537e367eb9fae0edaf",
+      "layer": 2,
+      "package": "pkg:pypi/requests@2.32.3",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/urllib3-2.2.2.dist-info/METADATA": {
+      "sha256": "be2042f7b627a13d6a166d3f965942bedcbacaaf4a2f1989100750b05b5320c9",
+      "layer": 2,
+      "package": "pkg:pypi/urllib3@2.2.2",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/urllib3-2.2.2.dist-info/RECORD": {
+      "sha256": "408ee0f905c72e119e438de0b823d5101824c614719103adffac0cddf11553cd",
+      "layer": 2,
+      "package": "pkg:pypi/urllib3@2.2.2",
+      "mode": "0644"
+    },
+    "/usr/local/lib/python3.11/site-packages/urllib3/__init__.py": {
+      "sha256": "88bed847274830d6a301b8fe9b11bfb40b6dc050f99218d673e37a0b3bd648e5",
+      "layer": 2,
+      "package": "pkg:pypi/urllib3@2.2.2",
+      "mode": "0644"
+    },
+    "/usr/share/unlisted/data": {
+      "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/var/lib/dpkg/info/coreutils.list": {
+      "sha256": "4c145f202076853334c08698b793957aad1d709f53e7973b34bea8de1003ec70",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/var/lib/dpkg/info/dash.list": {
+      "sha256": "48879180f90d4cf11b5bd4bacc9bc6df303744e1dc0889c77c0e791b391d0ec5",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/var/lib/dpkg/info/libc6:amd64.list": {
+      "sha256": "307a528b074089a48ba3cf3cb344c2e844c537c85aa2a022e1f64c48322b105c",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/var/lib/dpkg/info/login.list": {
+      "sha256": "1ab6ca12c0aee57e608dce60fcadbb2ac0f386f0692adc973e9d904cc39e6a79",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/var/lib/dpkg/info/unlisted-pkg.list": {
+      "sha256": "cdc495ff0ec42e81d06b8d5fbbebe87a76df0f910414a5a2be66006d9b8cdaa5",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    },
+    "/var/lib/dpkg/status": {
+      "sha256": "2906d07e4a8406b77c783a70625050a3f7aaee5fe3404b7cf755cce089228177",
+      "layer": 0,
+      "package": null,
+      "mode": "0644"
+    }
+  },
+  "symlinks": {
+    "/bin": "/usr/bin",
+    "/lib": "/usr/lib",
+    "/lib64": "/usr/lib64",
+    "/usr/bin/sh": "/usr/bin/dash",
+    "/usr/lib64/ld-linux-x86-64.so.2": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "/usr/local/bin/python": "/usr/local/bin/python3.11",
+    "/usr/local/bin/python3": "/usr/local/bin/python3.11"
+  },
+  "closure": [
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "/usr/lib/x86_64-linux-gnu/libc.so.6",
+    "/usr/lib/x86_64-linux-gnu/libm.so.6",
+    "/usr/local/bin/python3.11",
+    "/usr/local/lib/libpython3.11.so.1.0"
+  ],
+  "packages": {
+    "pkg:deb/debian/coreutils@9.1-1?arch=amd64&distro=debian-12": {
+      "depth": 1
+    },
+    "pkg:deb/debian/dash@0.5.12-2?arch=amd64&distro=debian-12": {
+      "depth": 1
+    },
+    "pkg:deb/debian/libc6@2.36-9?arch=amd64&distro=debian-12": {
+      "depth": 2
+    },
+    "pkg:deb/debian/login@1%3A4.13%2Bdfsg1-1?arch=amd64&distro=debian-12": {
+      "depth": null
+    },
+    "pkg:pypi/pip@24.0": {
+      "depth": null
+    },
+    "pkg:pypi/requests@2.32.3": {
+      "depth": 1
+    },
+    "pkg:pypi/urllib3@2.2.2": {
+      "depth": 2
+    }
+  },
+  "capabilities": [],
+  "unresolved_fraction": 0.2857142857142857,
+  "compiled_at": "2026-09-26T00:00:00Z",
+  "verification": {
+    "v_sig": true,
+    "v_M": true,
+    "v_C": true,
+    "v_B": true,
+    "v_P": true
+  }
+}
