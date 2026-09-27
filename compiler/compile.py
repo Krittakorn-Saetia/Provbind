@@ -14,8 +14,10 @@ allowlist (compiler/caps.py).
 
 Exit codes: 0 written; 1 unexpected error; 2 evidence failed verification or binding, or a
 manifest, config or blob hash mismatch; 3 bad input (not by digest, registry unreachable,
-image missing, not linux/amd64, no public key, an ML-A model that cannot be used). Nothing is
-written unless the exit is 0.
+image missing, not linux/amd64, no public key, an ML-A model that cannot be used). No
+envelope is written unless the exit is 0. Layer blobs that pass their hash check stay in
+<run>/cache/blobs (T4) whatever the exit; a download that fails its check is deleted, and a
+cached blob is checked again before every reuse.
 """
 from __future__ import annotations
 
@@ -135,7 +137,8 @@ def compiled_now() -> str:
 def compile_image(ref: str, run_dir: str, key: str, registry_name: str | None = None,
                   crane=None, cosign=None, now: str | None = None) -> Path:
     """The whole pipeline; returns the envelope path. Raises BadInput, EvidenceError,
-    IntegrityError or anything unexpected; writes nothing unless it returns."""
+    IntegrityError or anything unexpected; writes no envelope unless it returns (verified
+    blobs may stay in the cache)."""
     timings: dict[str, float] = {}
     repo, digest = oci.parse_ref(ref)
     if cosign is None and not os.path.isfile(key):
