@@ -1,0 +1,29 @@
+# ML-A profiling corpus (test plan Section 4.1). Each image is re-tagged into localhost:5001 and
+# attested with our key before profiling. `workload` runs from a helper pod; {host} is the service name.
+# Target 40 images, minimum 20. Tags below are examples: pin digests when you pull.
+- image: nginx:1.27
+  port: 80
+  workload: "for i in $(seq 50); do curl -s http://{host}:80/ >/dev/null; done"
+- image: httpd:2.4
+  port: 80
+  workload: "for i in $(seq 50); do curl -s http://{host}:80/ >/dev/null; done"
+- image: redis:7
+  port: 6379
+  workload: "for i in $(seq 50); do redis-cli -h {host} set k$i v$i >/dev/null; done"
+- image: postgres:16
+  env: { POSTGRES_PASSWORD: test }
+  port: 5432
+  workload: "PGPASSWORD=test psql -h {host} -U postgres -c 'select 1' >/dev/null"
+- image: memcached:1.6
+  port: 11211
+  workload: "printf 'set k 0 0 1\\r\\nv\\r\\nquit\\r\\n' | nc {host} 11211 >/dev/null"
+- image: busybox:1.36
+  command: ["sh", "-c", "while true; do date > /tmp/t; sleep 1; done"]
+  workload: ""
+- image: alpine:3.20
+  command: ["sh", "-c", "apk add --no-cache iputils >/dev/null 2>&1; ping -c 5 127.0.0.1; sleep 600"]
+  workload: ""
+- image: localhost:5001/standin-app      # our own, already attested
+  port: 8080
+  workload: "for i in $(seq 50); do curl -s http://{host}:8080/ >/dev/null; done"
+# add: caddy, mariadb, mongo, rabbitmq, a Flask app, an Express app, a static Go binary, a curl job ...
