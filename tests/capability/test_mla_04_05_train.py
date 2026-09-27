@@ -13,6 +13,8 @@ works, but synthetic numbers are not results.
   under-prediction goes in the notes either way: §4.7 counts a loss as a legitimate result.
 
 Artifacts in $PROVBIND_RUN/results/MLA-04/: report.json, comparison.md, sweep.md, model/model.json.
+Skipped, with no result written, where the ML libraries are not installed (requirements-role2.txt
+alone): install requirements.txt to run it.
 """
 import json
 import os
@@ -20,9 +22,12 @@ from pathlib import Path
 
 import pytest
 
-from ml.train import (BASELINES, MIN_IMAGES, CapabilityModel, comparison_table, evaluate, fit, load_dataset, matrix,
-                      row_features, sweep_table, trainable_labels, write_text_atomically)
-from tests.ml import synthetic
+pytest.importorskip("lightgbm")
+pytest.importorskip("sklearn")
+
+from ml.train import (BASELINES, MIN_IMAGES, CapabilityModel, comparison_table, evaluate, fit,  # noqa: E402
+                      load_dataset, matrix, row_features, sweep_table, trainable_labels, write_text_atomically)
+from tests.ml import synthetic                                                                  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 RUN = Path(os.environ.get("PROVBIND_RUN", "./run"))
