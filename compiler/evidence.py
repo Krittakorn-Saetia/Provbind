@@ -145,8 +145,11 @@ def parse_time(value: Any) -> datetime | None:
         return None
     base, frac, tz = m.groups()
     tz = "+00:00" if tz in (None, "Z", "z") else (tz if ":" in tz else tz[:3] + ":" + tz[3:])
+    # Exactly six fraction digits: Python 3.10's fromisoformat takes only 3 or 6, and
+    # would otherwise return None here and quietly change which attestation is newest.
+    frac = "." + frac[1:7].ljust(6, "0") if frac else ""
     try:
-        dt = datetime.fromisoformat(base.replace("t", "T").replace(" ", "T") + (frac or "")[:7] + tz)
+        dt = datetime.fromisoformat(base.replace("t", "T").replace(" ", "T") + frac + tz)
     except ValueError:
         return None
     return dt.astimezone(timezone.utc)
