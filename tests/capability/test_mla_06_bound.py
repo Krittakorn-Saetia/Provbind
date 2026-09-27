@@ -8,6 +8,10 @@ escape, so this needs no model. Pods: named cases (capabilities dropped, added, 
 plus 1,000 random securityContexts.
 
 Pass: zero capabilities outside 𝒞_K8s.
+
+Scope: this proves Algorithm 1 never exceeds the allowed set it is given. It does not prove
+that envelopes are capped: the compiler works per image, cannot know the pod, and leaves
+𝒞_K8s unset until handoff §13 decision 4 settles who applies it. The notes say so.
 """
 import json
 import random
@@ -59,6 +63,8 @@ def test_mla_06_predictions_never_exceed_the_allowed_set(record_result):
                   metrics={"pods": len(pods), "predictions": predictions, "outside_k8s": outside,
                            "runtime_defaults": len(RUNTIME_DEFAULT_CAPS)},
                   notes="worst-case predictor (p = 1.0 for all 41 capabilities, all declared) through Ω_I and "
-                        "Algorithm 1; 6 named pods and 1,000 random securityContexts; no trained model needed"
+                        "Algorithm 1; 6 named pods and 1,000 random securityContexts; no trained model needed. "
+                        "Algorithm 1 only: envelopes are not capped at 𝒞_K8s yet, because the compiler cannot "
+                        "know the pod (handoff §13 decision 4)"
                         + ("" if ok else f"; {outside} capabilities outside 𝒞_K8s"))
     assert ok
