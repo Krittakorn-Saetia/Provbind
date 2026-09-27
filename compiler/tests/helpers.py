@@ -217,11 +217,13 @@ EM_AARCH64 = 183
 
 
 def make_elf(*, interp: str | None = None, needed=(), rpath: str | None = None,
-             runpath: str | None = None, machine: int = EM_X86_64) -> bytes:
+             runpath: str | None = None, machine: int = EM_X86_64, imports=(), exports=()) -> bytes:
     """A minimal little-endian ELF64 with PT_LOAD, optional PT_INTERP and PT_DYNAMIC.
 
     Virtual addresses equal file offsets, so DT_STRTAB points straight at .dynstr.
-    There are no section headers, like a stripped binary.
+    There are no section headers, like a stripped binary. `imports` become undefined
+    dynamic symbols and `exports` defined ones, in a DT_SYMTAB with a DT_HASH table (which
+    pyelftools uses to count them); with neither, the bytes are as before.
     """
     strtab = bytearray(b"\0")
     def add_str(s: str) -> int:
@@ -233,13 +235,24 @@ def make_elf(*, interp: str | None = None, needed=(), rpath: str | None = None,
         dyn.append((15, add_str(rpath)))                          # DT_RPATH
     if runpath is not None:
         dyn.append((29, add_str(runpath)))                        # DT_RUNPATH
+    symbols = [(add_str(n), 0) for n in imports] + [(add_str(n), 1) for n in exports]   # (name, st_shndx)
 
     phnum = 2 + (interp is not None)                              # LOAD, [INTERP], DYNAMIC
     data_off = 64 + 56 * phnum
     interp_bytes = interp.encode() + b"\0" if interp is not None else b""
     interp_off = data_off
     strtab_off = interp_off + len(interp_bytes)
-    dyn_off = (strtab_off + len(strtab) + 7) & ~7
+    sym_off = (strtab_off + len(strtab) + 7) & ~7
+    sym_bytes = hash_bytes = b""
+    if symbols:
+        sym_bytes = bytes(24) + b"".join(struct.pack("<IBBHQQ", name, 0x12, 0, shndx, 0, 0)  # GLOBAL FUNC
+                                         for name, shndx in symbols)
+        nsyms = len(symbols) + 1
+        hash_bytes = struct.pack(f"<{3 + nsyms}I", 1, nsyms, *([0] * (1 + nsyms)))           # nbucket, nchain, ...
+    hash_off = sym_off + len(sym_bytes)
+    dyn_off = (hash_off + len(hash_bytes) + 7) & ~7
+    if symbols:
+        dyn += [(6, sym_off), (11, 24), (4, hash_off)]            # DT_SYMTAB, DT_SYMENT, DT_HASH
     dyn += [(5, strtab_off), (10, len(strtab)), (0, 0)]           # DT_STRTAB, DT_STRSZ, DT_NULL
     dyn_bytes = b"".join(struct.pack("<qQ", tag, val) for tag, val in dyn)
     total = dyn_off + len(dyn_bytes)
@@ -254,6 +267,8 @@ def make_elf(*, interp: str | None = None, needed=(), rpath: str | None = None,
                       len(dyn_bytes), len(dyn_bytes), 8)                                     # PT_DYNAMIC
     body = bytearray(header + ph)
     body += interp_bytes + strtab
+    body += bytes(sym_off - len(body)) if symbols else b""
+    body += sym_bytes + hash_bytes
     body += bytes(dyn_off - len(body))
     body += dyn_bytes
     assert len(body) == total
