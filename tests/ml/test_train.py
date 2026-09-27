@@ -1,20 +1,25 @@
-"""Unit tests for ml/train.py (T13 step 4) on synthetic data. The real run is MLA-04 and MLA-05."""
+"""Unit tests for ml/train.py (T13 step 4) on synthetic data. The real run is MLA-04 and MLA-05.
+Skipped where the ML libraries are not installed (requirements-role2.txt alone)."""
 import copy
 import json
 import logging
 import random
 
-import numpy as np
 import pytest
-from sklearn.metrics import accuracy_score, f1_score, hamming_loss, precision_score, recall_score
 
-from ml.alg1 import ALL_CAPS
-from ml.features import build_vocabulary, extract, feature_names, package_id
-from ml.train import (BASELINES, LGBM_PARAMS, MODEL_FILE, THETA_SWEEP, CapabilityModel, baselines,
+pytest.importorskip("lightgbm")
+pytest.importorskip("sklearn")
+
+import numpy as np                                                                        # noqa: E402
+from sklearn.metrics import accuracy_score, f1_score, hamming_loss, precision_score, recall_score  # noqa: E402
+
+from ml.alg1 import ALL_CAPS                                                              # noqa: E402
+from ml.features import build_vocabulary, extract, feature_names, package_id              # noqa: E402
+from ml.train import (BASELINES, LGBM_PARAMS, MODEL_FILE, THETA_SWEEP, CapabilityModel, baselines,  # noqa: E402
                       comparison_table, evaluate, fit, group_folds, load_dataset, main, matrix, predicted_sets,
                       row_features, set_metrics, sweep_table, trainable_labels)
 
-from . import synthetic
+from . import synthetic                                                                   # noqa: E402
 
 FAST = {**LGBM_PARAMS, "n_estimators": 20}
 ROWS = synthetic.rows()

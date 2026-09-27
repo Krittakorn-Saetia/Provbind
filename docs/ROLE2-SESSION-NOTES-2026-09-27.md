@@ -8,37 +8,27 @@ A log of everything Claude Code (cloud) did for Role 2 in this session. It cover
 
 The work ran from 26 September 20:55 UTC to 27 September 19:00 UTC, which is 27 September 03:55 to 28 September 02:00 in Thailand.
 
+**Corrected after the merge.** Claude Code on Korn's PC audited these notes against the code and found six differences. §11 lists them with the fixes, and the text below is corrected.
+
 ---
 
 ## 1. Is the repo up to date?
 
-Yes. Every commit is pushed, and all eight branches were identical to GitHub on the last check. **Nothing is merged yet:** `main` is unchanged, and each piece of work waits in its own pull request.
+Yes. On 27 September all nine PRs were merged into `main` in order, each as a merge commit, so no history was rewritten. The old branches were then deleted from GitHub. To get everything: `git checkout main && git pull origin main`.
 
-| PR | Branch → base | What it holds |
+| PR | Branch (deleted after the merge) | What it held |
 |---|---|---|
-| [PR #1](https://github.com/Krittakorn-Saetia/Provbind/pull/1) | `claude/serene-feynman-xqeqez` → `main` | Review notes, pipeline changes, the whole compiler (T1–T11), Windows and Python 3.10 fixes, status (T12 step 1) |
-| [PR #2](https://github.com/Krittakorn-Saetia/Provbind/pull/2) | `cloud/t13-alg1` → PR #1's branch | T13 step 1: Algorithm 1 (`ml/alg1.py`), MLA-01 |
-| [PR #3](https://github.com/Krittakorn-Saetia/Provbind/pull/3) | `cloud/t13-features` → `cloud/t13-alg1` | T13 step 2: features Ω_I (`ml/features.py`, `ml/features.md`), MLA-02 |
-| [PR #4](https://github.com/Krittakorn-Saetia/Provbind/pull/4) | `cloud/t13-mla06` → `cloud/t13-features` | T13 step 5: MLA-06 |
-| [PR #5](https://github.com/Krittakorn-Saetia/Provbind/pull/5) | `cloud/t13-train` → `cloud/t13-mla06` | T13 step 4: training and evaluation (`ml/train.py`), MLA-04 and MLA-05 |
-| [PR #6](https://github.com/Krittakorn-Saetia/Provbind/pull/6) | `cloud/t13-caps-hook` → `cloud/t13-train` | T13 step 6: the compiler uses the model (`compiler/caps.py`) |
-| [PR #7](https://github.com/Krittakorn-Saetia/Provbind/pull/7) | `cloud/ph3-tests` → PR #1's branch | PH3 capability tests and the indices J_I (`compiler/indices.py`) |
-| [PR #8](https://github.com/Krittakorn-Saetia/Provbind/pull/8) | `cloud/status-14` → PR #1's branch | Handoff §14: T13 in progress |
-| this file's PR | `cloud/session-notes` → PR #1's branch | These notes |
+| [PR #1](https://github.com/Krittakorn-Saetia/Provbind/pull/1) | `claude/serene-feynman-xqeqez` | Review notes, pipeline changes, the whole compiler (T1–T11), Windows and Python 3.10 fixes, status (T12 step 1) |
+| [PR #2](https://github.com/Krittakorn-Saetia/Provbind/pull/2) | `cloud/t13-alg1` | T13 step 1: Algorithm 1 (`ml/alg1.py`), MLA-01 |
+| [PR #3](https://github.com/Krittakorn-Saetia/Provbind/pull/3) | `cloud/t13-features` | T13 step 2: features Ω_I (`ml/features.py`, `ml/features.md`), MLA-02 |
+| [PR #4](https://github.com/Krittakorn-Saetia/Provbind/pull/4) | `cloud/t13-mla06` | T13 step 5: MLA-06 |
+| [PR #5](https://github.com/Krittakorn-Saetia/Provbind/pull/5) | `cloud/t13-train` | T13 step 4: training and evaluation (`ml/train.py`), MLA-04 and MLA-05 |
+| [PR #6](https://github.com/Krittakorn-Saetia/Provbind/pull/6) | `cloud/t13-caps-hook` | T13 step 6: the compiler uses the model (`compiler/caps.py`) |
+| [PR #7](https://github.com/Krittakorn-Saetia/Provbind/pull/7) | `cloud/ph3-tests` | PH3 capability tests and the indices J_I (`compiler/indices.py`) |
+| [PR #8](https://github.com/Krittakorn-Saetia/Provbind/pull/8) | `cloud/status-14` | Handoff §14: T13 in progress |
+| [PR #9](https://github.com/Krittakorn-Saetia/Provbind/pull/9) | `cloud/session-notes` | These notes |
 
-**Merge order.**
-1. PR #1 first.
-2. Then PR #2 to PR #6, in order. PRs #2–#6 are stacked, so delete each head branch after it merges; GitHub then retargets the next PR.
-3. PR #7, PR #8 and this one can merge any time after PR #1. They share no files with the stacked PRs.
-
-**To try everything together before merging.** Build a local branch and don't push it:
-
-```bash
-git fetch origin
-git checkout -b try-all origin/cloud/t13-caps-hook
-git merge origin/cloud/ph3-tests origin/cloud/status-14 origin/cloud/session-notes
-pytest -q -m "not integration"          # 391 passed on 27 Sep
-```
+PRs #2–#6 were stacked, each on the one before. Each was pointed at `main` just before it merged, so all of them landed in `main`. The fixes from the audit in §11 come in a later PR.
 
 ---
 
@@ -53,7 +43,7 @@ pytest -q -m "not integration"          # 391 passed on 27 Sep
    - The provenance records uncommitted changes.
    - Added T1 and T2 tests.
 3. **The compiler, T3–T11** (`306ef3f` … `e570e68`).
-   - One module per task, each with unit tests, built in handoff order.
+   - One module per task, each with unit tests. They were built logic-first, not in the handoff's T1–T13 order: T5, T6, T8 and T10 first (pure functions that need no external tool), then T3, T4, T9, T7 and T11.
    - The layer union was mutation-checked against a single-pass version.
 4. **Windows fix** (`02fd96d`). Korn's PowerShell run showed 2 failures, WinError 32, in the CLI tests; see §6.
 5. **Korn's PC results recorded** (`0237485`).
@@ -65,7 +55,9 @@ pytest -q -m "not integration"          # 391 passed on 27 Sep
 8. **T13 ML-A**, PRs #2–#6: Algorithm 1, the features, the bound test, training and evaluation, and the compiler hook.
 9. **PH3 capability tests and indices**, PR #7.
 10. **Status table**, PR #8.
-11. **These notes.**
+11. **These notes**, PR #9.
+12. **Merged PRs #1–#9 into `main`**, in order. The session's git proxy refused to delete branches (HTTP 403), so Korn deleted the old ones on GitHub.
+13. **Audit and fixes.** Claude Code on Korn's PC checked these notes against the code and wrote a report and a PDF (`docs/reports/`, not committed yet). The fixes are in §11.
 
 Rules kept throughout:
 - `contracts/` and `bindings.json` are unchanged, and `docs/reference/` wasn't touched.
@@ -110,7 +102,7 @@ p(c), θ_C, 𝒞_K8s, declared set ──Algorithm 1 (ml/alg1.py)──► the c
 
 ## 4. The code, file by file
 
-About 2,800 lines of non-test code, and 391 unit tests plus 13 integration tests with every branch merged.
+About 2,800 lines of non-test code. After the merge, `main` has 391 unit tests plus 13 integration tests. The audit fixes (§11) add one more capability test, for 392.
 
 ### 4.1 Pipeline (Phase 1)
 
@@ -218,7 +210,8 @@ Arguments are deliberately not parsed, and `dlopen` libraries are not in the clo
   - `fsync`, then `os.replace`;
   - LF line endings, so the bytes are the same on every OS.
 - stdout carries only the envelope path.
-- Exit codes: 0 written, 1 unexpected error, 2 evidence or hash failure, 3 bad input. Nothing is written unless the exit is 0.
+- Exit codes: 0 written, 1 unexpected error, 2 evidence or hash failure, 3 bad input.
+- No envelope is written unless the exit is 0. Layer blobs that passed their hash check stay in `run/cache/blobs` whatever the exit; a download that fails its check is deleted, and a cached blob is checked again before every reuse. (This line used to say "nothing is written", which was wrong; so was the docstring, now fixed.)
 
 **`compiler/indices.py` (PR #7): the runtime lookup tables J_I of Eq. 37,** built from an envelope as plain dicts with O(1) lookups. 3 tests.
 
@@ -256,7 +249,7 @@ It writes nothing new to the run folder; the node can rebuild the tables from th
 
 **`ml/features.py` and `ml/features.md`: the feature extractor Ω_I, Eq. 32.** 41 unit tests.
 - **Why it exists.** The draft names Ω_I's inputs but never its features, so `ml/features.md` is now that definition for the paper.
-- **The vector.** 46 fixed numbers, plus one 0/1 flag for each of the 100 most common packages in the training images (the vocabulary). That makes 146 features.
+- **The vector.** 46 fixed numbers, plus one 0/1 flag per vocabulary entry. The vocabulary holds the most common package ids in the training images, **up to** 100, so the vector has at most 146 features. It has fewer when the training images have fewer than 100 distinct packages; MLA-02's golden envelope gives a 7-entry vocabulary and 53 features.
 
 | Group | Features |
 |---|---|
@@ -468,7 +461,14 @@ Test plan §12.4 still applies: never download or commit real malicious samples 
 
 ### 8.1 Unit tests
 
-391 passed and 13 deselected (integration), with every branch merged locally on 27 September. 239 of them existed before the T13 work.
+On `main` after the merge: 391 passed and 13 deselected (integration). 239 of them existed before the T13 work.
+
+On Korn's PC (Python 3.11.16), measured by the local audit:
+- **Unit:** 391 passed, after installing numpy, scikit-learn and LightGBM. Without them, 2 test files failed to load; they now skip (§11).
+- **Integration:** 13 passed; compile took 7.5 s on the stand-in.
+- **Capability:** 13 passed.
+
+Before the merge, per branch:
 
 | Branch | Unit tests |
 |---|---|
@@ -482,11 +482,12 @@ Test plan §12.4 still applies: never download or commit real malicious samples 
 |---|---|---|---|
 | MLA-01 | P0 | **pass** | 12 cases, 0 mismatches, 0 outside 𝒞_K8s |
 | MLA-02 | P0 | **pass** | 13 extractions (this process plus 6 hash seeds × 2 input orders) identical; 0 undocumented features |
-| MLA-06 | P0 | **pass** | 1,006 pods, 15,531 predictions from a worst-case model, 0 outside 𝒞_K8s |
+| MLA-06 | P0 | **pass** | 1,006 pods, 15,531 predictions from a worst-case model, 0 outside 𝒞_K8s. This covers Algorithm 1 only: envelopes are not capped yet (§13, decision 4) |
 | PH3-01 | P0 | **pass** | T5 unit tests: 36 passed |
 | PH3-02 | P0 | **pass** | T6 unit tests: 20 passed |
 | PH3-06 | P0 | **pass** | T9 unit tests: 19 passed |
 | PH3-04 | P0 | not_run | Synthetic SBOM gives requests 1, urllib3 2 (T8: 15 passed); needs the stand-in's envelope or SBOM |
+| PH3-07 | P0 | not_run | Added by the audit fixes. Golden envelope: python, libpython and libc in the closure; ls and dash out (T7: 31 passed). Needs the stand-in's envelope |
 | PH3-08 | P0 | not_run | Golden envelope: 0 problems; needs the stand-in's envelope |
 | PH3-09 | P0 | not_run | 500 of 5,030 synthetic files: 100% agreement, 0 non-member hits; needs the stand-in's envelope |
 | MLA-04 | P0 | not_run | Pipeline works end to end on synthetic data; needs D1 (MLA-03) |
@@ -524,11 +525,11 @@ pytest -q -m "not integration"
 pytest -q -m "not integration" tests/capability
 python -m eval.report
 
-# PH3-04, 08 and 09 for real, on the PC, after T12 step 3 writes the stand-in's envelope
-PROVBIND_ENVELOPE=run/envelopes/<digest-hex>.json pytest -q \
-  tests/capability/test_ph3_04_depth.py tests/capability/test_ph3_08_origins.py tests/capability/test_ph3_09_indices.py
+# PH3-04, 07, 08 and 09 for real, on the PC, after T12 step 3 writes the stand-in's envelope
+PROVBIND_ENVELOPE=run/envelopes/<digest-hex>.json pytest -q tests/capability/test_ph3_04_depth.py \
+  tests/capability/test_ph3_07_closure.py tests/capability/test_ph3_08_origins.py tests/capability/test_ph3_09_indices.py
 
-# train ML-A once D1 exists (ml/ is on the PR #2–#6 branches until they merge)
+# train ML-A once D1 exists (needs requirements.txt: numpy, scikit-learn, LightGBM)
 python -m ml.train --data ml/data/dataset.jsonl --out ml/model --report run/results/MLA-04/report.json
 
 # compile: uses ml/model/ when it exists, otherwise the allowlist
@@ -541,15 +542,47 @@ PROVBIND_CAPS_MODEL=none python -m compiler.compile <ref@digest> --run $PROVBIND
 ## 10. Next steps and open questions
 
 **Next steps:**
-- **T12 step 3.** Write the stand-in's envelope with the CLI, give it to Role 3, and run PH3-04, 08 and 09 on it.
+- **T12 step 3.** Write the stand-in's envelope with the CLI, give it to Role 3, and run PH3-04, 07, 08 and 09 on it.
+- **PH1-01 and PH1-04.** The audit found no test records them, though the integration run shows their checks pass. They are `test_ph1_*.py` files, so the local session writes them.
 - **T12 step 2.** Compile the demo app when Role 1 delivers `testbed/demo-app/`.
 - **T13 step 3.** When Role 1's `ml/data/labels.jsonl` arrives, join it to our features, train on the demo PC, and rerun MLA-04 and MLA-05 on real data.
 
 **Open questions for Korn:**
-1. **Compiler dependencies.** `compiler/CLAUDE.md` allows only a few extra libraries. The model hook imports numpy and LightGBM only when a model exists. Is that acceptable?
+1. **Compiler dependencies.** `compiler/CLAUDE.md` allows only a few extra libraries. The model hook imports numpy and LightGBM only when a model exists. Is that acceptable? And should `requirements-role2.txt` list the ML libraries, now that Role 2 owns ML-A? Until it does, the ML tests skip in a Role 2-only environment.
 2. **Step 3 formats.** What columns will `labels.jsonl` have? Proposal: a `--features-out ml/data/features.jsonl` flag on the compiler, because the ELF imports can only be read while the image is open.
 3. **The trained model.** Commit `ml/model/model.json` (a few MB), or keep it on the demo PC?
 4. **The θ_C plot.** §4.5 asks for one; the sweep is written as a table because matplotlib isn't in `requirements.txt`. Add it, or plot in the paper?
 5. **Decision 4** (where Eq. 34's cap is applied): `allowed_caps` in `bindings.json` needs Roles 3 and 4.
 6. **Role 3's verifier.** Should `node/verify.py` use `compiler/indices.py`?
 7. **PH2-06 and PH2-07.** Should they get capability test files? They are outside my file list.
+8. **Pod settings.** Found by the audit. The model would learn from each profiled pod's real securityContext (the `dep.*` features), but the compiler always gives it the default pod's settings. Options: profile the whole corpus in default pods, or drop the `dep.*` features.
+9. **`unresolved_fraction`.** Found by the audit. On the stand-in it doubles, from 9.7% to 19.7%, because of 14 Windows launcher programs inside pip that syft lists without a package URL. `sbom.py` keys such a component by its SBOM id and counts it as unresolved, as the handoff says. Options: leave out components without a package URL, or keep them and report both numbers.
+10. **`docs/reports/`.** Commit the audit's report, its PDF and the chat update?
+
+---
+
+## 11. Audit by the local session, and the fixes
+
+On 27 September, Claude Code on Korn's PC pulled `main`, reran every test and checked these notes against the code.
+
+**Six differences between the notes and the code**, all corrected above:
+
+| # | What the notes said | What is true |
+|---|---|---|
+| 1 | "Nothing is merged yet" (§1) | Out of date since the merge |
+| 2 | `ml/` "is on the PR #2–#6 branches until they merge" (§9) | Out of date since the merge |
+| 3 | The compiler modules were built in handoff order | They were built logic-first (§2) |
+| 4 | The vocabulary always has 100 packages | Up to 100 (§4.3) |
+| 5 | Nothing is written unless the exit is 0 | True for envelopes only; verified blobs stay in the cache (§4.2) |
+| 6 | (not stated) | The model learns from each pod's real settings, but the compiler gives it the default pod's (§10, question 8) |
+
+**Other findings, and what was done** (`cloud/audit-fixes` PR):
+- **Two ML test files failed to load without LightGBM** (`tests/ml/test_train.py` and `tests/capability/test_mla_04_05_train.py`), which stopped the whole run. They now skip cleanly, and `compiler/tests/test_caps_model.py` also checks for scikit-learn.
+  - With `requirements-role2.txt` alone: 343 passed and 3 skipped, where it used to be 2 errors.
+  - With everything installed: unchanged.
+- **`compile.py`'s docstring** said nothing is written unless the exit is 0. It now says exactly what a failed compile leaves behind: verified blobs in the cache, never an envelope.
+- **MLA-06** passes, but it proves only that Algorithm 1 respects the cap; nothing caps envelopes yet. Its docstring and recorded note now say so.
+- **PH3-07** (P0) had no test that recorded it. `tests/capability/test_ph3_07_closure.py` now runs the T7 unit tests and checks the envelope's closure: python, libpython and libc in; ls and dash out.
+  - On the stand-in's envelope (`PROVBIND_ENVELOPE`) it records pass or fail; on the golden envelope, `not_run`.
+  - Checked with five envelopes: dash in the closure and libc missing both fail.
+- **Still open:** PH1-01 and PH1-04 (the local session's files), and questions 8 and 9 in §10.

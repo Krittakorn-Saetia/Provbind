@@ -5,6 +5,7 @@ import json
 import pytest
 
 pytest.importorskip("lightgbm")
+pytest.importorskip("sklearn")
 
 from compiler import caps, oci                                                    # noqa: E402
 from compiler.compile import EXIT_INPUT, EXIT_OK, build_envelope, main, validate  # noqa: E402
