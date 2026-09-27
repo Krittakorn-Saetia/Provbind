@@ -18,8 +18,8 @@ import argparse
 import json
 import logging
 import os
+import secrets
 import sys
-import tempfile
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -98,25 +98,26 @@ def validate(envelope: dict) -> None:
 
 def write_atomically(envelope: dict, run_dir: str, digest: str) -> Path:
     """<run>/envelopes/<digest-hex>.json via a temp file and a rename, so readers never see
-    half a file. The temp name does not end in .json, so a *.json glob never picks it up."""
+    half a file. The temp name does not end in .json, so a *.json glob never picks it up.
+
+    The temp file is always closed before it is renamed or removed, which Windows requires.
+    open(..., "x") creates it with the usual 0666 & ~umask, so other roles can read it
+    (mkstemp would make it 0600), and newline="\\n" keeps the bytes the same on every OS.
+    """
     out_dir = Path(run_dir) / "envelopes"
     out_dir.mkdir(parents=True, exist_ok=True)
     hex_digest = digest.split(":", 1)[1]
-    fd, tmp = tempfile.mkstemp(dir=out_dir, prefix=f".{hex_digest}.", suffix=".json.tmp")
+    final = out_dir / f"{hex_digest}.json"
+    tmp = out_dir / f".{hex_digest}.{os.getpid()}.{secrets.token_hex(4)}.json.tmp"
     try:
-        umask = os.umask(0)
-        os.umask(umask)
-        os.fchmod(fd, 0o666 & ~umask)          # mkstemp makes 0600; other roles must read it
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with open(tmp, "x", encoding="utf-8", newline="\n") as f:
             json.dump(envelope, f, indent=2)
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
-        final = out_dir / f"{hex_digest}.json"
         os.replace(tmp, final)
     except BaseException:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+        tmp.unlink(missing_ok=True)
         raise
     return final
 

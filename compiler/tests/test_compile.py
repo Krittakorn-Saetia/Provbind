@@ -17,7 +17,8 @@ import jsonschema
 import pytest
 
 from compiler import oci
-from compiler.compile import EXIT_ERROR, EXIT_EVIDENCE, EXIT_INPUT, EXIT_OK, build_envelope, main, validate
+from compiler.compile import (EXIT_ERROR, EXIT_EVIDENCE, EXIT_INPUT, EXIT_OK, build_envelope, main, validate,
+                              write_atomically)
 from compiler.evidence import Evidence
 
 from .helpers import FakeCosign, FakeRegistry, Tar, image_config, make_elf
@@ -252,9 +253,23 @@ def test_cli_writes_the_envelope_and_prints_its_path(synthetic, tmp_path, capsys
     validate(env)
     assert env["compiled_at"].endswith("Z") and env["closure"]
     assert envelopes(run) == [path.name]                # no temp file left behind
-    umask = os.umask(0)
-    os.umask(umask)
-    assert stat.S_IMODE(path.stat().st_mode) == 0o666 & ~umask
+    assert b"\r\n" not in path.read_bytes()             # the same bytes on every OS
+    if os.name == "posix":                              # readable by the other roles' processes
+        umask = os.umask(0)
+        os.umask(umask)
+        assert stat.S_IMODE(path.stat().st_mode) == 0o666 & ~umask
+
+
+def test_write_does_not_need_fchmod(tmp_path, monkeypatch):
+    monkeypatch.delattr(os, "fchmod", raising=False)    # Windows before Python 3.13 has none
+    path = write_atomically({"a": 1}, str(tmp_path), "sha256:" + "ab" * 32)
+    assert json.loads(path.read_text()) == {"a": 1}
+
+
+def test_failed_write_leaves_no_temp_file(tmp_path):
+    with pytest.raises(TypeError):
+        write_atomically({"not json": object()}, str(tmp_path), "sha256:" + "ab" * 32)
+    assert os.listdir(tmp_path / "envelopes") == []
 
 
 def test_cli_registry_name_reaches_crane_and_cosign(synthetic, tmp_path, capsys):
