@@ -155,6 +155,13 @@ def test_closure_imports_reads_undefined_symbols_from_the_image(caplog):
     assert (v["imp.socket"], v["imp.bind"], v["imp.setuid"]) == (1.0, 1.0, 0.0)
 
 
+def test_an_elf_without_dynamic_symbols_imports_nothing(caplog):
+    fs = MemFS({"/usr/bin/tool": make_elf(interp="/lib64/ld-linux-x86-64.so.2", needed=["libc.so.6"]),   # no DT_SYMTAB
+                "/app/server": make_elf()})
+    assert closure_imports(fs, ["/usr/bin/tool", "/app/server"]) == {"/usr/bin/tool": (), "/app/server": ()}
+    assert caplog.text == ""
+
+
 # --- deployment -------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("deployment,expected", [

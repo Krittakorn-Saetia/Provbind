@@ -183,7 +183,10 @@ def _undefined_dynamic_symbols(f: BinaryIO) -> set[str]:
     if dynsym is not None:
         symbols = dynsym.iter_symbols()
     else:                                              # stripped: read DT_SYMTAB via the dynamic segment
-        symbols = next((seg.iter_symbols() for seg in elf.iter_segments() if seg["p_type"] == "PT_DYNAMIC"), ())
+        dynamic = next((seg for seg in elf.iter_segments() if seg["p_type"] == "PT_DYNAMIC"), None)
+        if dynamic is None or not any(t.entry.d_tag == "DT_SYMTAB" for t in dynamic.iter_tags()):
+            return set()                               # static, or no dynamic symbols at all
+        symbols = dynamic.iter_symbols()
     return {s.name for s in symbols if s.name and s["st_shndx"] == "SHN_UNDEF"}
 
 

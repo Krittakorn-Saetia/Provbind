@@ -8,9 +8,14 @@ preflight -> evidence -> fetch -> union -> canonicalise -> closure -> SBOM -> ow
 atomically to <run>/envelopes/<digest-hex>.json. stdout carries only that path; progress
 and timings go to stderr.
 
+Capabilities come from the ML-A model in ml/model/ when there is one, otherwise from the
+curated allowlist; PROVBIND_CAPS_MODEL names another model directory, or "none" for the
+allowlist (compiler/caps.py).
+
 Exit codes: 0 written; 1 unexpected error; 2 evidence failed verification or binding, or a
 manifest, config or blob hash mismatch; 3 bad input (not by digest, registry unreachable,
-image missing, not linux/amd64, no public key). Nothing is written unless the exit is 0.
+image missing, not linux/amd64, no public key, an ML-A model that cannot be used). Nothing is
+written unless the exit is 0.
 """
 from __future__ import annotations
 
@@ -47,9 +52,10 @@ def timed(timings: dict, step: str):
 
 
 def build_envelope(image: oci.Image, ev: evidence.Evidence, compiled_at: str,
-                   timings: dict | None = None) -> dict:
+                   timings: dict | None = None, model=None) -> dict:
     """Everything after the network: union, canonicalise, closure, SBOM, owners, caps,
-    assemble. Reads only the verified blobs on disk."""
+    assemble. Reads only the verified blobs on disk. `model` is the ML-A model from
+    caps.load_model; without one the allowlist decides."""
     timings = {} if timings is None else timings
     with timed(timings, "union"):
         u = layers.union(image.layers)
@@ -64,8 +70,8 @@ def build_envelope(image: oci.Image, ev: evidence.Evidence, compiled_at: str,
             packages, unresolved = sbom.depths(ev.sbom)
         with timed(timings, "owners"):
             package_of = owners.match(owners.owners(fs.files, fs.links, fs.read), packages)
-        with timed(timings, "caps"):
-            capabilities = caps.capabilities(packages, image.config.exposed_ports)
+        with timed(timings, "caps"):                  # no 𝒞_K8s cap: the pod is unknown here
+            capabilities = caps.for_image(packages, image.config, reachable, fs, model)
     log.info("%d files, %d symlinks, %d in the closure, %d packages (%.0f%% unresolved)",
              len(fs.files), len(symlinks), len(reachable), len(packages), 100 * unresolved)
 
@@ -134,6 +140,7 @@ def compile_image(ref: str, run_dir: str, key: str, registry_name: str | None = 
     repo, digest = oci.parse_ref(ref)
     if cosign is None and not os.path.isfile(key):
         raise oci.BadInput(f"public key not found: {key}")
+    model = caps.load_model(caps.model_dir())          # before any network work
     crane = crane or oci.Crane()
     cosign = cosign or evidence.Cosign(key, offline=os.environ.get("PROVBIND_OFFLINE") == "1")
     fetch_ref = f"{oci.with_registry(repo, registry_name)}@{digest}"
@@ -146,7 +153,7 @@ def compile_image(ref: str, run_dir: str, key: str, registry_name: str | None = 
              ev.builder_id, ev.source_commit, ev.rekor_log_index)
     with timed(timings, "fetch"):
         image = oci.fetch(ref, os.path.join(run_dir, "cache", "blobs"), crane, registry_name, raw_manifest)
-    envelope = build_envelope(image, ev, now or compiled_now(), timings)
+    envelope = build_envelope(image, ev, now or compiled_now(), timings, model)
     with timed(timings, "validate"):
         validate(envelope)
     return write_atomically(envelope, run_dir, digest)
