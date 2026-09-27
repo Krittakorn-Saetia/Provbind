@@ -610,15 +610,15 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 
 | Task | Status | Notes |
 |---|---|---|
-| T1 Keys and provenance | Partly done | Generator test green (`pipeline/tests/`); `uncommittedChanges` added. The key pair is still to generate: no `cosign.pub` yet |
-| T2 Build and attest stand-in | Script ready, not run | Builds linux/amd64, supports `PROVBIND_OFFLINE`; fake-tool test green. Integration tests written; they need Docker and `PROVBIND_STANDIN_REF` |
-| T3 Evidence | Unit done | `compiler/evidence.py`; DSSE, bare and bundle shapes, binding, newest by timestamp (D2), logIndex search (38 tests). Integration test written, not yet run: needs cosign and the stand-in |
-| T4 Image fetch | Unit done | `compiler/oci.py`; v_M, v_C, blob cache, index selection skipping attestation manifests, platform check (D6), `--registry-name` (D4) (29 tests). Integration test written, not yet run: needs the stand-in |
+| T1 Keys and provenance | Done | Key pair generated in `pipeline/keys/`; `cosign.pub` committed (`16b52ab`); the private key went to Role 4 outside the repo. Generator test green (`pipeline/tests/`) |
+| T2 Build and attest stand-in | Done | `localhost:5001/standin-app@sha256:0a6bfbb07745da4c50e29e159cf426b05ff4481540a9894c746e1190961944a3`: linux/amd64, signed and attested online (Rekor on) with cosign v3.1.3. T2 integration tests green |
+| T3 Evidence | Done | `compiler/evidence.py`; DSSE, bare and bundle shapes, binding, newest by timestamp (D2), logIndex search (40 tests). Integration green on the stand-in with cosign v3.1.3 |
+| T4 Image fetch | Done | `compiler/oci.py`; v_M, v_C, blob cache, index selection skipping attestation manifests, platform check (D6), `--registry-name` (D4) (29 tests). Integration green: at least 4 layers, `Cmd` is `["python", "app.py"]` |
 | T5 Layer union | Done | `compiler/layers.py`; all T5 rows incl. the D1 rows green (36 tests); mutation-checked against single-pass whiteouts |
 | T6 Path resolution | Done | `compiler/paths.py`; T6 table, canonical keys (higher layer wins), symlink targets incl. implicit dirs (20 tests) |
-| T7 Closure | Unit done | `compiler/closure.py`; shebangs incl. `env -S`, PT_INTERP, DT_NEEDED search order, ld.so.conf includes, `$ORIGIN`, python-slim-shaped closure (31 tests). Integration test written, not yet run: needs the stand-in |
+| T7 Closure | Done | `compiler/closure.py`; shebangs incl. `env -S`, PT_INTERP, DT_NEEDED search order, ld.so.conf includes, `$ORIGIN`, python-slim-shaped closure (31 tests). Integration green: python3.11, libpython3.11, libc and the loader are in; ls and dash are not |
 | T8 SBOM depth | Done | `compiler/sbom.py`; T8 table plus duplicates, OS component, nested and empty SBOMs (15 tests) |
-| T9 Ownership | Unit done | `compiler/owners.py`; dpkg on merged-/usr, `<name>:<arch>.list`, RECORD `../../../bin/foo`, PEP 503, qualifiers ignored, unmatched → null (D5) (19 tests). Integration test written, not yet run: needs the stand-in |
+| T9 Ownership | Done | `compiler/owners.py`; dpkg on merged-/usr, `<name>:<arch>.list`, RECORD `../../../bin/foo`, PEP 503, qualifiers ignored, unmatched → null (D5) (19 tests). Integration green: every `requests` file owned by `pkg:pypi/requests@…`, `/usr/bin/ls` by coreutils |
 | T10 Capabilities | Done | `compiler/caps.py` (+ `compiler/purls.py` helpers); allowlist hit, 80/tcp vs 8080/tcp (12 tests) |
-| T11 Envelope and CLI | Unit done | `compiler/compile.py`; golden-file test, done-when checks, schema rejects missing fields, CLI exit codes 0/1/2/3 with fake crane and cosign (23 tests) |
-| T12 Integration | Not started | Needs Docker, crane, cosign, syft and the registry: run T2, export `PROVBIND_STANDIN_REF`, then `pytest -q -m integration -s` (`compiler/tests/test_standin_integration.py` checks the Section 1 list and prints the compile time) |
+| T11 Envelope and CLI | Done | `compiler/compile.py`; golden-file test, done-when checks, schema rejects missing fields, CLI exit codes 0/1/2/3 with fake crane and cosign, atomic write that also works on Windows (25 tests). Integration green: the real CLI writes a schema-valid envelope |
+| T12 Integration | In progress | Step 1 done: stand-in compiled, every Section 1 check green (13 integration tests, WSL2, Python 3.11.16). Compile time 6.9 s on Korn-PC under WSL2 (target < 60 s); evidence 3.3 s, fetch 1.5 s, union 1.4 s. Next: step 3, write `run/envelopes/0a6bfbb0….json` with the CLI and give it to Role 3 (the integration test writes only to a pytest temp folder); step 2 when Role 1 delivers `testbed/demo-app/`; time it on the demo PC |
