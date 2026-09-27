@@ -1,0 +1,13 @@
+# Everything the repo needs. Role 2's minimal set is in requirements-role2.txt.
+-r requirements-role2.txt
+
+# ML-A, ML-B and evaluation
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.4
+lightgbm>=4.3
+
+# Integration (controller, attribution); needed on the demo PC
+kubernetes>=29.0
+neo4j>=5.20
+pyyaml>=6.0

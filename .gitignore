@@ -1,4 +1,18 @@
+# Keys: commit cosign.pub only
 pipeline/keys/*.key
+
+# Generated at runtime
 run/
+ml/data/raw/
+eval/mlc/data/
+
+# Python
 __pycache__/
+*.pyc
 .pytest_cache/
+.venv/
+
+# Never commit real malicious samples (Test Plan §12.4)
+datasets/malicious/
+samples/
+*.zip

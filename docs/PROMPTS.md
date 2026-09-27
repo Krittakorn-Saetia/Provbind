@@ -2,6 +2,8 @@
 
 Start Claude Code in the repo root. Send one prompt at a time, and move on only when the task's tests pass. Commit after each green task.
 
+**In Claude Code on the web:** the session already starts in the repo. Prompts 1, 4, 8 and 9 need Docker and a local registry. If the cloud environment cannot provide them, run those prompts on your own machine or the demo PC; everything else runs in the cloud.
+
 ## 0. Orientation (no code)
 > Read CLAUDE.md, docs/ROLE2-HANDOFF.md and contracts/envelope.schema.json. Don't write code yet. Summarise tasks T1–T12 in your own words, list the files you will create, and point out anything in the handoff that looks inconsistent or underspecified.
 
@@ -36,3 +38,6 @@ Start Claude Code in the repo root. Send one prompt at a time, and move on only 
 - If Claude Code wants to change anything in `contracts/`, stop and bring it to the team first.
 - Ask for the diff and a short explanation before accepting large changes.
 - If a test is hard to write, have it write the failing test first and show you, then fix the code.
+
+## 10. ML-A (T13)
+> Do T13 from docs/ROLE2-HANDOFF.md, following Section 4 of docs/PROVBIND-Capability-Test-Plan.md. Start with ml/alg1.py and its MLA-01 unit tests (fixed probabilities, no model yet), then ml/features.py with feature names in ml/features.md (MLA-02). When Role 1's labels arrive, build ml/data/dataset.jsonl, train with repeated 5-fold cross-validation by image, and write MLA-04 and MLA-05 results with the record_result fixture. Report the under- and over-prediction rates against θ_C. Don't change contracts/ or bindings.json yourself; the allowed_caps question goes to the team first.

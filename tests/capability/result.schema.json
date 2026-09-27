@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PROVBIND capability test result",
+  "type": "object",
+  "required": ["id", "status", "finished"],
+  "properties": {
+    "id":         { "type": "string", "description": "Test ID from registry.json, e.g. CF-02" },
+    "status":     { "enum": ["pass", "fail", "blocked", "not_run"] },
+    "priority":   { "enum": ["P0", "P1", "P2"] },
+    "owner":      { "enum": ["R1", "R2", "R3", "R4"] },
+    "draft_ref":  { "type": "string" },
+    "fail_point": { "type": "string" },
+    "finished":   { "type": "string", "description": "UTC ISO 8601" },
+    "metrics":    { "type": "object" },
+    "artifacts":  { "type": "array", "items": { "type": "string" } },
+    "notes":      { "type": "string", "description": "Required when status is blocked or fail" }
+  },
+  "allOf": [
+    { "if": { "properties": { "status": { "enum": ["blocked", "fail"] } } },
+      "then": { "required": ["notes"] } }
+  ]
+}

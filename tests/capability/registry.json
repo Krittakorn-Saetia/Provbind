@@ -1,0 +1,1172 @@
+{
+  "plan": "PROVBIND Capability Test Plan v1.1",
+  "generated": "2026-09-27",
+  "tests": [
+    {
+      "id": "PH1-01",
+      "section": "3.1 Phase 1: Build and supply-chain evidence",
+      "checks": "Image, SBOM and provenance are signed and bound to d_I (Eqs. 1–6)",
+      "how": "Run `build-and-attest.sh` on the stand-in and demo images",
+      "pass": "`cosign verify` and both `verify-attestation` calls pass; every statement subject equals d_I",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH1-02",
+      "section": "3.1 Phase 1: Build and supply-chain evidence",
+      "checks": "Each evidence object is signed, not only d_I (fail point C1)",
+      "how": "Attach an extra SBOM attestation signed with a second key",
+      "pass": "Verification with our key does not accept it; if no valid SBOM remains, the compiler exits 2",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": [
+        "C1"
+      ]
+    },
+    {
+      "id": "PH1-03",
+      "section": "3.1 Phase 1: Build and supply-chain evidence",
+      "checks": "A transparency record τ_I exists (Eqs. 5–6)",
+      "how": "Read the Rekor log index from `cosign verify` output",
+      "pass": "Index present, or `blocked` if offline",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH1-04",
+      "section": "3.1 Phase 1: Build and supply-chain evidence",
+      "checks": "The SBOM has dependency edges",
+      "how": "Count `dependencies` in the SBOM",
+      "pass": "Count above 0; `unresolved_fraction` recorded",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-01",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "A signed image is admitted and bound (Eqs. 10–13, 19)",
+      "how": "Deploy the demo image by digest",
+      "pass": "Its binding shows `verified: true`",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-02",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "An unsigned image fails v_sig (Eq. 10)",
+      "how": "Deploy an unsigned image in namespace `demo`",
+      "pass": "Binding failure reported",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-03",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "A signature from the wrong key fails v_sig",
+      "how": "Sign an image with a second key and deploy it",
+      "pass": "Binding failure reported",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-04",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "A broken transparency record fails v_trans (Eq. 11)",
+      "how": "Corrupt a copy of the stored Rekor bundle",
+      "pass": "Verification fails",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-05",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "A revoked key fails v_trust (Eq. 12)",
+      "how": "Mark our key revoked in `run/keystatus.json`, a stand-in for KMS key state",
+      "pass": "Check fails with reason `key`",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-06",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "v_M catches a changed manifest (Eq. 15)",
+      "how": "Unit test with altered manifest bytes",
+      "pass": "Mismatch raised",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-07",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "v_B and v_P catch evidence bound to another image (Eqs. 17–18)",
+      "how": "Unit test with a statement whose subject is not d_I",
+      "pass": "`EvidenceError`; compiler exits 2",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-08",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "A moved tag cannot redirect evidence (Eq. 7)",
+      "how": "Push a new image to the same tag while a pod runs",
+      "pass": "The running pod keeps its own digest and evidence",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-09",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "The verification context Γ_I is stored (Eq. 22)",
+      "how": "Inspect the stored context",
+      "pass": "Key, signatures, Rekor entry and t0 present",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH2-10",
+      "section": "3.2 Phase 2: Admission and evidence verification",
+      "checks": "Cold-start window between admission and envelope (C4)",
+      "how": "Time pod admission to `envelope_ready`; count buffered events",
+      "pass": "Window reported in seconds; zero events lost",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": [
+        "C4"
+      ]
+    },
+    {
+      "id": "PH3-01",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Two-pass whiteout union (Eqs. 24–26)",
+      "how": "Role 2 kit, T5 unit tests",
+      "pass": "All pass",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-02",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Real-path keys on merged `/usr` images",
+      "how": "Role 2 kit, T6 tests",
+      "pass": "All pass",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-03",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Layer attribution Λ_I (Eq. 26)",
+      "how": "Compare `layer` for 5 known files with a manual layer inspection",
+      "pass": "All 5 match",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-04",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Dependency depth δ (Eq. 29)",
+      "how": "Role 2 kit T8 tests; stand-in image",
+      "pass": "`requests` depth 1, `urllib3` depth 2",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-05",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Packages without edges are marked unresolved, never ⊥ (M16)",
+      "how": "Report `unresolved_fraction`; inspect null depths",
+      "pass": "Every package without edges has a null depth",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": [
+        "M16"
+      ]
+    },
+    {
+      "id": "PH3-06",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Ownership Φ (Eq. 30)",
+      "how": "Role 2 kit, T9 tests",
+      "pass": "All pass",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-07",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Execution closure (Eq. 31)",
+      "how": "Role 2 kit, T7 integration test",
+      "pass": "python, libpython and libc in; `ls` and `dash` out",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-08",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Every expectation carries an origin (Eq. 36)",
+      "how": "Scan the envelope",
+      "pass": "Every capability has `origin`; file, package and closure sections come only from verified evidence (`verification` block all true)",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-09",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Indices agree with the envelope (Eq. 37)",
+      "how": "Property test on 500 random files",
+      "pass": "100% agreement across J_path, J_hash, J_layer, J_pkg, J_depth",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-10",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Graph schema matches Eqs. (38)–(48)",
+      "how": "Load the demo envelope into Neo4j and count",
+      "pass": "Node and edge counts equal the envelope's",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH3-11",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Two images sharing packages do not mix SBOMs (M4)",
+      "how": "Load stand-in and demo; trace a demo file's dependency path",
+      "pass": "Path uses only demo SBOM edges; otherwise M4 is confirmed",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": [
+        "M4"
+      ]
+    },
+    {
+      "id": "PH3-12",
+      "section": "3.3 Phase 3: Envelope compilation",
+      "checks": "Compile time and envelope size",
+      "how": "Time each compiler step on the demo image",
+      "pass": "Times and size reported",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "MLA-01",
+      "section": "3.4 ML-A: capability inference (details in Section 4)",
+      "checks": "Algorithm 1 logic: threshold θ_C, cap at 𝒞^K8s, origin labels (Eqs. 33–34)",
+      "how": "Unit tests with fixed probabilities, θ_C, 𝒞^K8s and 𝒞^decl",
+      "pass": "Output set and labels exactly as expected; nothing outside 𝒞^K8s",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLA-02",
+      "section": "3.4 ML-A: capability inference (details in Section 4)",
+      "checks": "Feature extractor Ω_I is deterministic (Eq. 32)",
+      "how": "Extract z_I twice from the same envelope",
+      "pass": "Identical vectors; every feature named in `ml/features.md`",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLA-03",
+      "section": "3.4 ML-A: capability inference (details in Section 4)",
+      "checks": "Ground-truth labels from observed capability use",
+      "how": "Profile at least 20 images under Tetragon's `cap_capable` policy",
+      "pass": "`ml/data/labels.jsonl`, one row per image",
+      "owner": "R1",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLA-04",
+      "section": "3.4 ML-A: capability inference (details in Section 4)",
+      "checks": "LightGBM trains and predicts",
+      "how": "Repeated 5-fold cross-validation, folds by image",
+      "pass": "Model saved; per-label and micro/macro metrics reported",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLA-05",
+      "section": "3.4 ML-A: capability inference (details in Section 4)",
+      "checks": "ML-A against simple baselines",
+      "how": "Same folds: allowlist, empty set, pod defaults, per-label majority",
+      "pass": "Comparison table reported",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "MLA-06",
+      "section": "3.4 ML-A: capability inference (details in Section 4)",
+      "checks": "Predictions never exceed the pod's allowed set (Eq. 34)",
+      "how": "Predict for a pod with capabilities dropped",
+      "pass": "Zero predictions outside 𝒞^K8s",
+      "owner": "R2",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLA-07",
+      "section": "3.4 ML-A: capability inference (details in Section 4)",
+      "checks": "Effect on false positives: D_cap alerts with ML-A vs the allowlist",
+      "how": "Run the benign scenarios with each",
+      "pass": "D_cap count per scenario, per method",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "MLA-08",
+      "section": "3.4 ML-A: capability inference (details in Section 4)",
+      "checks": "Egress expectations N̂_I (M8)",
+      "how": "Add egress labels to the same model",
+      "pass": "Metrics reported, or `blocked` with reason",
+      "owner": "R2",
+      "priority": "P2",
+      "fail_points": [
+        "M8"
+      ]
+    },
+    {
+      "id": "PH4-01",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "Exec events carry real path, pid, ppid and container (Eq. 50)",
+      "how": "Run a command in a demo pod",
+      "pass": "All fields present and correct",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-02a",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "Exec, write and capability events arrive (M11)",
+      "how": "Trigger each once",
+      "pass": "One event per trigger; event rate per kind recorded",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": [
+        "M11"
+      ]
+    },
+    {
+      "id": "PH4-02b",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "Executable-mmap and connect events arrive (M11)",
+      "how": "Trigger each once",
+      "pass": "One event per trigger; event rate per kind recorded",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": [
+        "M11"
+      ]
+    },
+    {
+      "id": "PH4-03",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "Unknown containers are binding failures (Eq. 51)",
+      "how": "Start an unbound container in `demo`",
+      "pass": "Binding failure; never checked against another envelope",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-04",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "One cached envelope per digest (Eq. 52)",
+      "how": "Scale the demo to 5 replicas, then to 0",
+      "pass": "One envelope in memory; evicted at 0",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-05",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "D_exec for a file in no layer",
+      "how": "Scenario attack-1",
+      "pass": "`D_exec / undeclared` for `/tmp/.x9`",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-06",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "Exec outside the closure: Eq. (55) as written vs split class (C2)",
+      "how": "Run benign-1 and the benign catalogue under both rules",
+      "pass": "Detection count and false-positive rate for each rule",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": [
+        "C2"
+      ]
+    },
+    {
+      "id": "PH4-07",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "D_hash for a relocated binary",
+      "how": "Scenario attack-3",
+      "pass": "`D_hash / relocated`",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-08",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "D_hash for a declared binary modified in place (C3)",
+      "how": "Scenario attack-4",
+      "pass": "`D_hash / modified`",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": [
+        "C3"
+      ]
+    },
+    {
+      "id": "PH4-09",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "A missing runtime hash is handled (C3)",
+      "how": "Disable hashing and replay attack-3",
+      "pass": "No crash; path-only result, marked as such",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": [
+        "C3"
+      ]
+    },
+    {
+      "id": "PH4-10",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "D_load for a library in no layer",
+      "how": "Scenario attack-5",
+      "pass": "`D_load / undeclared`",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-11",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "D_load for a declared library outside the closure (dlopen, NSS)",
+      "how": "Scenario benign-3",
+      "pass": "Weak class, not `undeclared`",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-12",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "D_write on a declared file",
+      "how": "Scenario attack-1",
+      "pass": "`D_write` on `/etc/passwd`",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-13",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "Writes under volume mounts (M10)",
+      "how": "Scenario benign-4",
+      "pass": "Nothing under the mount rule; count recorded under the draft's rule",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": [
+        "M10"
+      ]
+    },
+    {
+      "id": "PH4-14",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "New files are conforming",
+      "how": "Write `/tmp/new.txt` in a demo pod",
+      "pass": "No detection",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-15",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "D_cap",
+      "how": "Scenario attack-6",
+      "pass": "`D_cap` with origin INFERRED",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-16",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "D_net",
+      "how": "Scenario attack-7",
+      "pass": "`D_net`",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-17",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "Detection records have every field (Eq. 60)",
+      "how": "Schema check on all detections",
+      "pass": "Class, clause, origin and time present",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH4-18",
+      "section": "3.5 Phase 4: Collection, binding and deterministic verification",
+      "checks": "One class per event (M12)",
+      "how": "Exec at a new path with declared content",
+      "pass": "Exactly one detection, `D_hash / relocated`",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": [
+        "M12"
+      ]
+    },
+    {
+      "id": "CF-01",
+      "section": "3.6 Cuckoo filter (details in Section 6)",
+      "checks": "No false negatives",
+      "how": "Insert every envelope path, then query each",
+      "pass": "Zero misses",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "CF-02",
+      "section": "3.6 Cuckoo filter (details in Section 6)",
+      "checks": "False-positive rate matches theory, 2b/2^f",
+      "how": "Query 400,000 non-member paths at 8- and 16-bit fingerprints",
+      "pass": "Measured rate at or below theory",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "CF-03",
+      "section": "3.6 Cuckoo filter (details in Section 6)",
+      "checks": "Memory against a Python `set` and `dict`",
+      "how": "Measure bytes for the demo envelope's paths",
+      "pass": "Ratio reported",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "CF-04",
+      "section": "3.6 Cuckoo filter (details in Section 6)",
+      "checks": "Lookup time for hits and misses against `set`",
+      "how": "Microbenchmark, at least 10,000 lookups each",
+      "pass": "ns per lookup reported",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "CF-05",
+      "section": "3.6 Cuckoo filter (details in Section 6)",
+      "checks": "Effect on the real event path (M15)",
+      "how": "Replay a recorded event stream with the filter on and off",
+      "pass": "Per-event latency and CPU reported; keep-or-drop decision recorded",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": [
+        "M15"
+      ]
+    },
+    {
+      "id": "CF-06",
+      "section": "3.6 Cuckoo filter (details in Section 6)",
+      "checks": "Behaviour when the filter is full",
+      "how": "Insert beyond capacity with expansion off",
+      "pass": "Failed insertion detected and handled; no silent loss",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "MLB-01",
+      "section": "3.7 ML-B: behavioural path (details in Section 5)",
+      "checks": "Only conforming events enter the window (Algorithm 2, lines 2–4)",
+      "how": "Feed a mix of conforming and contradicting events",
+      "pass": "No contradiction reaches a window",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLB-02",
+      "section": "3.7 ML-B: behavioural path (details in Section 5)",
+      "checks": "Windows and features Ψ_I are deterministic (Eq. 57)",
+      "how": "Replay the same events twice",
+      "pass": "Identical feature vectors",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLB-03",
+      "section": "3.7 ML-B: behavioural path (details in Section 5)",
+      "checks": "A per-image model trains as in Eq. (49)",
+      "how": "Train on the demo image's benign run",
+      "pass": "Model, θ_A and g_I stored beside the envelope",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLB-04",
+      "section": "3.7 ML-B: behavioural path (details in Section 5)",
+      "checks": "False-positive rate on held-out benign behaviour",
+      "how": "A second benign run, at least an hour later",
+      "pass": "Window false-positive rate at most 1%",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLB-05",
+      "section": "3.7 ML-B: behavioural path (details in Section 5)",
+      "checks": "An in-envelope attack is flagged",
+      "how": "Scenario attack-2",
+      "pass": "At least one `D_beh`; no deterministic detection for attack-2",
+      "owner": "R3",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "MLB-06",
+      "section": "3.7 ML-B: behavioural path (details in Section 5)",
+      "checks": "Per-image vs global model (C5)",
+      "how": "Train a global model on 3 or more images",
+      "pass": "False-positive rate and detection compared",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": [
+        "C5"
+      ]
+    },
+    {
+      "id": "MLB-07",
+      "section": "3.7 ML-B: behavioural path (details in Section 5)",
+      "checks": "Behavioural scores never outrank contradictions (M2)",
+      "how": "Score the attack-1 and attack-2 detections",
+      "pass": "Ordering reported; S_beh capped if violated",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": [
+        "M2"
+      ]
+    },
+    {
+      "id": "PH5-01",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Eq. (65) with the agreed values",
+      "how": "Unit tests using the Sprint Handoff §8 examples",
+      "pass": "Scores 90, 72 and 34 exactly",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-02",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Authenticated outranks inferred (Eq. 66)",
+      "how": "Same detection with the origin flipped",
+      "pass": "Score with AUTHENTICATED above score with INFERRED",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-03",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Scores stay in [0, 1] and never change detections (Eq. 68)",
+      "how": "Property test over random inputs",
+      "pass": "Always in range; detection set unchanged",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-04",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "An undeclared file outranks any declared one at equal type and capability",
+      "how": "Property test over depths",
+      "pass": "Holds for every depth",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-05",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Unresolved depth is not scored as ⊥ (M16)",
+      "how": "A base-image file with a null depth",
+      "pass": "rho = 0.5, not 1",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": [
+        "M16"
+      ]
+    },
+    {
+      "id": "PH5-06",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Layer path (Eqs. 71–72)",
+      "how": "A known file",
+      "pass": "Correct layer returned",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-07",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Dependency path (Eqs. 69–70)",
+      "how": "A `urllib3` file on the stand-in",
+      "pass": "Path from the root through `requests` to `urllib3`",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-08",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "An undeclared file has empty paths",
+      "how": "`/tmp/.x9`",
+      "pass": "Reported as introduced by no layer, with no package",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-09",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Alert record fields (Eqs. 75–78)",
+      "how": "Schema check on all alerts",
+      "pass": "Clause, origin, score, attribution and signing identity present",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-10",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "The hash chain appends and verifies (Eq. 79)",
+      "how": "Append 100 records, then run `verify_log`",
+      "pass": "Passes",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-11",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Editing a record is detected",
+      "how": "Change one character in record k",
+      "pass": "`verify_log` reports record k",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH5-12",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "Rewriting the chain from storage (M6)",
+      "how": "Rewrite record k and recompute every later hash",
+      "pass": "Plain chain passes, showing the weakness; with signed checkpoints it fails",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": [
+        "M6"
+      ]
+    },
+    {
+      "id": "PH5-13",
+      "section": "3.8 Phase 5: Scoring, attribution, alerts and the log",
+      "checks": "A multi-stage attack forms one chain (M7)",
+      "how": "Scenario attack-1",
+      "pass": "Both detections share one `chain_id`",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": [
+        "M7"
+      ]
+    },
+    {
+      "id": "PH6-01",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "An admitted image starts trusted (Eq. 84)",
+      "how": "Check the trust state after admission",
+      "pass": "Trusted = 1",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH6-02",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "KeyCheck withdraws trust (Eq. 85)",
+      "how": "Scenario trust-2",
+      "pass": "One trust alert naming `key`",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH6-03",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "BuilderCheck withdraws trust (Eq. 87)",
+      "how": "Add the image's `builder_id` to the denylist",
+      "pass": "One trust alert naming `builder`",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH6-04",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "ComponentCheck withdraws trust (Eq. 88)",
+      "how": "Scenario trust-1",
+      "pass": "One trust alert naming `comp`, with package path and layer",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH6-05",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "An ordinary CVE does not withdraw trust (policy)",
+      "how": "Local advisory with a plain CVE ID",
+      "pass": "No withdrawal; advisory reported",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH6-06",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "Alert only on the 1 → 0 transition (Eq. 90)",
+      "how": "Stay untrusted for 5 cycles",
+      "pass": "Exactly one alert",
+      "owner": "R4",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "PH6-07",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "Runtime and trust states are independent (Eqs. 95–96)",
+      "how": "Conforming but untrusted; deviating but trusted",
+      "pass": "Both combinations reported correctly",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH6-08",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "TransparencyCheck fails on a bad proof (Eq. 86)",
+      "how": "Corrupt the stored inclusion proof",
+      "pass": "Trust withdrawn, naming `trans`",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "PH6-09",
+      "section": "3.9 Phase 6: Trust re-evaluation",
+      "checks": "Trust-alert latency",
+      "how": "Time from a trust change to its alert",
+      "pass": "At most ΔR plus processing time",
+      "owner": "R4",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-01",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Undeclared exec plus declared write",
+      "how": "Scenario attack-1",
+      "pass": "D_exec (90) and D_write (72) in one chain; Falco output recorded",
+      "owner": "R1",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-02",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Benign use",
+      "how": "Scenario benign-1",
+      "pass": "Nothing above Low; Falco output recorded",
+      "owner": "R1",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-03",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "In-envelope burst",
+      "how": "Scenario attack-2",
+      "pass": "`D_beh` only; Falco output recorded",
+      "owner": "R1",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-04",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Relocated binary",
+      "how": "Scenario attack-3",
+      "pass": "`D_hash / relocated`",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-05",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Binary modified in place",
+      "how": "Scenario attack-4",
+      "pass": "D_write, then `D_hash / modified`",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-06",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Library injection",
+      "how": "Scenario attack-5",
+      "pass": "`D_load / undeclared`",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-07",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Capability excess",
+      "how": "Scenario attack-6",
+      "pass": "`D_cap`",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-08",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Undeclared egress",
+      "how": "Scenario attack-7",
+      "pass": "`D_net`",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-09",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Install-time payload",
+      "how": "Scenario attack-8",
+      "pass": "Only a weak outside-closure detection: the documented boundary",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-10",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Unsigned container",
+      "how": "Scenario attack-9",
+      "pass": "Binding failure",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-11",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Trust withdrawal on a running pod",
+      "how": "Scenario trust-1",
+      "pass": "One trust alert; runtime state still conforming",
+      "owner": "R1",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "E2E-12",
+      "section": "3.10 End-to-end scenarios (scenario details in Section 7)",
+      "checks": "Log tampering",
+      "how": "Scenario tamper-1",
+      "pass": "`verify_log` fails at the edited record",
+      "owner": "R1",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "EV-01",
+      "section": "3.11 Evaluation against baselines",
+      "checks": "Detection per scenario: PROVBIND against Falco",
+      "how": "All E2E scenarios",
+      "pass": "Table: detected or not, per system",
+      "owner": "R1",
+      "priority": "P0",
+      "fail_points": []
+    },
+    {
+      "id": "EV-02",
+      "section": "3.11 Evaluation against baselines",
+      "checks": "False positives on the benign catalogue",
+      "how": "Scenarios benign-1 to benign-6, each system",
+      "pass": "Alert count per scenario per system",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "EV-03",
+      "section": "3.11 Evaluation against baselines",
+      "checks": "Ablations: envelope layers, s_π, strict vs split closure, ML-B on and off, ML-A vs allowlist",
+      "how": "Re-run E2E and benign scenarios with one part off",
+      "pass": "Detection and false-positive deltas",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "EV-04",
+      "section": "3.11 Evaluation against baselines",
+      "checks": "Reconstructed SynthChain scenarios (draft §IV)",
+      "how": "Rebuild the corpus attacks in the attested testbed",
+      "pass": "Precision, recall, F1, FPR, accuracy",
+      "owner": "R1",
+      "priority": "P2",
+      "fail_points": []
+    },
+    {
+      "id": "EV-05",
+      "section": "3.11 Evaluation against baselines",
+      "checks": "Low-and-slow mimicry",
+      "how": "attack-2 spread over 30 minutes",
+      "pass": "Detected or missed, reported honestly",
+      "owner": "R1",
+      "priority": "P2",
+      "fail_points": []
+    },
+    {
+      "id": "EV-06",
+      "section": "3.11 Evaluation against baselines",
+      "checks": "Stage coverage per scenario (DS1)",
+      "how": "Multi-stage scenarios",
+      "pass": "Fraction of stages detected",
+      "owner": "R1",
+      "priority": "P2",
+      "fail_points": []
+    },
+    {
+      "id": "EV-07",
+      "section": "3.11 Evaluation against baselines",
+      "checks": "ML-C baseline, kept separate from ML-B",
+      "how": "Isolation Forest on all benign events, with its own code, data and model file",
+      "pass": "Baseline column added to EV-01 and EV-02",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "OH-01",
+      "section": "3.12 Cost",
+      "checks": "Per-event verification latency",
+      "how": "Replay at least 100,000 recorded events",
+      "pass": "p50 and p99 reported",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "OH-02",
+      "section": "3.12 Cost",
+      "checks": "Node CPU and memory on top of Tetragon alone",
+      "how": "Benign load with and without PROVBIND",
+      "pass": "Overhead in percent",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "OH-03",
+      "section": "3.12 Cost",
+      "checks": "Ring-buffer drops under burst",
+      "how": "An exec storm of 10,000 short processes",
+      "pass": "Drop rate reported",
+      "owner": "R3",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "OH-04",
+      "section": "3.12 Cost",
+      "checks": "Compile and index time per image",
+      "how": "Every test image",
+      "pass": "Seconds per image",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "OH-05",
+      "section": "3.12 Cost",
+      "checks": "Index memory per envelope",
+      "how": "Every test image",
+      "pass": "Bytes per 1,000 files",
+      "owner": "R2",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "OH-06",
+      "section": "3.12 Cost",
+      "checks": "Cache hit rate at 1, 10 and 50 replicas",
+      "how": "Scale test",
+      "pass": "Hit rate reported",
+      "owner": "R3",
+      "priority": "P2",
+      "fail_points": []
+    }
+  ]
+}

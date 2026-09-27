@@ -18,3 +18,17 @@ Before working in `pipeline/` or `compiler/`, read `docs/ROLE2-HANDOFF.md`. It h
 - Integration tests (Docker and the local registry): `pytest -q -m integration`
 - Build and attest one image: `pipeline/build-and-attest.sh <context-dir> <name>`
 - Compile an envelope: `python -m compiler.compile <ref@digest> --run $PROVBIND_RUN`
+
+## Capability tests
+- The plan is `docs/PROVBIND-Capability-Test-Plan.md`; every test ID is in `tests/capability/registry.json`.
+- Record each result with the `record_result` fixture (`tests/capability/conftest.py`). A `fail` or `blocked` result needs a note explaining why.
+
+## Claude Code on the web
+- In cloud sessions, run `pytest -m "not integration"`. Tests marked `integration` need Docker, kind, Tetragon or the local registry and run on the demo PC. Do not try to install or start a Kubernetes cluster or eBPF tooling in the cloud sandbox.
+- If a download or network call is blocked, stop and report which host was blocked instead of working around it.
+- The environment setup script is `scripts/cloud-setup.sh`.
+
+## Documents
+- Start with `README.md`.
+- `docs/reference/` is read-only: never edit Aj Ohm's draft or our older drafts. Changes to the paper are proposed in the test plan's update log (Section 10).
+- Never download, extract or commit real malicious package samples (test plan §12.4).

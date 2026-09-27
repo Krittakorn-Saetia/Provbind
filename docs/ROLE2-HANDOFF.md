@@ -1,6 +1,6 @@
 # Role 2 Handoff: Evidence and Compiler
 
-**PROVBIND sprint · Draft v0.1 · 26 September 2026 · Owner: Korn**
+**PROVBIND sprint · Draft v0.2 · 27 September 2026 · Owner: Korn**
 
 This file is the complete specification for Role 2, written so that Claude Code can build from it. It extends the team's *PROVBIND Sprint Handoff v1.0*. That handoff's Sections 3–4 (run folder, commands, contracts) are binding here, and where the two disagree, the sprint handoff wins until the team agrees a change.
 
@@ -31,6 +31,7 @@ You deliver three things:
 | A signed image with two signed attestations (CycloneDX SBOM, SLSA v1 provenance) | Image in `localhost:5001`, signatures and attestations stored by cosign | Role 4's controller verifies them |
 | `envelopes/<digest>.json` | JSON matching `contracts/envelope.schema.json` | Role 3 (verifier), Role 4 (scoring, Neo4j) |
 | Two commands | `pipeline/build-and-attest.sh <dir> <name>` and `python -m compiler.compile <ref@digest> --run $RUN` | `make demo` (Role 4) |
+| ML-A, the capability model, with its evaluation (task T13) | Code and data in `ml/`, a model file, metrics in `run/results/MLA-*.json` | The envelope's `capabilities`; the paper |
 
 **Done when:** the demo image's envelope has
 
@@ -130,7 +131,15 @@ These replace the VERIFY markers in the sprint handoff. Each was checked against
 
 ## 6. Tasks, in order
 
-Each task lists what to build, how to build it, and the tests that close it. Tests use `pytest`. Unit tests build their fixtures in code (small tar files, small JSON documents), so they run anywhere without Docker. Integration tests are marked `@pytest.mark.integration` and need Docker and the local registry.
+Each task lists what to build, how to build it, and the tests that close it. Tasks also close tests in the *PROVBIND Capability Test Plan*, which is in `docs/`:
+
+- T1 and T2 → PH1-01, PH1-04;
+- T3 → PH2-07; T4 → PH2-06;
+- T5 → PH3-01; T6 → PH3-02; T7 → PH3-07; T8 → PH3-04, PH3-05; T9 → PH3-06;
+- T11 → PH3-08, PH3-09, PH3-12;
+- T13 → MLA-01 to MLA-06 and MLA-08.
+
+Record each with the `record_result` fixture from the test kit. Tests use `pytest`. Unit tests build their fixtures in code (small tar files, small JSON documents), so they run anywhere without Docker. Integration tests are marked `@pytest.mark.integration` and need Docker and the local registry.
 
 ### T1. Keys and the provenance generator (Day 1)
 
@@ -332,6 +341,27 @@ python -m compiler.compile <ref@digest> --run $RUN [--key pipeline/keys/cosign.p
 2. When Role 1's `testbed/demo-app/` arrives: build and attest it, compile it, and post `ref@digest` and the envelope path to the team.
 3. Give Role 3 the real envelope; they replay their tests against it. Fix what fails, which is usually path canonicalisation.
 4. Target compile time: under 60 s on the demo PC for the demo image. Report the real number; it goes on a slide.
+
+### T13. ML-A: capability inference (Days 1–3)
+
+The full design is in Section 4 of the Capability Test Plan. This task implements it and connects it to the compiler.
+
+1. **Algorithm 1 (MLA-01).** Write `ml/alg1.py`: take the probabilities from the model, keep those at or above θ_C, cap the result at 𝒞^K8s, merge the declared set 𝒞^decl, and label each capability AUTHENTICATED or INFERRED. Test it with fixed probabilities before any model exists.
+2. **Features Ω_I (MLA-02).** Write `ml/features.py`, which reads an envelope plus its image config and returns a named, fixed-length vector. List every feature in `ml/features.md`; this becomes the definition of Ω_I that the paper is missing.
+3. **Labels (MLA-03).** Role 1 profiles the corpus with Role 3's `cap_capable` policy. You join their labels to your features by image digest into `ml/data/dataset.jsonl`.
+4. **Training and evaluation (MLA-04, MLA-05).** Train with repeated 5-fold cross-validation split by image, and report the standard and PROVBIND-specific metrics. Compare against the four baselines.
+5. **Bounding (MLA-06).** Confirm that nothing outside 𝒞^K8s is ever returned.
+6. **Compiler hook.** `compiler/caps.py` uses the model when `ml/model/` exists and falls back to the allowlist otherwise. It writes each capability with `origin: "INFERRED"` and its probability as an extra field (readers ignore unknown fields).
+
+**One contract question for the team.** Eq. (34) caps predictions at the pod's allowed set 𝒞^K8s, but envelopes are compiled per image, not per pod. The compiler cannot know a pod's security context. The proposal:
+
+- the compiler stores all predictions with their probabilities;
+- Role 4's controller adds the pod's `allowed_caps` to `bindings.json`;
+- Role 3 applies the intersection when it checks D_cap.
+
+Adding `allowed_caps` changes the bindings contract, so agree it with Roles 3 and 4 first.
+
+**Done when:** MLA-01, 02, 04 and 06 pass, MLA-03's dataset has at least 20 images, and the envelope for the demo image carries model-predicted capabilities.
 
 ---
 
@@ -601,6 +631,7 @@ pytest.ini                   deselects integration tests unless -m integration i
 1. **The builder ID string.** It must be a URI; agree one with the team on Day 1.
 2. **Where depth counts from.** The synthetic root puts top-level packages at depth 1, and depth 0 is reserved for the application. Aj Ohm's Eq. (29) measures distance from the SBOM's root components; confirm this reading.
 3. **Application files owned by no package** (e.g. `/app/app.py`) score with `rho = 0.5` in Role 4's demo rules. An alternative is to treat them as depth 0. Decide with Role 4.
+4. **Where Eq. (34)'s cap is applied.** Per pod at binding time, which needs `allowed_caps` in `bindings.json`, or per image in the compiler. See T13.
 
 Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September and are folded into this file. That file also lists implementation notes and notes for Roles 3 and 4.
 
@@ -622,3 +653,4 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 | T10 Capabilities | Done | `compiler/caps.py` (+ `compiler/purls.py` helpers); allowlist hit, 80/tcp vs 8080/tcp (12 tests) |
 | T11 Envelope and CLI | Done | `compiler/compile.py`; golden-file test, done-when checks, schema rejects missing fields, CLI exit codes 0/1/2/3 with fake crane and cosign, atomic write that also works on Windows (25 tests). Integration green: the real CLI writes a schema-valid envelope |
 | T12 Integration | In progress | Step 1 done: stand-in compiled, every Section 1 check green (13 integration tests, WSL2, Python 3.11.16). Compile time 6.9 s on Korn-PC under WSL2 (target < 60 s); evidence 3.3 s, fetch 1.5 s, union 1.4 s. Next: step 3, write `run/envelopes/0a6bfbb0….json` with the CLI and give it to Role 3 (the integration test writes only to a pytest temp folder); step 2 when Role 1 delivers `testbed/demo-app/`; time it on the demo PC |
+| T13 ML-A | Not started | |
