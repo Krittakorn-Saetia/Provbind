@@ -1,0 +1,16 @@
+# requestz-helper: a HARMLESS test package for the PROVBIND demo (SF9-26, SIIT). NOT real malware.
+# It stands in for a compromised transitive dependency: at run time it drops and executes an
+# embedded test payload (see requestz_helper/check.py and ../x9.c). It is installed from THIS local
+# source only (pip install --no-index ./requestz-helper); it must never be fetched from PyPI.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "requestz-helper"
+version = "0.1.0"
+description = "PROVBIND demo test package (harmless attack simulation)"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["requestz_helper"]

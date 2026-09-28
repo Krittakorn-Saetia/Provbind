@@ -16,3 +16,8 @@ __pycache__/
 datasets/malicious/
 samples/
 *.zip
+
+# Python build artifacts
+build/
+*.egg-info/
+*.whl

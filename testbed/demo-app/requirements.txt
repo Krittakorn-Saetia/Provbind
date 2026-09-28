@@ -1,0 +1,7 @@
+# The demo app itself needs only the Python standard library.
+#
+# requestz-helper==0.1.0 is the test package that stands in for a compromised dependency. It is
+# installed from the LOCAL source in this build context (see the Dockerfile:
+# `pip install --no-index ./requestz-helper`) and must NEVER be fetched from PyPI, where the name
+# is fictional. It is intentionally not listed as an installable requirement here to avoid any
+# network resolution of that name.
