@@ -577,7 +577,7 @@ pytest.ini                   deselects integration tests unless -m integration i
 - [ ] Ignore purl qualifiers when matching; keep them in the keys.
 - [ ] Write envelopes atomically: a temp file, then rename.
 - [ ] `sh -c "…"` entrypoints: the closure covers only the shell. Say so in the slide notes.
-- [ ] Signing with public Rekor publishes the image reference and signature in a public log. That is fine for test images; never sign anything private this way. Offline, set `PROVBIND_OFFLINE=1`: the build script then signs with `--tlog-upload=false`, and the script and the compiler verify with `--insecure-ignore-tlog=true`. Tell the team, since the demo then skips transparency.
+- [ ] Signing with public Rekor publishes the image reference and signature in a public log. That is fine for test images; never sign anything private this way. Offline, set `PROVBIND_OFFLINE=1`: the build script then signs with `--tlog-upload=false` (plus `--use-signing-config=false` on cosign v2.6+ and v3, which otherwise refuse it), and the script and the compiler verify with `--insecure-ignore-tlog=true`. Tell the team, since the demo then skips transparency.
 
 ---
 

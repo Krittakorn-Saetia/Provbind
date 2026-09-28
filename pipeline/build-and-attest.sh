@@ -2,7 +2,8 @@
 # Phase 1 for one image: build, push, SBOM, provenance, sign, attest, self-verify.
 # usage:  pipeline/build-and-attest.sh <context-dir> <name>
 # stdout: the pushed reference <registry>/<name>@sha256:<digest>; all logs go to stderr.
-# PROVBIND_OFFLINE=1 signs without Rekor and verifies with --insecure-ignore-tlog=true.
+# PROVBIND_OFFLINE=1 signs without Rekor (--tlog-upload=false, plus --use-signing-config=false on
+# cosign v2.6+ and v3) and verifies with --insecure-ignore-tlog=true.
 set -euo pipefail
 
 if [ $# -ne 2 ]; then echo "usage: $0 <context-dir> <name>" >&2; exit 64; fi
@@ -26,6 +27,13 @@ trap 'log "FAILED. Last lines of $OUT/cosign.log:"; tail -n 20 "$OUT/cosign.log"
 SIGN_FLAGS=(); VERIFY_FLAGS=()
 if [ "${PROVBIND_OFFLINE:-}" = "1" ]; then
   SIGN_FLAGS=(--tlog-upload=false); VERIFY_FLAGS=(--insecure-ignore-tlog=true)
+  # cosign v3 signs through a signing config by default and then refuses --tlog-upload=false, so
+  # turn the config off wherever cosign has the flag (v2.6 and later). The help is read into a
+  # variable: piped into grep -q, cosign could die of SIGPIPE, which pipefail counts as a failure.
+  SIGN_HELP="$(cosign sign --help 2>&1 || true)"
+  case "$SIGN_HELP" in
+    *--use-signing-config*) SIGN_FLAGS=(--use-signing-config=false "${SIGN_FLAGS[@]}") ;;
+  esac
   log "PROVBIND_OFFLINE=1: signing without Rekor; tell the team the demo skips transparency"
 fi
 
