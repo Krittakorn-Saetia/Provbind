@@ -159,11 +159,14 @@ class FakeRegistry:
 
 
 class FakeCosign:
-    """cosign's interface (verify, verify_attestation) serving DSSE envelopes bound to
-    `digest`. `fail` makes verify raise, as a bad signature would."""
+    """cosign's interface (verify, verify_attestation, download_signature) serving DSSE
+    envelopes bound to `digest`. verify prints one image signature in cosign v2's layout,
+    with `log_index` in it. `fail` makes verify raise, as a bad signature would;
+    `signed=False` makes it list only the attestations, as cosign v3 does for an image that
+    was attested but never signed."""
 
     def __init__(self, digest: str, sbom: dict, provenance: dict, log_index: int | None = 123456789,
-                 fail: str | None = None):
+                 fail: str | None = None, signed: bool = True):
         def envelope(predicate_type, predicate):
             stmt = {"_type": "https://in-toto.io/Statement/v1",
                     "subject": [{"name": "localhost:5001/x", "digest": {"sha256": digest.split(":")[1]}}],
@@ -172,9 +175,11 @@ class FakeCosign:
                                "payload": base64.b64encode(json.dumps(stmt).encode()).decode(),
                                "signatures": [{"keyid": "", "sig": "MEUC"}]}) + "\n"
         optional = {"Bundle": {"Payload": {"logIndex": log_index}}} if log_index is not None else None
-        self.out = {"verify": json.dumps([{"critical": {"image": {"docker-manifest-digest": digest}},
-                                           "optional": optional}]),
-                    "cyclonedx": envelope(CYCLONEDX, sbom), "slsaprovenance1": envelope(SLSA_V1, provenance)}
+        types = ["cosign container image signature"] if signed else [CYCLONEDX, SLSA_V1]
+        self.out = {"verify": json.dumps([{"critical": {"image": {"docker-manifest-digest": digest}, "type": t},
+                                           "optional": optional} for t in types]),
+                    "cyclonedx": envelope(CYCLONEDX, sbom), "slsaprovenance1": envelope(SLSA_V1, provenance),
+                    "download": ""}
         self.fail = fail
         self.refs: list[str] = []
 
@@ -187,6 +192,10 @@ class FakeCosign:
     def verify_attestation(self, ref: str, predicate: str) -> str:
         self.refs.append(ref)
         return self.out[predicate]
+
+    def download_signature(self, ref: str) -> str:
+        self.refs.append(ref)
+        return self.out["download"]
 
 
 class MemFS:
