@@ -43,9 +43,17 @@ def feed(stage, env, b, events, det=None):
     return out
 
 
+def needs_sklearn():
+    """Training needs numpy and scikit-learn (requirements.txt); skip cleanly without them, as
+    Role 2's ML tests do. Everything else here runs with requirements-role2.txt alone."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("sklearn")
+
+
 @pytest.fixture(scope="module")
 def d2():
     """Synthetic D2: four hours of benign windows, split, and an hour held out, an hour later."""
+    needs_sklearn()
     lib = library()
 
     def windows(lines):
@@ -60,6 +68,7 @@ def d2():
 
 @pytest.fixture(scope="module")
 def model(d2):
+    needs_sklearn()
     return Model(train(d2[0], d2[1], DIGEST))
 
 
@@ -338,6 +347,7 @@ def cli(*args):
 
 
 def test_d2_and_model_from_the_command_line(run):
+    needs_sklearn()
     data = run / "mlb" / DIGEST[7:]
     cli("-m", "node.mlb", "windows", "--run", str(run), "--replay", str(run / "benign.jsonl"), "--out", str(run / "w.jsonl"))
     split_out = json.loads(cli("-m", "node.mlb", "split", "--windows", str(run / "w.jsonl"), "--out-dir", str(data)))
