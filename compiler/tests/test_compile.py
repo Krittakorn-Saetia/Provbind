@@ -9,6 +9,7 @@ Regenerate the golden file after an intended change, then review its diff:
 """
 import copy
 import json
+import math
 import os
 import stat
 from pathlib import Path
@@ -20,6 +21,7 @@ from compiler import oci
 from compiler.compile import (EXIT_ERROR, EXIT_EVIDENCE, EXIT_INPUT, EXIT_OK, build_envelope, main, validate,
                               write_atomically)
 from compiler.evidence import Evidence
+from ml.features import FEATURES_VERSION, feature_names
 
 from .helpers import FakeCosign, FakeRegistry, Tar, image_config, make_elf
 
@@ -337,3 +339,64 @@ def test_cli_invalid_envelope_exits_1_and_writes_nothing(synthetic, tmp_path, ca
     code, run = run_cli(tmp_path, ref, reg, FakeCosign(digest, SBOM, PROVENANCE))
     assert code == EXIT_ERROR and envelopes(run) == []
     assert "ValidationError" in capsys.readouterr().err
+
+
+# --- --features-out: the feature side of dataset D1 (T13 step 3) -----------------------------------
+
+class Recorder:
+    """A model that predicts nothing and keeps the features the compiler gives it."""
+    theta, vocabulary, seen = 0.5, [], None
+
+    def predict_proba(self, features):
+        self.seen = dict(features)
+        return {}
+
+
+def test_the_features_are_the_ones_the_model_is_given(synthetic, tmp_path):
+    reg, digest, ref = synthetic
+    image = oci.fetch(ref, str(tmp_path / "cache"), reg)
+    recorder, features = Recorder(), {}
+    env = build_envelope(image, evidence_for(digest), NOW, model=recorder, features=features)
+    row = features["features"]
+    assert row == {k: None if math.isnan(v) else v for k, v in recorder.seen.items()}
+    assert list(row) == list(feature_names())                   # the 46 fixed features, in order
+    assert row["cfg.exposed_ports"] == 1.0 and row["clo.size"] == len(env["closure"]) == 5
+    assert row["dep.privileged"] == row["dep.caps_added"] == row["dep.caps_dropped"] == 0.0   # the default pod
+    assert "features" in env["timings_ms"]
+
+
+def test_without_the_flag_there_is_no_features_step(envelope):
+    assert "features" not in envelope["timings_ms"]
+
+
+def test_cli_features_out_appends_one_line_per_compile(synthetic, tmp_path, capsys):
+    reg, digest, ref = synthetic
+    out = tmp_path / "ml" / "data" / "features.jsonl"
+    for _ in range(2):
+        code, run = run_cli(tmp_path, ref, reg, FakeCosign(digest, SBOM, PROVENANCE), "--features-out", str(out))
+        assert code == EXIT_OK
+    assert "features appended" in capsys.readouterr().err
+    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+    assert len(lines) == 2 and lines[0] == lines[1]
+    row = lines[0]
+    env = json.loads((run / "envelopes" / f"{digest.split(':')[1]}.json").read_text())
+    assert (row["digest"], row["ref"], row["features_version"]) == (digest, ref, FEATURES_VERSION)
+    assert row["packages"] == sorted(env["packages"])
+    assert row["exposed_ports"] == ["8080/tcp"]
+    assert list(row["features"]) == list(feature_names())
+
+
+def test_cli_features_out_writes_nothing_when_the_evidence_fails(synthetic, tmp_path, capsys):
+    reg, digest, ref = synthetic
+    out = tmp_path / "features.jsonl"
+    code, _ = run_cli(tmp_path, ref, reg, FakeCosign(digest, SBOM, PROVENANCE, fail="v_sig: no signatures"),
+                      "--features-out", str(out))
+    assert code == EXIT_EVIDENCE and not out.exists()
+
+
+def test_cli_failed_features_append_writes_no_envelope(synthetic, tmp_path, capsys):
+    reg, digest, ref = synthetic
+    (tmp_path / "a-file").write_text("")
+    code, run = run_cli(tmp_path, ref, reg, FakeCosign(digest, SBOM, PROVENANCE),
+                        "--features-out", str(tmp_path / "a-file" / "features.jsonl"))
+    assert code == EXIT_ERROR and envelopes(run) == []
