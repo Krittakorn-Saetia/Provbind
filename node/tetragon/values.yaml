@@ -1,0 +1,13 @@
+# Helm values for Tetragon (Sprint Handoff §10):
+#   helm upgrade --install tetragon cilium/tetragon -n kube-system -f node/tetragon/values.yaml
+#
+# Exec and exit events are built in, so no TracingPolicy can limit them to one namespace. The
+# export allow list keeps the other namespaces out of the JSON stream, and node/normalize.py
+# drops them again. The namespaced policies need the policy filter, which is on by default in
+# recent charts. For profiling the ML-A corpus in another namespace (MLA-03), add it here.
+#
+# VERIFY on the demo PC: the value names against `helm show values cilium/tetragon`.
+tetragon:
+  enablePolicyFilter: true
+  exportAllowList: |-
+    {"namespace":["demo"],"event_set":["PROCESS_EXEC","PROCESS_EXIT","PROCESS_KPROBE"]}

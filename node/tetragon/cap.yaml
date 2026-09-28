@@ -1,0 +1,32 @@
+# D_cap, ML-B features and the ML-A labels (MLA-03, Role 1): every capability check by a process
+# in a pod of namespace demo (Test Plan §4.2, §8).
+#
+# cap_capable returns 0 when the check succeeded and access was granted, and -1 when it was
+# denied. node/normalize.py keeps both: granted checks are uses (labels, D_cap), and denied ones
+# are attempts that MLA-03 records separately. Capability checks are frequent; measure the event
+# rate (PH4-02a) before relying on it.
+#
+# Adapted from Tetragon's "Record Linux Capabilities Usage" use case.
+# VERIFY on the demo PC: the event carries capability_arg with the capability's name.
+# For profiling the ML-A corpus in another namespace, copy this file and change the namespace.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-cap
+  namespace: demo
+spec:
+  kprobes:
+  - call: "cap_capable"
+    syscall: false
+    return: true
+    args:
+    - index: 0
+      type: "nop"               # const struct cred *
+    - index: 1
+      type: "user_namespace"    # the namespace the check is made in
+    - index: 2
+      type: "capability"        # int cap
+    returnArg:
+      index: 0
+      type: "int"
+    returnArgAction: "Post"

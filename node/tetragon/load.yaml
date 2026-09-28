@@ -1,0 +1,39 @@
+# D_load and D_hash for libraries (Test Plan §8, PH4-02b, PH4-10, PH4-11): every executable
+# mapping of a file by a process in a pod of namespace demo.
+#
+# security_mmap_file runs for every mmap; the kernel keeps only calls whose prot has PROT_EXEC
+# (0x04), which is how the dynamic loader maps a library's code. An anonymous mapping has no
+# file; the normaliser drops it.
+#
+# Apply this policy only for the P1 runs: every process start maps several libraries, and a
+# Python app maps each native extension it imports, so it adds many events.
+#
+# Adapted from Tetragon's examples/tracingpolicy/filename_monitoring.yaml.
+# VERIFY on the demo PC: `python3 -c pass` in a demo pod gives one event per library.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-load
+  namespace: demo
+spec:
+  kprobes:
+  - call: "security_mmap_file"
+    syscall: false
+    return: true
+    args:
+    - index: 0
+      type: "file"      # struct file *; NULL for an anonymous mapping
+    - index: 1
+      type: "uint32"    # prot: PROT_READ 0x01, PROT_WRITE 0x02, PROT_EXEC 0x04
+    - index: 2
+      type: "nop"       # flags
+    returnArg:
+      index: 0
+      type: "int"
+    returnArgAction: "Post"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Mask"
+        values:
+        - "4"           # PROT_EXEC
