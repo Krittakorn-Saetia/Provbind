@@ -6,15 +6,17 @@
 
 **How it was checked:** on Korn-PC, under WSL2 Ubuntu 22.04 with Python 3.11.16, in throwaway checkouts. Nothing was changed in your code.
 
-**Update: three Role 2 fixes for you.** Each is on its own branch, waiting for Korn to merge it into `main`. Pull `main` after that, before the demo PC run.
+**Update: Role 2's fixes and new tests for you.** Each is on its own branch, waiting for Korn to merge it into `main`. Pull `main` after that, before the demo PC run.
 
 | Branch | Commit | What it changes for you |
 |---|---|---|
 | `local/retag-provenance` | `214aebe` | Your `profile_corpus.sh` call to `gen_provenance.py` works now. Before, it failed silently (§6.1). |
 | `local/ph1-recorders` | `e584636` | New tests for PH1-01 and PH1-04 run with the integration tests (§5.2, step 5) |
+| `local/p1-tests` | `c9920f9` | Role 2's P1 tests: PH1-02, PH1-03, PH2-06, PH2-07, PH3-03, PH3-05, PH3-12, OH-04 and OH-05 (§5.2, step 5). It contains the `local/ph1-recorders` commit, so merging it brings both. |
 | `local/pin-standin` | `d81919a` | The stand-in's base image is pinned. Use the same digest for the demo app (§5.2, step 1). |
+| `local/offline-signing` | `43143f2` | `PROVBIND_OFFLINE=1` works with cosign v3 now. Before, an offline build failed at `cosign sign` (§5.2, notes). |
 
-All three merge cleanly, with each other and with PRs #14–#16.
+All of them merge cleanly, with each other and with PRs #14–#16.
 
 ---
 
@@ -146,8 +148,8 @@ This matches the plan's prediction (§6.2): the filter saves memory but costs lo
 ### 5.2 Steps, in order
 
 ```bash
-# 0. Role 2's fixes (after Korn merges local/retag-provenance, local/ph1-recorders and
-#    local/pin-standin), then the cluster and the local registry at localhost:5001
+# 0. Role 2's fixes (after Korn merges the Role 2 branches listed at the top), then the cluster
+#    and the local registry at localhost:5001
 git pull origin main
 make up
 
@@ -168,24 +170,58 @@ DEMO_REF=$(pipeline/build-and-attest.sh testbed/demo-app demo-app) && echo "$DEM
 python -m compiler.compile "$STANDIN_REF" --run ./run
 python -m compiler.compile "$DEMO_REF" --run ./run
 
-# 5. Check Role 2's part
-PROVBIND_STANDIN_REF="$STANDIN_REF" PROVBIND_DEMO_REF="$DEMO_REF" pytest -q -m integration
-#    Role 2's 15 must pass: the 13 on the stand-in, plus PH1-01 and PH1-04 on both images.
-#    Role 3's cluster tests run too.
-PROVBIND_ENVELOPE=run/envelopes/<standin hex>.json pytest -q \
-  tests/capability/test_ph3_04_depth.py tests/capability/test_ph3_07_closure.py
-PROVBIND_ENVELOPE=run/envelopes/<demo hex>.json pytest -q \
+# 5. Check Role 2's part. First the two envelope paths that step 4 printed:
+STANDIN_ENV=run/envelopes/<standin hex>.json
+DEMO_ENV=run/envelopes/<demo hex>.json
+
+#    Integration: Role 2's 18 tests (the 13 on the stand-in, PH1-01 to PH1-04 on both images, and
+#    PH3-03 on the stand-in's envelope). All pass except PH1-03, shown as xfailed until the
+#    Rekor fix lands. Role 3's cluster tests run too.
+PROVBIND_STANDIN_REF="$STANDIN_REF" PROVBIND_DEMO_REF="$DEMO_REF" PROVBIND_ENVELOPE="$STANDIN_ENV" \
+  pytest -q -m integration
+
+#    Real data from the stand-in
+PROVBIND_ENVELOPE="$STANDIN_ENV" PROVBIND_SBOM=run/attest/standin-app/sbom.json pytest -q \
+  tests/capability/test_ph3_04_depth.py tests/capability/test_ph3_07_closure.py \
+  tests/capability/test_ph3_05_unresolved.py
+
+#    Real data from the demo image
+PROVBIND_ENVELOPE="$DEMO_ENV" pytest -q \
   tests/capability/test_ph3_08_origins.py tests/capability/test_ph3_09_indices.py \
   tests/capability/test_mla_02_features.py \
   tests/capability/test_cf_reference_example.py tests/capability/test_cf_03_memory.py tests/capability/test_cf_04_lookup.py
+
+#    Every envelope in run/envelopes/ (so no PROVBIND_ENVELOPE here), and the unit-level PH2-06 and PH2-07
+pytest -q tests/capability/test_ph3_12_oh_04_05_cost.py tests/capability/test_ph2_06_07_bindings.py
+
 python -m eval.report --run ./run
 ```
 
 **Notes on these steps:**
 
 - **Signing online or offline.** Signing is online by default: it uploads to Sigstore's public Rekor log, which is fine for these test images. Without internet, set `PROVBIND_OFFLINE=1` for **both** the build and the compile, and tell the team the demo skips transparency.
+  - With cosign v3, offline signing needs `local/offline-signing` merged. Before that, the build failed at `cosign sign`. It was checked on Korn-PC with cosign v3.1.3, including an offline compile of the result.
+  - Offline, PH1-03 records `blocked`, because there's no transparency record by design.
 - **Run PH3-04 on the stand-in only.** It checks `requests` at depth 1 and `urllib3` at depth 2, and the demo app has neither: its `requirements.txt` is comments only, and `requestz-helper` has no dependencies. On the demo envelope, PH3-04 would fail by design.
-- **Each test overwrites its own result file,** so the table's last run wins. The commands above record PH3-04 and PH3-07 from the stand-in, and the rest from the demo image.
+- **Each test overwrites its own result file,** so the table's last run wins.
+  - The commands above record PH3-04, 05 and 07 from the stand-in; PH3-08, 09, MLA-02 and CF-02 to 04 from the demo image; and PH3-12, OH-04 and OH-05 from both.
+  - **Set `PROVBIND_ENVELOPE` (and `PROVBIND_SBOM`) whenever you rerun these tests after the real run.** Without them, the tests fall back to synthetic data and overwrite the real results with `not_run`. It happened once on Korn-PC.
+- **What the new P1 tests do on your machine:**
+  - **PH1-02** makes a throwaway key in a temporary folder, and a small repository (`provbind-ph1-02-…`) in the local registry on each run. It never touches `cosign.key`, and uploads nothing to Rekor.
+  - **PH1-03** shows as `xfailed` and records `fail` until the Rekor fix lands: the transparency record exists, but the envelope says null.
+  - **PH3-03** fetches every layer of the image with `crane`.
+- **Results on Korn-PC's stand-in, for comparison:**
+
+  | Test | Result |
+  |---|---|
+  | PH1-02 | pass |
+  | PH1-03 | fail (the Rekor bug) |
+  | PH2-06, PH2-07 | pass |
+  | PH3-03 | 5 of 5 files match |
+  | PH3-05 | 20 packages without edges, all with a null depth |
+  | PH3-12 | 7.9 s, 1.5 MB |
+  | OH-04 | lookup tables built in 7 ms |
+  | OH-05 | about 410 KB per 1,000 files |
 - **PH1-01 and PH1-04 cover both images in one result** when `PROVBIND_DEMO_REF` is set, and only the stand-in without it. They only verify; they never sign. On Korn-PC's stand-in both pass: 1 image signature, every subject the image digest, 88 dependency entries, 244 edges.
 - **`test_debug_sbom_has_dependency_edges` reads the SBOM copy the build left in `run/attest/`.** Run the integration tests on the machine that built the images, with the same run folder.
 - **Send both envelope paths to Role 3,** and use them for `PROVBIND_ENVELOPE` in your own CF tests.
@@ -197,11 +233,11 @@ python -m eval.report --run ./run
   - The node treats an empty list as "no capability allowed", so any capability the app actually uses becomes a D_cap detection. That can happen in benign-1 too.
   - That comes from the allowlist, not from the verifier; MLA-07 measures exactly this. Record what happens, don't hide it.
   - ML-A replaces the allowlist once D1 exists and a model is trained (§6).
-- **`rekor_log_index` will be null,** even when signing is online. With cosign v3, `cosign verify` no longer prints the log entry. The details and the fix are on branch `local/rekor-bug`, and the fix is pending. Until it's in, don't claim the transparency link (PH1-03).
+- **`rekor_log_index` will be null,** even when signing is online. With cosign v3, `cosign verify` no longer prints the log entry. The details and the fix are on branch `local/rekor-bug`, and the fix is pending. Until it's in, don't claim the transparency link: PH1-03 records exactly this failure.
 - **New digests.** Rebuilding on the demo PC gives new digests. Korn-PC's stand-in (`sha256:0a6bfbb0…`) won't exist there, so use the new references everywhere: `PROVBIND_STANDIN_REF`, the corpus, the bindings.
 - **Two-stage Dockerfile.** The demo app has two stages, and `gen_provenance.py` records the *first* `FROM` as the base image (the builder stage). That's harmless here because both stages use the same base, but only if both lines are pinned to the **same** digest, the stand-in's (step 1).
 - **`unresolved_fraction` will be about 0.2.** Half of it comes from 14 Windows launcher programs inside pip and setuptools, which syft lists without a package URL. No effect on your tests.
-- **Expected compile time is about 8 s per image.** On Korn-PC the stand-in took 8.0 s and produced a 1.4 MB envelope.
+- **Expected compile time is about 8 s per image.** On Korn-PC the stand-in took 8.0 s and produced a 1.5 MB envelope (1,514,718 bytes).
 
 ---
 
@@ -249,11 +285,12 @@ So every corpus image would have been left without a signed provenance. Role 2's
 | Item | Status |
 |---|---|
 | Re-tag mode in `gen_provenance.py`, for your profiling | **Done**, on `local/retag-provenance`; waiting to be merged |
-| Tests that record PH1-01 and PH1-04 (P0) | **Done**, on `local/ph1-recorders`; waiting to be merged. Both pass on Korn-PC's stand-in. |
+| Tests that record PH1-01 and PH1-04 (P0) | **Done**, on `local/ph1-recorders` (also in `local/p1-tests`); waiting to be merged. Both pass on Korn-PC's stand-in. |
+| Role 2's P1 tests: PH1-02, PH1-03, PH2-06, PH2-07, PH3-03, PH3-05, PH3-12, OH-04, OH-05 | **Done**, on `local/p1-tests`; waiting to be merged. All pass on Korn-PC except PH1-03, which fails until the Rekor fix. |
 | The stand-in's base image pinned | **Done**, on `local/pin-standin`; waiting to be merged |
+| Offline signing with cosign v3 (`PROVBIND_OFFLINE=1`) | **Done**, on `local/offline-signing`; waiting to be merged |
 | The Rekor log-index fix (`compiler/evidence.py`) | Pending with the cloud session; details on branch `local/rekor-bug` |
 | `--features-out` for the ML-A feature join | Not started |
-| Tests that record PH3-12, OH-04 and OH-05 (P1) | Not started. The numbers exist: 8.0 s compile, 1.4 MB envelope. |
 | An ML-A model, to replace the empty allowlist capabilities | After D1 exists |
 
 ---
@@ -261,10 +298,15 @@ So every corpus image would have been left without a signed provenance. Role 2's
 ## 8. Checklist
 
 - [ ] Get `cosign.key` and its password from Korn privately; key at `pipeline/keys/cosign.key`
-- [ ] Once Korn has merged Role 2's three branches: `git pull origin main`
+- [ ] Once Korn has merged Role 2's branches (listed at the top): `git pull origin main`
 - [ ] `make up`; pin the demo app to the stand-in's digest (both `FROM` lines); commit
 - [ ] Build and compile the stand-in and the demo app (§5.2); send both envelope paths to Role 3
-- [ ] Role 2's checks on the demo PC: 15 integration tests with `PROVBIND_STANDIN_REF` and `PROVBIND_DEMO_REF`; PH3-04 and 07 (stand-in); PH3-08 and 09, MLA-02 (demo)
+- [ ] Role 2's checks on the demo PC (§5.2, step 5):
+  - 18 integration tests (PH1-03 xfailed until the Rekor fix);
+  - PH3-04, 05 and 07 on the stand-in;
+  - PH3-08, 09 and MLA-02 on the demo image;
+  - PH3-12, OH-04 and OH-05 on every envelope;
+  - PH2-06 and PH2-07.
 - [ ] Rerun CF-02, 03 and 04 on the demo envelope
 - [ ] Write the **trust-2** script (P0)
 - [ ] Add a test for **MLA-03** (P0)
