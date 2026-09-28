@@ -10,18 +10,33 @@ This file therefore rebuilds the Role 3 task list from two sources:
 - Sprint Handoff §7 (Role 3's days and "done when");
 - the Test Plan, which gives Role 3 33 test IDs (P0: PH4-01, 02a, 05, 06, 12, 14, 17, CF-01, MLB-01 to 05).
 
+## Pull requests
+
+They are stacked: **merge them in this order.** Each targets `main`, and each diff also shows the PRs below it until those merge.
+
+| PR | Branch | Tasks |
+|---|---|---|
+| [#11](https://github.com/Krittakorn-Saetia/Provbind/pull/11) | `role3/normalize` | R3-T1, R3-T2: normaliser, TracingPolicies; PH4-01, PH4-02a/b |
+| [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) | `role3/verify` | R3-T3 to T6: store, verifier, pipeline, `node.run`, replay harness; PH4-03 to 18 |
+| [#13](https://github.com/Krittakorn-Saetia/Provbind/pull/13) | `role3/mlb` | R3-T7: ML-B, D2 tooling; MLB-01 to 06 |
+| [#14](https://github.com/Krittakorn-Saetia/Provbind/pull/14) | `role3/cf05` | R3-T8: Cuckoo filter on the event path; CF-05; this final status |
+
+**Numbers**, with all four merged:
+- `pytest -m "not integration"`: 417 passed, 17 deselected (`main` alone: 392 and 13). That includes 25 new capability tests; 4 more are integration.
+- `pytest node/tests`: 319 unit tests, run inside PH4-17 until `testpaths` includes them (Q2).
+
 ## Tasks
 
 | Task | What | Tests | Status | PR |
 |---|---|---|---|---|
-| R3-T1 | Normaliser: Tetragon JSON → §4.3 events (Eq. 50), namespace filter, drop counts | PH4-01, PH4-02a, PH4-02b | Done in the cloud; field shapes from the Tetragon docs, to verify against a real recording | #11 |
-| R3-T2 | TracingPolicies: write on all paths, truncate, `cap_capable`, executable mmap, `tcp_connect`; Helm export filter | PH4-02a, PH4-02b; MLA-03 (Role 1) | Written and statically tested; not yet loaded into Tetragon | #11 |
-| R3-T3 | Envelope and bindings store: reload on change, J_I, one cached envelope per digest (Eq. 52) | PH4-04 | Done in the cloud; the live scale test is written (integration) | role3/verify |
-| R3-T4 | Verifier: decision order, mount exclusion, binding failures, detection records (§4.4) | PH4-03, PH4-05 to 18 | Done in the cloud | role3/verify |
-| R3-T5 | `python -m node.run`: live and replay, `events.jsonl` and `detections.jsonl`, cold-start holding | PH2-10 | Done in the cloud; windows appear in the summary. PH2-10's test file is outside this session's files (Q2) | role3/verify |
-| R3-T6 | Replay harness: a recording plus `ground_truth.csv` → results per scenario; the synthetic §7 library | PH4-* | Done | role3/verify |
-| R3-T7 | ML-B: gate, windows, Ψ_I, per-image Isolation Forest (as JSON, no pickle), g_I, θ_A, D_beh; range guard; D2 tooling (`python -m node.mlb`, `ml/data/mlb/`) | MLB-01 to 06 | Done in the cloud. MLB-01 and 02 pass (code properties). MLB-03 to 06 need real D2 | role3/mlb |
-| R3-T8 | Cuckoo filter on the event path, on and off (`--cuckoo`); a full filter is dropped loudly (CF-06's concern) | CF-05; CF-01 (the node's filter holds every declared path: unit test) | Done in the cloud. Synthetic: the filter doubles the per-event latency, so the §6.3 rule says drop | role3/cf05 |
+| R3-T1 | Normaliser: Tetragon JSON → §4.3 events (Eq. 50), namespace filter, drop counts | PH4-01, PH4-02a, PH4-02b | Done in the cloud; field shapes from the Tetragon docs, to verify against a real recording | [#11](https://github.com/Krittakorn-Saetia/Provbind/pull/11) |
+| R3-T2 | TracingPolicies: write on all paths, truncate, `cap_capable`, executable mmap, `tcp_connect`; Helm export filter | PH4-02a, PH4-02b; MLA-03 (Role 1) | Written and statically tested; not yet loaded into Tetragon | [#11](https://github.com/Krittakorn-Saetia/Provbind/pull/11) |
+| R3-T3 | Envelope and bindings store: reload on change, J_I, one cached envelope per digest (Eq. 52) | PH4-04 | Done in the cloud; the live scale test is written (integration) | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
+| R3-T4 | Verifier: decision order, mount exclusion, binding failures, detection records (§4.4) | PH4-03, PH4-05 to 18 | Done in the cloud | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
+| R3-T5 | `python -m node.run`: live and replay, `events.jsonl` and `detections.jsonl`, cold-start holding | PH2-10 | Done in the cloud; windows appear in the summary. PH2-10's test file is outside this session's files (Q2) | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
+| R3-T6 | Replay harness: a recording plus `ground_truth.csv` → results per scenario; the synthetic §7 library | PH4-* | Done | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
+| R3-T7 | ML-B: gate, windows, Ψ_I, per-image Isolation Forest (as JSON, no pickle), g_I, θ_A, D_beh; range guard; D2 tooling (`python -m node.mlb`, `ml/data/mlb/`) | MLB-01 to 06 | Done in the cloud. MLB-01 and 02 pass (code properties). MLB-03 to 06 need real D2 | [#13](https://github.com/Krittakorn-Saetia/Provbind/pull/13) |
+| R3-T8 | Cuckoo filter on the event path, on and off (`--cuckoo`); a full filter is dropped loudly (CF-06's concern) | CF-05; CF-01 (the node's filter holds every declared path: unit test) | Done in the cloud. Synthetic: the filter doubles the per-event latency, so the §6.3 rule says drop | [#14](https://github.com/Krittakorn-Saetia/Provbind/pull/14) |
 | R3-T9 | Runtime hashing of executed files (stretch). The pipeline already takes a `hasher` | PH4-07, 08, 18 | To do | |
 | Demo PC | Load the policies, record `node/testdata/raw.jsonl` and a scenario session, run the live tests | All PH4 on real evidence; OH-02, OH-03 | Needs the demo PC | |
 
@@ -85,7 +100,6 @@ With synthetic D2 written to a D2 folder as well, MLB-01 to 05 passed, the model
 - **Q5. Does the controller remove a binding when its pod goes?** Two things depend on it: evicting an envelope at 0 replicas (PH4-04), and not reporting a restarted pod's old container as unknown. The node remembers every container ever bound, so late exit events never become binding failures.
 - **Q6. Egress (M8).** The envelope has no egress set, so D_net checks an operator allow list given with `--egress`, and its detections say CONFIGURED. If the team adds egress to the envelope (MLA-08, Role 2), the verifier should read it from there.
 - **Q7. Answer to Role 2's question 6.** Yes: the node uses `compiler/indices.py` (J_I) and `compiler/paths.py` (realpath), read-only.
-
 - **Q8. The range guard (ML-B), for the team and Aj Ohm.** An Isolation Forest cannot say "far beyond normal".
   - Why: a window beyond the training range follows the same path through every tree as the most extreme benign window, and a feature constant in training gets no split. On the synthetic data, attack-2's 200-write burst scored exactly θ_A (benign maximum: 15 writes), so the forest alone missed it in every seed.
   - Proposed fix: a window with any feature above twice its benign maximum is also D_beh. It caught the burst and added no held-out false positive.
@@ -100,3 +114,16 @@ With synthetic D2 written to a D2 folder as well, MLB-01 to 05 passed, the model
 - **No real Tetragon output in the repository yet.** Sprint Handoff §7, Day 1 asks for `node/testdata/raw.jsonl`. Until it exists, the normaliser's input shapes come from the Tetragon documentation, not from our version.
 - **No D2 yet.** MLB-03 to 06 need the demo image's benign windows: 4 hours or more, plus an hour held out (Q9).
 - **No runtime hash source (C3).** D_hash never fires on a raw recording, so PH4-07, 08 and 18 record `blocked`. R3-T9 is the stretch fix: hashing `/proc/<pid>/exe`, after checking Tetragon's PID namespace in kind.
+
+## Next steps
+
+1. **Merge #11 to #14 in order.** Add `node/tests` to `pytest.ini`'s `testpaths` (Q2).
+2. **Demo PC, Day 1 work:**
+   - load `node/tetragon/values.yaml` and the policies;
+   - save 5 minutes of output as `node/testdata/raw.jsonl`;
+   - run `python -m node.run --replay node/testdata/raw.jsonl` and fix any field the normaliser drops (its summary counts drops by reason);
+   - run `pytest -m integration tests/capability/test_ph4_01_02_events.py`.
+3. **Demo PC, scenarios.** Record one session while Role 1's scenarios run (`node/README.md`, "Recipe on the demo PC"). Then run the PH4 tests and CF-05 with `PROVBIND_RECORDING`, and PH4-04 live.
+4. **Demo PC, ML-B.** Build D2 (4 hours or more, plus a held-out hour: `ml/data/mlb/README.md`), then run the MLB tests.
+5. **Stretch, R3-T9: runtime hashing.** Check Tetragon's PID namespace in kind first, then hash `/proc/<pid>/exe` through the pipeline's `hasher` hook. That unblocks PH4-07, 08 and 18.
+6. **If Q2 is allowed:** test files for PH2-10 (the summary's `cold_start_s`), MLA-07 (D_cap per benign scenario, ML-A envelope against the allowlist envelope) and OH-01 to 03, OH-06.
