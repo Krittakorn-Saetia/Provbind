@@ -20,10 +20,12 @@ They are stacked: **merge them in this order.** Each targets `main`, and each di
 | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) | `role3/verify` | R3-T3 to T6: store, verifier, pipeline, `node.run`, replay harness; PH4-03 to 18 |
 | [#13](https://github.com/Krittakorn-Saetia/Provbind/pull/13) | `role3/mlb` | R3-T7: ML-B, D2 tooling; MLB-01 to 06 |
 | [#14](https://github.com/Krittakorn-Saetia/Provbind/pull/14) | `role3/cf05` | R3-T8: Cuckoo filter on the event path; CF-05; this final status |
+| [#15](https://github.com/Krittakorn-Saetia/Provbind/pull/15) | `role3/handoffs` | Handoffs to Roles 1, 2 and 4 (`node/handoff/`). Documentation only, not stacked: merge any time |
 
 **Numbers**, with all four merged:
 - `pytest -m "not integration"`: 417 passed, 17 deselected (`main` alone: 392 and 13). That includes 25 new capability tests; 4 more are integration.
 - `pytest node/tests`: 319 unit tests, run inside PH4-17 until `testpaths` includes them (Q2).
+- With `requirements-role2.txt` alone (no numpy, scikit-learn or LightGBM, as on Korn's PC): 365 passed, 4 skipped, 0 failed. The ML-B tests that train a model skip cleanly, as MLA-04/05 do. A fix in #13 did that, after hiding those packages showed the tests failing.
 
 ## Tasks
 
