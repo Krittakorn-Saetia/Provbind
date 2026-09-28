@@ -1,10 +1,20 @@
 # Handoff from Role 2 to Role 1: running Role 2's part on the demo PC, and Role 1 against the test plan
 
-**From:** Role 2 (Korn) · **For:** Role 1 (testbed and evaluation) · **Date:** 29 September 2026
+**From:** Role 2 (Korn) · **For:** Role 1 (testbed and evaluation) · **Date:** 29 September 2026, updated the same day
 
 **Checked against:** the *Capability Test Plan* v1.1 (`docs/PROVBIND-Capability-Test-Plan.md`), `main` at `bddcced`, and your PR #16 (`6bd783f`), alone and merged with Role 3's PRs #14 and #15.
 
 **How it was checked:** on Korn-PC, under WSL2 Ubuntu 22.04 with Python 3.11.16, in throwaway checkouts. Nothing was changed in your code.
+
+**Update: three Role 2 fixes for you.** Each is on its own branch, waiting for Korn to merge it into `main`. Pull `main` after that, before the demo PC run.
+
+| Branch | Commit | What it changes for you |
+|---|---|---|
+| `local/retag-provenance` | `214aebe` | Your `profile_corpus.sh` call to `gen_provenance.py` works now. Before, it failed silently (§6.1). |
+| `local/ph1-recorders` | `e584636` | New tests for PH1-01 and PH1-04 run with the integration tests (§5.2, step 5) |
+| `local/pin-standin` | `d81919a` | The stand-in's base image is pinned. Use the same digest for the demo app (§5.2, step 1). |
+
+All three merge cleanly, with each other and with PRs #14–#16.
 
 ---
 
@@ -16,6 +26,9 @@
   - All 12 shell scripts parse, and every script the Makefile runs is executable.
   - All 16 Makefile targets pass `make -n`. `make help`, `make report` and `make corpus-check` run correctly.
 - **You now have real numbers for CF-02, CF-03 and CF-04,** measured on the real stand-in envelope (§3.2).
+- **A Role 2 bug would have silently broken your ML-A profiling.** Every corpus image would have been left without signed provenance, and the compiler rejects such an image.
+  - It's fixed on `local/retag-provenance`.
+  - Your script still hides errors like this one, though. Please change that (§6.1).
 - **The demo PC run is on your machine.** Section 5 is Role 2's part of it, step by step: building, signing and compiling the stand-in and demo images.
 - **Gaps against the plan:**
   - MLA-03 (P0) has no test.
@@ -44,6 +57,7 @@
 | `make compare` with an empty run folder | Stops with "no ground-truth rows", which is correct |
 | `ml/corpus.yaml` | 24 images, including `standin-app` and `demo-app` (plan §4.1 asks for at least 20) |
 | Profiling pods (`profile_corpus.sh`) | Plain `kubectl run`, so default pods. That matches what ML-A assumes (§6). |
+| Your profiling script's call to Role 2's `gen_provenance.py` | **Failed:** exit 2 and an empty provenance file. It went unnoticed because the script sends its errors to `/dev/null` and ignores failures. Works now with the re-tag mode on `local/retag-provenance` (§6.1). |
 | Your `cap_capable` parser against Role 3's `node/tetragon/cap.yaml` | Same shape: `function_name`, `capability_arg`, `return.int_arg`. The policy is in namespace `demo`, where you profile. |
 | Registry | `kind-with-registry.sh` uses `localhost:5001`, the same as `pipeline/build-and-attest.sh` |
 
@@ -127,18 +141,20 @@ This matches the plan's prediction (§6.2): the filter saves memory but costs lo
   - Put the key at `pipeline/keys/cosign.key`. Git already ignores it.
   - **Never commit it, and never paste the key or the password into Claude.**
   - Profiling needs the key too: `profile_corpus.sh` re-tags and attests each corpus image.
+  - **Export `COSIGN_PASSWORD` before `make profile` too,** with the `read -rsp` line in §5.2. The script signs every corpus image. Without the variable, cosign can sit waiting for a password at a prompt the script writes into its log file, so the run just looks stuck.
 
 ### 5.2 Steps, in order
 
 ```bash
-# 0. Once: the cluster and the local registry at localhost:5001
+# 0. Role 2's fixes (after Korn merges local/retag-provenance, local/ph1-recorders and
+#    local/pin-standin), then the cluster and the local registry at localhost:5001
+git pull origin main
 make up
 
-# 1. Pin the base image (Role 1's handoff asks for this; the stand-in isn't pinned either).
-crane digest python:3.11-slim            # -> sha256:...
-#    In testbed/demo-app/Dockerfile replace BOTH "FROM python:3.11-slim" lines, and in
-#    testbed/standin-app/Dockerfile the one line, with python:3.11-slim@sha256:<that digest>.
-#    Commit before building: an uncommitted change makes the provenance record
+# 1. Pin the demo app to the stand-in's base image. The stand-in is already pinned (local/pin-standin):
+#      FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e
+#    Put the same reference in BOTH FROM lines of testbed/demo-app/Dockerfile (keep "AS builder"
+#    on the first). Commit before building: an uncommitted change makes the provenance record
 #    uncommittedChanges = true.
 
 # 2. The key password, typed so it stays out of your shell history
@@ -153,7 +169,9 @@ python -m compiler.compile "$STANDIN_REF" --run ./run
 python -m compiler.compile "$DEMO_REF" --run ./run
 
 # 5. Check Role 2's part
-PROVBIND_STANDIN_REF="$STANDIN_REF" pytest -q -m integration     # Role 2's 13 must pass; Role 3's cluster tests run too
+PROVBIND_STANDIN_REF="$STANDIN_REF" PROVBIND_DEMO_REF="$DEMO_REF" pytest -q -m integration
+#    Role 2's 15 must pass: the 13 on the stand-in, plus PH1-01 and PH1-04 on both images.
+#    Role 3's cluster tests run too.
 PROVBIND_ENVELOPE=run/envelopes/<standin hex>.json pytest -q \
   tests/capability/test_ph3_04_depth.py tests/capability/test_ph3_07_closure.py
 PROVBIND_ENVELOPE=run/envelopes/<demo hex>.json pytest -q \
@@ -168,6 +186,7 @@ python -m eval.report --run ./run
 - **Signing online or offline.** Signing is online by default: it uploads to Sigstore's public Rekor log, which is fine for these test images. Without internet, set `PROVBIND_OFFLINE=1` for **both** the build and the compile, and tell the team the demo skips transparency.
 - **Run PH3-04 on the stand-in only.** It checks `requests` at depth 1 and `urllib3` at depth 2, and the demo app has neither: its `requirements.txt` is comments only, and `requestz-helper` has no dependencies. On the demo envelope, PH3-04 would fail by design.
 - **Each test overwrites its own result file,** so the table's last run wins. The commands above record PH3-04 and PH3-07 from the stand-in, and the rest from the demo image.
+- **PH1-01 and PH1-04 cover both images in one result** when `PROVBIND_DEMO_REF` is set, and only the stand-in without it. They only verify; they never sign. On Korn-PC's stand-in both pass: 1 image signature, every subject the image digest, 88 dependency entries, 244 edges.
 - **`test_debug_sbom_has_dependency_edges` reads the SBOM copy the build left in `run/attest/`.** Run the integration tests on the machine that built the images, with the same run folder.
 - **Send both envelope paths to Role 3,** and use them for `PROVBIND_ENVELOPE` in your own CF tests.
 
@@ -180,13 +199,40 @@ python -m eval.report --run ./run
   - ML-A replaces the allowlist once D1 exists and a model is trained (§6).
 - **`rekor_log_index` will be null,** even when signing is online. With cosign v3, `cosign verify` no longer prints the log entry. The details and the fix are on branch `local/rekor-bug`, and the fix is pending. Until it's in, don't claim the transparency link (PH1-03).
 - **New digests.** Rebuilding on the demo PC gives new digests. Korn-PC's stand-in (`sha256:0a6bfbb0…`) won't exist there, so use the new references everywhere: `PROVBIND_STANDIN_REF`, the corpus, the bindings.
-- **Two-stage Dockerfile.** The demo app has two stages, and `gen_provenance.py` records the *first* `FROM` as the base image (the builder stage). That's harmless here because both stages use the same base, but only if both lines are pinned to the **same** digest.
+- **Two-stage Dockerfile.** The demo app has two stages, and `gen_provenance.py` records the *first* `FROM` as the base image (the builder stage). That's harmless here because both stages use the same base, but only if both lines are pinned to the **same** digest, the stand-in's (step 1).
 - **`unresolved_fraction` will be about 0.2.** Half of it comes from 14 Windows launcher programs inside pip and setuptools, which syft lists without a package URL. No effect on your tests.
 - **Expected compile time is about 8 s per image.** On Korn-PC the stand-in took 8.0 s and produced a 1.4 MB envelope.
 
 ---
 
 ## 6. ML-A dataset D1 (MLA-03 → Role 2's T13 step 3)
+
+### 6.1 A profiling bug, fixed on Role 2's side
+
+**What was wrong.**
+
+1. `retag_and_attest` in `testbed/profile_corpus.sh` runs `gen_provenance.py --subject "$ref" --commit "$(git rev-parse --short HEAD)"`.
+2. Role 2's script only had build mode (`--context`), so it **exited 2 and wrote an empty `prov.json`**. The script's `2>/dev/null` and `|| true` hid that.
+3. `cosign attest --type slsaprovenance1` then failed on the empty file, hidden the same way.
+
+So every corpus image would have been left without a signed provenance. Role 2's compiler rejects such an image with exit 2, which means no features and no ML-A dataset. It would only have shown up at the dataset join, long after the profiling run.
+
+**The fix** (`local/retag-provenance`) is a re-tag mode that accepts your exact call. Nothing in your script has to change for it to work.
+
+- A public image re-tagged into our registry wasn't built by us, so its provenance names **no source commit**, and its envelope's `source_commit` is `null`. That's expected.
+- The PROVBIND commit that ran the profiling is kept in the provenance as `internalParameters.harnessCommit`. Your short SHA is expanded to the full one.
+- The compiler accepts the result. Checked: your exact line, run from the repository root, now exits 0.
+
+**Please change on your side:**
+
+1. **Stop hiding errors in `retag_and_attest`.**
+   - Keep `gen_provenance.py`'s stderr, and check that `prov.json` isn't empty.
+   - When `cosign sign` or `cosign attest` fails, stop (or at least skip and report that image) instead of `|| true`.
+   - A corpus image without verified evidence is useless for ML-A, and the failure otherwise only surfaces much later as a compiler exit 2.
+2. **Optional:** pass `--source "$image"` too, so each provenance records which public image was re-tagged (for example `nginx:1.27`).
+3. **Export `COSIGN_PASSWORD` before `make profile`** (§5.1).
+
+### 6.2 The labels and the join
 
 - **Your `labels.jsonl` format works for Role 2** as described in your handoff: one row per image, keyed by digest.
 - **Keep profiling in default pods** (plain `kubectl run`, as now) for all 24 images.
@@ -202,9 +248,12 @@ python -m eval.report --run ./run
 
 | Item | Status |
 |---|---|
+| Re-tag mode in `gen_provenance.py`, for your profiling | **Done**, on `local/retag-provenance`; waiting to be merged |
+| Tests that record PH1-01 and PH1-04 (P0) | **Done**, on `local/ph1-recorders`; waiting to be merged. Both pass on Korn-PC's stand-in. |
+| The stand-in's base image pinned | **Done**, on `local/pin-standin`; waiting to be merged |
 | The Rekor log-index fix (`compiler/evidence.py`) | Pending with the cloud session; details on branch `local/rekor-bug` |
 | `--features-out` for the ML-A feature join | Not started |
-| Recorders for PH1-01, PH1-04 (P0), and PH3-12, OH-04, OH-05 (P1) | Not started. The underlying checks already pass in Role 2's integration tests. |
+| Tests that record PH3-12, OH-04 and OH-05 (P1) | Not started. The numbers exist: 8.0 s compile, 1.4 MB envelope. |
 | An ML-A model, to replace the empty allowlist capabilities | After D1 exists |
 
 ---
@@ -212,13 +261,15 @@ python -m eval.report --run ./run
 ## 8. Checklist
 
 - [ ] Get `cosign.key` and its password from Korn privately; key at `pipeline/keys/cosign.key`
-- [ ] `make up`; pin the base images; commit
+- [ ] Once Korn has merged Role 2's three branches: `git pull origin main`
+- [ ] `make up`; pin the demo app to the stand-in's digest (both `FROM` lines); commit
 - [ ] Build and compile the stand-in and the demo app (§5.2); send both envelope paths to Role 3
-- [ ] Role 2's checks on the demo PC: 13 integration tests; PH3-04 and 07 (stand-in); PH3-08 and 09, MLA-02 (demo)
+- [ ] Role 2's checks on the demo PC: 15 integration tests with `PROVBIND_STANDIN_REF` and `PROVBIND_DEMO_REF`; PH3-04 and 07 (stand-in); PH3-08 and 09, MLA-02 (demo)
 - [ ] Rerun CF-02, 03 and 04 on the demo envelope
 - [ ] Write the **trust-2** script (P0)
 - [ ] Add a test for **MLA-03** (P0)
-- [ ] Profile the corpus in default pods; hand over `ml/data/labels.jsonl`
+- [ ] `profile_corpus.sh`: stop hiding errors in `retag_and_attest`; optionally pass `--source "$image"` (§6.1)
+- [ ] Export `COSIGN_PASSWORD`, then profile the corpus in default pods; hand over `ml/data/labels.jsonl`
 - [ ] Run every scenario at least 3 times (D4)
 - [ ] `testbed/behaviours.md` (§12.4)
 - [ ] P1 when time allows: `/update3` to `/update9`, attack-9, benign-2 to benign-6, E2E-04 to 10, EV-02, EV-03, EV-07
