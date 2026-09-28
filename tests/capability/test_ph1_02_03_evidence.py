@@ -13,8 +13,8 @@
   $PROVBIND_RUN/envelopes/<hex>.json), it records the same index. cosign v3 no longer prints the
   entry in `cosign verify`, so it is read from `cosign download signature`. Offline signing has no
   record by design: blocked.
-  compiler/evidence.py reads the index from cosign v3's signature bundle since branch
-  local/evidence-fixes; an envelope compiled before that holds null. That one known cause is
+  compiler/evidence.py reads the index from cosign v3's signature bundle since the fix of 29
+  September 2026; an envelope compiled before that holds null. That one known cause is
   recorded as fail and reported by pytest as xfail, so an integration run stays green: recompile
   the envelope. Any other problem fails outright.
 
@@ -224,7 +224,7 @@ def test_ph1_03_a_transparency_record_exists(refs, record_result):
         elif env is not None and recorded != entry["log_index"]:
             (known if recorded is None else problems).append(
                 f"{label}: τ_I exists (log index {entry['log_index']}), but the envelope records {recorded}"
-                + (": compiled before the cosign v3 fix (branch local/evidence-fixes); recompile it"
+                + (": compiled before the cosign v3 fix of 29 September; recompile it"
                    if recorded is None else ""))
 
     ok = not problems and not known

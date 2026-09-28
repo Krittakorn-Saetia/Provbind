@@ -6,10 +6,10 @@ CycloneDX SBOM, v_P for the SLSA v1 provenance). The debug copies under run/atte
 never read. cosign v2 and v3 print different layouts (handoff Section 5, fact 2), so the
 output is read defensively.
 
-cosign v3 differs from v2 in two ways that matter here (branch local/rekor-bug has the note):
-`cosign verify` also returns the attestation bundles as verified "signatures", so exit 0
-alone doesn't mean the image was signed; and its output no longer carries the Rekor entry,
-which is read from the signature bundle instead.
+cosign v3 differs from v2 in two ways that matter here (handoff T3; the real v3 output is in
+compiler/tests/fixtures/): `cosign verify` also returns the attestation bundles as verified
+"signatures", so exit 0 alone doesn't mean the image was signed; and its output no longer
+carries the Rekor entry, which is read from the signature bundle instead.
 """
 from __future__ import annotations
 
