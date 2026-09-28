@@ -21,7 +21,7 @@ This file therefore rebuilds the Role 3 task list from two sources:
 | R3-T5 | `python -m node.run`: live and replay, `events.jsonl` and `detections.jsonl`, cold-start holding | PH2-10 | Done in the cloud; windows appear in the summary. PH2-10's test file is outside this session's files (Q2) | role3/verify |
 | R3-T6 | Replay harness: a recording plus `ground_truth.csv` → results per scenario; the synthetic §7 library | PH4-* | Done | role3/verify |
 | R3-T7 | ML-B: gate, windows, Ψ_I, per-image Isolation Forest (as JSON, no pickle), g_I, θ_A, D_beh; range guard; D2 tooling (`python -m node.mlb`, `ml/data/mlb/`) | MLB-01 to 06 | Done in the cloud. MLB-01 and 02 pass (code properties). MLB-03 to 06 need real D2 | role3/mlb |
-| R3-T8 | Cuckoo filter on the event path, on and off | CF-05 (CF-01 runs in the test kit's example) | To do | |
+| R3-T8 | Cuckoo filter on the event path, on and off (`--cuckoo`); a full filter is dropped loudly (CF-06's concern) | CF-05; CF-01 (the node's filter holds every declared path: unit test) | Done in the cloud. Synthetic: the filter doubles the per-event latency, so the §6.3 rule says drop | role3/cf05 |
 | R3-T9 | Runtime hashing of executed files (stretch). The pipeline already takes a `hasher` | PH4-07, 08, 18 | To do | |
 | Demo PC | Load the policies, record `node/testdata/raw.jsonl` and a scenario session, run the live tests | All PH4 on real evidence; OH-02, OH-03 | Needs the demo PC | |
 
@@ -56,7 +56,9 @@ This file therefore rebuilds the Role 3 task list from two sources:
 | MLB-04 | P0 | `test_mlb_03_06_model.py` | not_run (synthetic held-out FPR 0%) | `heldout.jsonl` in D2 |
 | MLB-05 | P0 | `test_mlb_03_06_model.py` | not_run (synthetic: D_beh in attack-2; the forest alone flags only an unrelated window) | D2 plus `PROVBIND_RECORDING` with an attack-2 row |
 | MLB-06 | P1 | `test_mlb_03_06_model.py` | not_run (3 synthetic images) | D2 for 3 or more images |
-| PH2-10, MLA-07, OH-01, OH-02, OH-03, OH-06 | P1–P2 | none | none | These IDs' file names are outside this session's allowed files (Q2) |
+| CF-01 | P0 | `test_cf_reference_example.py` (test kit, not Role 3's file) | not_run without an envelope | `PROVBIND_ENVELOPE=run/envelopes/<hex>.json`. The node builds the same reference filter; `node/tests/test_cuckoo_path.py` checks that it holds every declared path |
+| CF-05 | P1 | `test_cf_05_event_path.py` | not_run. Synthetic: p50 4.4 µs without the filter, 8.8 µs with it; detections identical; decision **drop** | `PROVBIND_RECORDING` |
+| PH2-10, MLA-07, OH-01, OH-02, OH-03, OH-06 | P1–P2 | none | none | These IDs' file names are outside this session's allowed files (Q2). CF-05 records the filter-off p50 and p99 that OH-01 asks for |
 | All other R3 IDs | | not written yet | | |
 
 A simulated demo-PC run (the synthetic library written out as a recording, a run folder and a `ground_truth.csv`) gave:
