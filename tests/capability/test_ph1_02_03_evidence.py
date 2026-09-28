@@ -13,9 +13,10 @@
   $PROVBIND_RUN/envelopes/<hex>.json), it records the same index. cosign v3 no longer prints the
   entry in `cosign verify`, so it is read from `cosign download signature`. Offline signing has no
   record by design: blocked.
-  Until compiler/evidence.py reads the index from cosign v3 (branch local/rekor-bug), envelopes hold
-  null: the result is recorded as fail, and pytest reports that one known cause as xfail, so an
-  integration run stays green; any other problem fails outright.
+  compiler/evidence.py reads the index from cosign v3's signature bundle since branch
+  local/evidence-fixes; an envelope compiled before that holds null. That one known cause is
+  recorded as fail and reported by pytest as xfail, so an integration run stays green: recompile
+  the envelope. Any other problem fails outright.
 
 The images are PROVBIND_STANDIN_REF and PROVBIND_DEMO_REF, as for PH1-01. Integration tests: they
 need cosign, crane and the registry, and never touch pipeline/keys/cosign.key.
@@ -223,7 +224,8 @@ def test_ph1_03_a_transparency_record_exists(refs, record_result):
         elif env is not None and recorded != entry["log_index"]:
             (known if recorded is None else problems).append(
                 f"{label}: τ_I exists (log index {entry['log_index']}), but the envelope records {recorded}"
-                + (": the compiler's Rekor bug with cosign v3 (branch local/rekor-bug)" if recorded is None else ""))
+                + (": compiled before the cosign v3 fix (branch local/evidence-fixes); recompile it"
+                   if recorded is None else ""))
 
     ok = not problems and not known
     metrics = {"images": len(per_image), "log_index": {k: v["log_index"] for k, v in per_image.items()},

@@ -51,8 +51,10 @@ def in_an_edge(bom: dict) -> set[str]:
 
 
 def scan(env: dict, bom: dict) -> dict:
-    """Envelope keys (purl, or bom-ref without one) whose every component is in no edge, and their depths.
-    A key with any component in an edge may get a depth through it, so it doesn't count."""
+    """Envelope keys whose every component is in no edge, and their depths. The keys follow
+    compiler.sbom.package_components (a purl; without one, the bom-ref as the compiler used to, or no
+    key since branch local/sbom-no-purl). A key with any component in an edge may get a depth through
+    it, so it doesn't count."""
     edges = in_an_edge(bom)
     with_edges, without = set(), set()
     for c in package_components(bom):
