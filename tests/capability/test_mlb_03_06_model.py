@@ -28,11 +28,16 @@ import functools
 import os
 from pathlib import Path
 
-from node.mlb import (Behaviour, Model, compare_global, evaluate, model_path, read_windows, split, train,
+import pytest
+
+pytest.importorskip("numpy")          # training needs requirements.txt; skip cleanly without it,
+pytest.importorskip("sklearn")        # as MLA-04/05 do (the report then shows these as not_run)
+
+from node.mlb import (Behaviour, Model, compare_global, evaluate, model_path, read_windows, split, train,  # noqa: E402
                       write_model)
-from node.scenarios import Row, read_ground_truth, replay, rows_of
-from node.store import Store
-from node.synth import DIGEST, benign_session, library
+from node.scenarios import Row, read_ground_truth, replay, rows_of  # noqa: E402
+from node.store import Store  # noqa: E402
+from node.synth import DIGEST, benign_session, library  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 RUN = Path(os.environ.get("PROVBIND_RUN", "./run"))
