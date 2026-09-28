@@ -92,12 +92,12 @@ def evidence(test_id: str) -> dict:
     """The event stream to judge, where it came from, and the triggers if it is a live capture."""
     rec = os.environ.get("PROVBIND_RECORDING")
     if rec:
-        return {"lines": Path(rec).read_text(encoding="utf-8").splitlines(), "source": rec, "real": True,
+        return {"lines": Path(rec).read_text(encoding="utf-8", errors="replace").splitlines(), "source": rec, "real": True,
                 "triggers": None, "artifacts": [rec]}
     capture = RUN / "results" / test_id / "capture.jsonl"
     triggers = capture.with_name("triggers.json")
     if capture.exists() and triggers.exists():
-        return {"lines": capture.read_text(encoding="utf-8").splitlines(), "source": str(capture), "real": True,
+        return {"lines": capture.read_text(encoding="utf-8", errors="replace").splitlines(), "source": str(capture), "real": True,
                 "triggers": json.loads(triggers.read_text(encoding="utf-8")),
                 "artifacts": [str(capture), str(triggers)]}
     return {"lines": synthetic_stream(), "source": "synthetic stream (node/synth.py)", "real": False,
