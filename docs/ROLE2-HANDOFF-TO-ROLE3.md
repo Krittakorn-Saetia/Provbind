@@ -212,14 +212,9 @@ Every hook the plan names is present, and each policy is filtered to namespace `
 ## 7. Interfaces between Role 2 and Role 3
 
 - **`compiler.indices.build`, `Indices`, `compiler.paths.realpath` and `SymlinkLoop` stay as they are.** Role 2 will tell you before changing any of them, or the envelope's fields or file naming.
-- **Your tests also import from Role 2:**
-  - `compiler.compile.validate`;
-  - `compiler.oci.ImageConfig`;
-  - `compiler.purls.identity`;
-  - `compiler.sbom.depths`;
-  - two test internals: `compiler.tests.helpers` (`MemFS`, `make_elf`) and `compiler.tests.test_compile.SBOM`.
+- **Those are the only Role 2 modules your code imports:** `node/store.py`, plus `realpath` in one capability test. That's all that needs to stay stable for you.
 
-  The last two aren't an interface: they can change whenever Role 2's tests change. If you depend on them, copy the fixtures you need into `node/tests/`.
+  *Correction (29 September):* an earlier version of this section said your tests also import other Role 2 modules and test helpers (`compiler.tests.helpers`, `compiler.tests.test_compile`). They don't. Those imports are in Role 2's own tests (`tests/ml/`, `tests/capability/`), and a search of mine had wrongly lumped them in with yours.
 
 ---
 
