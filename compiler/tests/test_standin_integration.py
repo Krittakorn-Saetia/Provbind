@@ -58,6 +58,16 @@ def test_t3_evidence_has_sbom_components_and_a_commit(ref):
     assert ev.source_commit and ev.source_commit != "unknown"
 
 
+def test_t3_rekor_log_index_is_recorded(compiled):
+    """cosign v3 no longer prints it with `verify`; it comes from the signature bundle."""
+    index = compiled["image"]["rekor_log_index"]
+    if os.environ.get("PROVBIND_OFFLINE") == "1":
+        assert index is None
+    else:
+        assert isinstance(index, int) and index >= 0, index
+    assert compiled["verification"]["v_sig"] is True
+
+
 def test_t4_fetch_gives_layers_and_the_config(ref, tmp_path):
     image = oci.fetch(ref, str(tmp_path / "blobs"), oci.Crane())
     assert len(image.layers) >= 4

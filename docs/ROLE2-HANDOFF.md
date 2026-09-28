@@ -169,23 +169,29 @@ The integration tests take the reference from `PROVBIND_STANDIN_REF` (the script
 The module fetches the verified evidence and runs the binding checks from the paper (Eqs. 10–18).
 
 - **Signature (v_sig).** Run `cosign verify --key <pub> <ref>` and keep its stdout.
+  - Exit 0 is not enough. cosign v3 also lists the attestation bundles as verified signatures, so an image that was attested but never signed still passes `cosign verify` (seen on Korn-PC, 29 September).
+  - v_sig therefore needs at least one entry whose `critical.type` is an image signature and whose `critical.image["docker-manifest-digest"]` is the image digest. The types are `https://sigstore.dev/cosign/sign/v1` (cosign v3) and `cosign container image signature` (v2's simple signing).
 - **Attestations.** Run `cosign verify-attestation --key <pub> --type cyclonedx <ref>`, and the same with `--type slsaprovenance1`.
   - stdout has one JSON object per line.
   - If an object has a `payload` field, it is a DSSE envelope: base64-decode `payload` to get the in-toto statement.
   - If it already has `predicateType`, it is the statement itself.
   - Support both shapes (fact 2 in Section 5).
-- **Binding (v_B and v_P).** Each statement's `subject[*].digest.sha256` must equal the image digest's hex, and its `predicateType` must be `https://cyclonedx.org/bom` or `https://slsa.dev/provenance/v1` respectively. If several attestations of one type exist, use the newest one that binds.
+- **Binding (v_B and v_P).** A statement needs at least one subject, every `subject[*].digest.sha256` must equal the image digest's hex, and its `predicateType` must be `https://cyclonedx.org/bom` or `https://slsa.dev/provenance/v1` respectively. If several attestations of one type exist, use the newest one that binds.
   - **Newest** means the latest predicate timestamp: `metadata.timestamp` for CycloneDX, `runDetails.metadata.finishedOn` for SLSA. On a tie or a missing timestamp, take the last line of cosign's output. cosign's own output order carries no time.
-- **Rekor log index.** Search the `cosign verify` JSON *recursively* for the first integer under a key named `logIndex` or `log_index`. Accept a string of digits too, since protobuf's JSON encoding writes 64-bit integers as strings. If there is none, use `null`. Never fail on its absence.
-- **Offline.** With `PROVBIND_OFFLINE=1`, every cosign command gets `--insecure-ignore-tlog=true`.
-- **Signing identity.** From the provenance predicate, `builder_id = runDetails.builder.id`, and `source_commit` is the `digest.gitCommit` of the first `resolvedDependencies` entry that has one.
+- **Rekor log index.** Never fail on its absence: if none is found, use `null`. Accept a string of digits too, since protobuf's JSON encoding writes 64-bit integers as strings.
+  - **cosign v2** prints the entry in `cosign verify`'s output. Search the image-signature entries *recursively* for the first integer under a key named `logIndex` or `log_index`.
+  - **cosign v3** no longer does. If the search finds nothing, run `cosign download signature <ref>` and take the bundle whose DSSE statement is `https://sigstore.dev/cosign/sign/v1` with every subject equal to the image digest. Read that bundle's own `verificationMaterial.tlogEntries[0].logIndex`, not the first `logIndex` found: its `inclusionProof` holds a second one. If several bundles match, the latest `integratedTime` wins.
+  - `download signature` verifies nothing itself. The index is recorded for audit, after `cosign verify` has verified the same bundles with our key; Role 4's transparency check can re-verify it against Rekor. Details: `docs/reports/REKOR-BUG-2026-09-28.md` (branch `local/rekor-bug`).
+- **Offline.** With `PROVBIND_OFFLINE=1`, every cosign command gets `--insecure-ignore-tlog=true`, and `download signature` is skipped, so the log index is `null`.
+- **Signing identity.** From the provenance predicate, `builder_id = runDetails.builder.id`, and `source_commit` is the `digest.gitCommit` of the first `resolvedDependencies` entry whose commit is a hash (40 or 64 hex digits). Anything else, such as the `"unknown"` that `gen_provenance.py` writes outside a git checkout, gives `null`.
 
 Any failure in v_sig, v_B or v_P raises `EvidenceError`. The CLI exits with **code 2** and a one-line reason, and **writes no envelope**.
 
 **Tests:**
 
 - Unit, with canned cosign output: both shapes decode; a wrong subject digest raises; a missing `logIndex` gives `None`.
-- Integration: running it on the stand-in image returns an SBOM with components and a provenance with a commit.
+- Unit, with real cosign v3 output (`compiler/tests/fixtures/`): the stand-in's log index is 2972903426; verify output with only attestation entries raises v_sig.
+- Integration: running it on the stand-in image returns an SBOM with components and a provenance with a commit, and the envelope records a Rekor log index unless `PROVBIND_OFFLINE=1`.
 
 ### T4. Image fetch: `compiler/oci.py` (Day 1–2)
 

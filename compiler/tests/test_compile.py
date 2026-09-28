@@ -303,10 +303,20 @@ def test_cli_failed_signature_exits_2_and_writes_nothing(synthetic, tmp_path, ca
     assert "v_sig: no signatures" in capsys.readouterr().err
 
 
-def test_cli_attestation_bound_to_another_image_exits_2(synthetic, tmp_path, capsys):
-    reg, _, ref = synthetic
-    code, run = run_cli(tmp_path, ref, reg, FakeCosign("sha256:" + "cd" * 32, SBOM, PROVENANCE))
+def test_cli_attested_but_unsigned_image_exits_2(synthetic, tmp_path, capsys):
+    reg, digest, ref = synthetic
+    code, run = run_cli(tmp_path, ref, reg, FakeCosign(digest, SBOM, PROVENANCE, signed=False))
     assert code == EXIT_EVIDENCE and envelopes(run) == []
+    assert "v_sig: cosign verified no image signature" in capsys.readouterr().err
+
+
+def test_cli_attestation_bound_to_another_image_exits_2(synthetic, tmp_path, capsys):
+    reg, digest, ref = synthetic
+    cosign = FakeCosign(digest, SBOM, PROVENANCE)
+    cosign.out["cyclonedx"] = FakeCosign("sha256:" + "cd" * 32, SBOM, PROVENANCE).out["cyclonedx"]
+    code, run = run_cli(tmp_path, ref, reg, cosign)
+    assert code == EXIT_EVIDENCE and envelopes(run) == []
+    assert "v_B: no verified CycloneDX attestation binds" in capsys.readouterr().err
 
 
 def test_cli_tampered_layer_exits_2(synthetic, tmp_path, capsys):
