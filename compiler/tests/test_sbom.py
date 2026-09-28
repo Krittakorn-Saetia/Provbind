@@ -61,10 +61,26 @@ def test_cycle_that_no_root_reaches_is_null():
     assert (depth_of(packages, "B"), depth_of(packages, "C")) == (None, None)
 
 
-def test_component_without_purl_is_keyed_by_bom_ref():
-    extra = [{"bom-ref": "local-thing", "type": "library", "name": "thing"}]
-    packages, _ = depths(bom("A", extra=extra))
-    assert packages["local-thing"] == {"depth": None}
+def test_components_without_a_purl_are_left_out(caplog):
+    """As syft lists pip's Windows launchers: application, binary, no purl, in no edge."""
+    launchers = [{"bom-ref": f"d60858f6579e7bb{i}", "type": "application", "name": name, "version": "1.1.0.14",
+                  "properties": [{"name": "syft:package:type", "value": "binary"}]}
+                 for i, name in enumerate(["Simple Launcher", "cli-64", "gui-32"])]
+    caplog.set_level("INFO", logger="provbind.sbom")
+    packages, unresolved = depths(bom("AB", {"A": "B"}, extra=launchers + [{"type": "library", "name": "no-ref"}]))
+    assert set(packages) == {purl("A"), purl("B")}
+    assert unresolved == 0.0                                     # not 4 of 6
+    assert "4 SBOM components have no purl" in caplog.text and "cli-64" in caplog.text
+
+
+def test_a_component_without_a_purl_still_carries_depth_through_its_edges():
+    middle = {"bom-ref": "no-purl-middle", "type": "library", "name": "middle"}
+    doc = bom("AC", extra=[middle])
+    doc["dependencies"] = [{"ref": ref("A"), "dependsOn": ["no-purl-middle"]},
+                           {"ref": "no-purl-middle", "dependsOn": [ref("C")]}]
+    packages, _ = depths(doc)
+    assert set(packages) == {purl("A"), purl("C")}
+    assert (depth_of(packages, "A"), depth_of(packages, "C")) == (1, 3)
 
 
 def test_duplicate_purls_keep_the_smallest_known_depth():

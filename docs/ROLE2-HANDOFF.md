@@ -277,7 +277,10 @@ Implement Section 7.3.
 
 Implement Section 7.4.
 
-- Map each bom-ref to its component, and key packages by the component's `purl` field (use the bom-ref only if `purl` is missing).
+- Map each bom-ref to its component, and key packages by the component's `purl` field.
+  - A component without a purl is left out of `packages` (logged). On the stand-in, these are 14 Windows launcher programs that syft finds inside pip and setuptools (`cli-64.exe`, `gui-32.exe`, "Simple Launcher"): no file can be matched to them, and no reader can name them.
+  - Keyed by their bom-refs, as the first version did, they doubled `unresolved_fraction` (19.7% instead of 9.7%) and added 14 to ML-A's `pkg.count.other`.
+  - Their dependency edges, if any, still carry depth to the packages below them.
 - Add a synthetic application root at depth 0 with an edge to every component that has outgoing edges but no incoming ones. Then run a multi-source BFS, taking the minimum over paths.
 - **A component that appears in no edge at all gets `depth: null` (unresolved).** Never default it to 1.
 - Record `unresolved_fraction` = (components with a null depth) / (all components).
@@ -496,8 +499,8 @@ def depths(bom):
                 q.append(v)
     out = {}
     for ref, c in comp.items():
-        key = c.get("purl") or ref
-        out[key] = {"depth": depth.get(ref) if ref in touched else None}
+        if c.get("purl"):                             # no purl: not a package (T8)
+            out[c["purl"]] = {"depth": depth.get(ref) if ref in touched else None}
     return out
 ```
 
