@@ -40,7 +40,7 @@ log = logging.getLogger("provbind.node")
 
 
 def build(run_dir: Path, args, on_event, on_detection, on_window=None) -> tuple[Store, Pipeline]:
-    store = Store(run_dir)
+    store = Store(run_dir, cuckoo=args.cuckoo)
     store.refresh()
     egress = Egress.load(args.egress) if args.egress else None
     behaviour = None
@@ -61,7 +61,7 @@ def summary(normalizer: Normalizer, store: Store, pipeline: Pipeline, started: f
                                                      "after_unbind", "unbound_events")},
             "cold_start_s": {cid: c["window_s"] for cid, c in pipeline.cold.items()},
             "envelopes": {"cached": sorted(store.cache), **{k: store.stats[k] for k in
-                          ("loads", "reloads", "evictions", "bad_envelopes", "hits", "misses")}},
+                          ("loads", "reloads", "evictions", "bad_envelopes", "hits", "misses", "filter_full")}},
             "mlb": dict(sorted(pipeline.behaviour.stats.items())) if pipeline.behaviour is not None else None,
             "seconds": round(time.monotonic() - started, 3)}
 
@@ -119,6 +119,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="seconds before a bound container without an envelope is reported (default 300)")
     ap.add_argument("--egress", metavar="FILE", help='egress allow list for D_net: {"allow": ["10.0.0.0/8", …]}')
     ap.add_argument("--no-events", action="store_true", help="do not write events.jsonl")
+    ap.add_argument("--cuckoo", action="store_true",
+                    help="check the reference Cuckoo filter before the path index (Eq. 52; measured by CF-05)")
     ap.add_argument("--mlb", action="store_true",
                     help="ML-B: score windows with the model beside each envelope (<hex>.mlb/model.json)")
     ap.add_argument("--windows-out", metavar="FILE", help="ML-B: append every closed window to FILE (dataset D2)")
