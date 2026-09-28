@@ -148,6 +148,9 @@ Record each with the `record_result` fixture from the test kit. Tests use `pytes
   - It prints a **SLSA v1 predicate** (not a full in-toto statement; cosign wraps it).
   - cosign parses `slsaprovenance1` predicates into typed structs, so any field outside the SLSA v1 schema would be silently dropped. The generator uses the exact field names.
   - It records `buildDefinition.internalParameters.uncommittedChanges`, and warns when it is `true`, so a provenance never silently names a commit that differs from what was built. `internalParameters` is free-form, so cosign keeps it.
+  - **Re-tag mode** (`--subject <ref@digest> [--commit SHA] [--source IMAGE]`) is for public images that are re-tagged into the local registry and attested with our key, as Role 1's ML-A corpus profiling does (`testbed/profile_corpus.sh`, Test Plan §4.1).
+    - The image wasn't built here, so its source commit is unknown. The predicate's only resolved dependency is the image itself, with no `gitCommit`, and the envelope's `source_commit` is `null`.
+    - The PROVBIND commit that ran the re-tag goes in `internalParameters.harnessCommit`. A short SHA is expanded to the full one.
 
 **Tests:** its output parses as JSON and has `buildDefinition.buildType`, `buildDefinition.resolvedDependencies[0].digest.gitCommit` and `runDetails.builder.id`.
 
