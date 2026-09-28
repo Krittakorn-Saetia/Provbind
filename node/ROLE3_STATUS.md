@@ -20,7 +20,7 @@ This file therefore rebuilds the Role 3 task list from two sources:
 | R3-T4 | Verifier: decision order, mount exclusion, binding failures, detection records (§4.4) | PH4-03, PH4-05 to 18 | Done in the cloud | role3/verify |
 | R3-T5 | `python -m node.run`: live and replay, `events.jsonl` and `detections.jsonl`, cold-start holding | PH2-10 | Done in the cloud; windows appear in the summary. PH2-10's test file is outside this session's files (Q2) | role3/verify |
 | R3-T6 | Replay harness: a recording plus `ground_truth.csv` → results per scenario; the synthetic §7 library | PH4-* | Done | role3/verify |
-| R3-T7 | ML-B: gate, windows, Ψ_I, per-image Isolation Forest, g_I, θ_A, D_beh; D2 tooling | MLB-01 to 06 | To do | |
+| R3-T7 | ML-B: gate, windows, Ψ_I, per-image Isolation Forest (as JSON, no pickle), g_I, θ_A, D_beh; range guard; D2 tooling (`python -m node.mlb`, `ml/data/mlb/`) | MLB-01 to 06 | Done in the cloud. MLB-01 and 02 pass (code properties). MLB-03 to 06 need real D2 | role3/mlb |
 | R3-T8 | Cuckoo filter on the event path, on and off | CF-05 (CF-01 runs in the test kit's example) | To do | |
 | R3-T9 | Runtime hashing of executed files (stretch). The pipeline already takes a `hasher` | PH4-07, 08, 18 | To do | |
 | Demo PC | Load the policies, record `node/testdata/raw.jsonl` and a scenario session, run the live tests | All PH4 on real evidence; OH-02, OH-03 | Needs the demo PC | |
@@ -50,12 +50,20 @@ This file therefore rebuilds the Role 3 task list from two sources:
 | PH4-16 | P1 | `test_ph4_scenarios.py` | not_run | attack-7, with `connect.yaml` and `PROVBIND_EGRESS`; blocked without the list (M8) |
 | PH4-17 | P0 | `test_ph4_17_records.py` | not_run (26 synthetic detections valid) | The recording's detections, or `PROVBIND_DETECTIONS` |
 | PH4-18 | P1 | `test_ph4_scenarios.py` | not_run | **Blocked**, as PH4-07 |
+| MLB-01 | P0 | `test_mlb_01_02_gate_windows.py` | **pass**: 12 contradicting events of 8 kinds fed, none reached a window | Also checks `PROVBIND_RECORDING` |
+| MLB-02 | P0 | `test_mlb_01_02_gate_windows.py` | **pass**: 104 windows identical over 8 replays (hash seeds 0–5) | Also checks `PROVBIND_RECORDING` |
+| MLB-03 | P0 | `test_mlb_03_06_model.py` | not_run (synthetic D2) | D2 in `ml/data/mlb/<hex>/`; writes the model beside the envelope |
+| MLB-04 | P0 | `test_mlb_03_06_model.py` | not_run (synthetic held-out FPR 0%) | `heldout.jsonl` in D2 |
+| MLB-05 | P0 | `test_mlb_03_06_model.py` | not_run (synthetic: D_beh in attack-2; the forest alone flags only an unrelated window) | D2 plus `PROVBIND_RECORDING` with an attack-2 row |
+| MLB-06 | P1 | `test_mlb_03_06_model.py` | not_run (3 synthetic images) | D2 for 3 or more images |
 | PH2-10, MLA-07, OH-01, OH-02, OH-03, OH-06 | P1–P2 | none | none | These IDs' file names are outside this session's allowed files (Q2) |
 | All other R3 IDs | | not written yet | | |
 
 A simulated demo-PC run (the synthetic library written out as a recording, a run folder and a `ground_truth.csv`) gave:
 - **pass:** PH4-03, 05, 06, 09 to 15;
 - **blocked:** PH4-07, 08 and 18 (no hash source), and PH4-16 until an egress list is given; with one, PH4-16 passes.
+
+With synthetic D2 written to a D2 folder as well, MLB-01 to 05 passed, the model was written beside the envelope, and MLB-06 stayed not_run (one image).
 
 ## Questions for the team
 
@@ -76,8 +84,17 @@ A simulated demo-PC run (the synthetic library written out as a recording, a run
 - **Q6. Egress (M8).** The envelope has no egress set, so D_net checks an operator allow list given with `--egress`, and its detections say CONFIGURED. If the team adds egress to the envelope (MLA-08, Role 2), the verifier should read it from there.
 - **Q7. Answer to Role 2's question 6.** Yes: the node uses `compiler/indices.py` (J_I) and `compiler/paths.py` (realpath), read-only.
 
+- **Q8. The range guard (ML-B), for the team and Aj Ohm.** An Isolation Forest cannot say "far beyond normal".
+  - Why: a window beyond the training range follows the same path through every tree as the most extreme benign window, and a feature constant in training gets no split. On the synthetic data, attack-2's 200-write burst scored exactly θ_A (benign maximum: 15 writes), so the forest alone missed it in every seed.
+  - Proposed fix: a window with any feature above twice its benign maximum is also D_beh. It caught the burst and added no held-out false positive.
+  - Current state: on by default, reported side by side with the forest alone (Test Plan §0, rule 1).
+  - For the update log (§10): "IF saturates outside its training range; add a range guard, or use a model that extrapolates". Keep it?
+- **Q9. D2 length (Role 1's load generator).** A window starts at a process's first event, so 3 hours of the synthetic load gave about 290 windows, fewer than 100 for validation, and θ_A fell back to the 95th percentile. The plan expected 360. 4 hours gave the 99th percentile. Record at least 4 hours; `ml/data/mlb/README.md` has the steps.
+- **Q10. Per-image or global (C5).** MLB-06 compares them once D2 exists for 3 images. Until then the demo uses the per-image model, as the draft says.
+
 ## Blockers
 
 - **No Tetragon or cluster in the cloud.** Every live test (marked `integration`) and every scenario result needs the demo PC. That was expected.
 - **No real Tetragon output in the repository yet.** Sprint Handoff §7, Day 1 asks for `node/testdata/raw.jsonl`. Until it exists, the normaliser's input shapes come from the Tetragon documentation, not from our version.
+- **No D2 yet.** MLB-03 to 06 need the demo image's benign windows: 4 hours or more, plus an hour held out (Q9).
 - **No runtime hash source (C3).** D_hash never fires on a raw recording, so PH4-07, 08 and 18 record `blocked`. R3-T9 is the stretch fix: hashing `/proc/<pid>/exe`, after checking Tetragon's PID namespace in kind.
