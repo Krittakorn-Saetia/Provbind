@@ -1,12 +1,21 @@
 # Handoff from Role 2 to Role 3: test results, three problems, the envelopes you'll read, and Role 3 against the test plan
 
-**From:** Role 2 (Korn) · **For:** Role 3 (node runtime) · **Date:** 29 September 2026
+**From:** Role 2 (Korn) · **For:** Role 3 (node runtime) · **Date:** 29 September 2026, updated the same day
 
 **Checked against:** the *Capability Test Plan* v1.1 (`docs/PROVBIND-Capability-Test-Plan.md`), `main` at `bddcced`, and your PRs as submitted: #11 `897bc19`, #12 `48b30e0`, #13 `39ec78f`, #14 `72ea99f`, #15 `c4527f9`. They were checked alone and merged with Role 1's PR #16.
 
 **How it was checked:** on Korn-PC, under WSL2 Ubuntu 22.04 with Python 3.11.16 and every package in `requirements.txt` installed (including PyYAML), in throwaway checkouts. Nothing was changed in your code.
 
 This document replaces the shorter note on branch `local/role3-note`.
+
+**Update (29 September, evening): Role 2's fixes, and what they change for you.** Role 2 has eight branches waiting for Korn to merge. Merged with your PRs and Role 1's #16, there are no conflicts: 573 unit tests pass, and the only failure is still PH4-17 (Problem 1).
+
+- **Nothing in the node's inputs changes.** The stand-in's envelope was recompiled on Korn-PC with every fix. `files`, `symlinks`, `closure` and `capabilities` are identical, and so is every depth that a file's package has.
+- **Two fields change** (§6.2):
+  - `image.rekor_log_index` is recorded (branch `local/evidence-fixes`);
+  - `packages` holds only purls, 113 instead of 127 (branch `local/sbom-no-purl`).
+- **The compiler now refuses an image that was attested but never signed** (exit 2), which cosign v3's own `cosign verify` still accepts. So an envelope in the run folder now also means the image itself was signed.
+- **The 13th integration test is fixed** (branch `local/status-refresh`): it reads the SBOM from the verified attestation, not from the build's run folder (§2).
 
 ---
 
@@ -24,7 +33,7 @@ This document replaces the shorter note on branch `local/role3-note`.
   - PH4-17 **fails** (Problem 1);
   - the other P0 tests wait for real recordings and dataset D2 from the demo PC.
   - P1 has no tests yet for PH2-10, MLA-07 and OH-01 to OH-03.
-- **The envelopes you'll read have no capabilities** (§6.2), so every granted capability check becomes D_cap. Their Rekor log index is null, but the node doesn't read it.
+- **The envelopes you'll read have no capabilities** (§6.2), so every granted capability check becomes D_cap. Their Rekor log index is recorded since Role 2's fix, but the node doesn't read it.
 
 ---
 
@@ -43,7 +52,7 @@ This document replaces the shorter note on branch `local/role3-note`.
 
 **Integration:** with every PR merged, `pytest -m integration` ran Role 2's 13 tests against the real stand-in image.
 - 12 passed.
-- The 13th reads the build's debug copy of the SBOM from the run folder, and passed once it was run against the folder the image was built in.
+- The 13th reads the build's debug copy of the SBOM from the run folder, and passed once it was run against the folder the image was built in. *Fixed since:* it now reads the verified attestation (`local/status-refresh`), and with Role 2's branches merged all 19 of Role 2's integration tests pass.
 - Your 4 cluster tests (PH4-01/02 and PH4-04) skipped, because Korn-PC has no cluster (`kubectl` has no server).
 
 Every failure in the table comes from Problem 1.
@@ -190,14 +199,14 @@ Every hook the plan names is present, and each policy is filtered to namespace `
 |---|---|
 | Files | 5,725 |
 | Symlinks | 506 |
-| Packages | 127 |
+| Packages | 113 (127 before `local/sbom-no-purl`) |
 | Size | 1.4 MB |
-| Compile time | 8.0 s |
+| Compile time | 8.0 s; 5.4 s when its layers are already cached |
 | `closure` (5) | `ld-linux-x86-64.so.2`, `libc.so.6`, `libm.so.6`, `/usr/local/bin/python3.11`, `/usr/local/lib/libpython3.11.so.1.0`. `ls` and `dash` are in `files` but not the closure. |
 | `capabilities` | **`[]`**. The allowlist has no entry for the stand-in's packages, and it exposes only 8080. The demo app will be the same: no Python requirements, and port 8080. |
 | `verification` | All five checks true |
-| `image.rekor_log_index` | **null**. A Role 2 bug with cosign v3; the fix is pending on branch `local/rekor-bug`. The node doesn't read this field. |
-| `packages` keys | 113 are purls. **14 are syft `bom-ref` IDs**, for Windows launcher programs inside pip and setuptools that syft lists without a purl. No `files[].package` points at them, so J_pkg and J_depth are unaffected. |
+| `image.rekor_log_index` | **2972903426** since `local/evidence-fixes`. Before, it was null, because cosign v3's `cosign verify` no longer prints the log entry. The node doesn't read this field. |
+| `packages` keys | All 113 are purls. Before `local/sbom-no-purl`, 14 more were syft `bom-ref` IDs, for Windows launcher programs inside pip and setuptools that syft lists without a purl. No `files[].package` pointed at them, so J_pkg and J_depth are the same either way. |
 
 **What that means at run time:**
 
@@ -222,7 +231,7 @@ Every hook the plan names is present, and each policy is filtered to namespace `
 
 | Your item | Answer |
 |---|---|
-| T12 step 3: the stand-in's envelope | Compiled on Korn-PC; PH3-04, 07, 08 and 09 pass on it. For the demo PC, Role 1 compiles it there and sends you the path (§6.1). |
+| T12 step 3: the stand-in's envelope | Compiled on Korn-PC; PH3-04, 07, 08 and 09 pass on it. Recompiled on 29 September with Role 2's fixes: the same files, closure and capabilities. For the demo PC, Role 1 compiles it there and sends you the path (§6.1). |
 | The demo app's envelope | Same: Role 1 builds and compiles it on the demo PC |
 | Two envelopes of the demo image for MLA-07 | Needs a trained ML-A model, so after D1 is profiled and joined. The allowlist one is `PROVBIND_CAPS_MODEL=none`. Not before then. |
 | Keep `indices.py` and `paths.py` | Yes (§7) |
