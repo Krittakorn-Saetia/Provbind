@@ -1,7 +1,7 @@
 """T11: compile one image's envelope (handoff T11).
 
     python -m compiler.compile <ref@digest> --run $PROVBIND_RUN [--key pipeline/keys/cosign.pub]
-                               [--registry-name HOST]
+                               [--registry-name HOST] [--features-out ml/data/features.jsonl]
 
 preflight -> evidence -> fetch -> union -> canonicalise -> closure -> SBOM -> owners -> caps
 -> assemble. The envelope is validated against contracts/envelope.schema.json and written
@@ -11,6 +11,12 @@ and timings go to stderr.
 Capabilities come from the ML-A model in ml/model/ when there is one, otherwise from the
 curated allowlist; PROVBIND_CAPS_MODEL names another model directory, or "none" for the
 allowlist (compiler/caps.py).
+
+--features-out appends the image's ML-A features to a JSON-lines file, the feature side of
+dataset D1 (T13 step 3), which `python -m ml.dataset` joins to Role 1's labels by digest.
+They are computed here because the closure binaries' imports need the image's layers. The
+line is appended after the envelope validates and before it is written, so a failed append
+leaves no envelope and the exit is 1.
 
 Exit codes: 0 written; 1 unexpected error; 2 evidence failed verification or binding, or a
 manifest, config or blob hash mismatch; 3 bad input (not by digest, registry unreachable,
@@ -54,10 +60,12 @@ def timed(timings: dict, step: str):
 
 
 def build_envelope(image: oci.Image, ev: evidence.Evidence, compiled_at: str,
-                   timings: dict | None = None, model=None) -> dict:
+                   timings: dict | None = None, model=None, features: dict | None = None) -> dict:
     """Everything after the network: union, canonicalise, closure, SBOM, owners, caps,
     assemble. Reads only the verified blobs on disk. `model` is the ML-A model from
-    caps.load_model; without one the allowlist decides."""
+    caps.load_model; without one the allowlist decides. A `features` dict receives, under
+    "features", ML-A's feature row for the image: caps.image_features with no vocabulary
+    (the default pod; NaN as null), as dataset D1 stores it."""
     timings = {} if timings is None else timings
     with timed(timings, "union"):
         u = layers.union(image.layers)
@@ -74,6 +82,9 @@ def build_envelope(image: oci.Image, ev: evidence.Evidence, compiled_at: str,
             package_of = owners.match(owners.owners(fs.files, fs.links, fs.read), packages)
         with timed(timings, "caps"):                  # no 𝒞_K8s cap: the pod is unknown here
             capabilities = caps.for_image(packages, image.config, reachable, fs, model)
+        if features is not None:                      # T13 step 3: needs the open layers
+            with timed(timings, "features"):
+                features["features"] = caps.image_features(packages, image.config, reachable, fs).to_json()
     log.info("%d files, %d symlinks, %d in the closure, %d packages (%.0f%% unresolved)",
              len(fs.files), len(symlinks), len(reachable), len(packages), 100 * unresolved)
 
@@ -130,15 +141,41 @@ def write_atomically(envelope: dict, run_dir: str, digest: str) -> Path:
     return final
 
 
+def append_features(path: str | Path, envelope: dict, config: oci.ImageConfig, features: dict) -> None:
+    """Append one line of the feature side of dataset D1 (ml/dataset.py reads it):
+
+        {"digest", "ref", "features_version", "features", "packages", "exposed_ports"}
+
+    `packages` are the envelope's package keys (purls). The line goes out in one O_APPEND
+    write (looping only if the OS takes part of it), so compiles running side by side don't
+    interleave their lines."""
+    from ml.features import FEATURES_VERSION        # ELF parsing: only when asked for
+    row = {"digest": envelope["image"]["digest"], "ref": envelope["image"]["ref"],
+           "features_version": FEATURES_VERSION, "features": features,
+           "packages": sorted(envelope["packages"]), "exposed_ports": sorted(config.exposed_ports or {})}
+    data = (json.dumps(row, allow_nan=False) + "\n").encode("utf-8")
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o666)
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    log.info("features appended to %s", path)
+
+
 def compiled_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def compile_image(ref: str, run_dir: str, key: str, registry_name: str | None = None,
-                  crane=None, cosign=None, now: str | None = None) -> Path:
+                  crane=None, cosign=None, now: str | None = None, features_out: str | None = None) -> Path:
     """The whole pipeline; returns the envelope path. Raises BadInput, EvidenceError,
     IntegrityError or anything unexpected; writes no envelope unless it returns (verified
-    blobs may stay in the cache)."""
+    blobs may stay in the cache). With `features_out`, appends the image's feature line
+    there first (append_features)."""
     timings: dict[str, float] = {}
     repo, digest = oci.parse_ref(ref)
     if cosign is None and not os.path.isfile(key):
@@ -156,9 +193,12 @@ def compile_image(ref: str, run_dir: str, key: str, registry_name: str | None = 
              ev.builder_id, ev.source_commit, ev.rekor_log_index)
     with timed(timings, "fetch"):
         image = oci.fetch(ref, os.path.join(run_dir, "cache", "blobs"), crane, registry_name, raw_manifest)
-    envelope = build_envelope(image, ev, now or compiled_now(), timings, model)
+    features = {} if features_out else None
+    envelope = build_envelope(image, ev, now or compiled_now(), timings, model, features)
     with timed(timings, "validate"):
         validate(envelope)
+    if features_out:
+        append_features(features_out, envelope, image.config, features["features"])
     return write_atomically(envelope, run_dir, digest)
 
 
@@ -175,6 +215,8 @@ def main(argv: list[str] | None = None, crane=None, cosign=None) -> int:
     ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"), help="run folder (default $PROVBIND_RUN or ./run)")
     ap.add_argument("--key", default="pipeline/keys/cosign.pub", help="cosign public key")
     ap.add_argument("--registry-name", help="registry host to fetch from instead of the reference's own")
+    ap.add_argument("--features-out", metavar="JSONL",
+                    help="append the image's ML-A features to this file, e.g. ml/data/features.jsonl (T13 step 3)")
     args = ap.parse_args(argv)
 
     logger = logging.getLogger("provbind")
@@ -184,7 +226,8 @@ def main(argv: list[str] | None = None, crane=None, cosign=None) -> int:
     logger.setLevel(logging.INFO)
     started = time.perf_counter()
     try:
-        path = compile_image(args.ref, args.run, args.key, args.registry_name, crane, cosign)
+        path = compile_image(args.ref, args.run, args.key, args.registry_name, crane, cosign,
+                             features_out=args.features_out)
     except evidence.EvidenceError as e:
         log.error("evidence failed: %s; no envelope written", e)
         return EXIT_EVIDENCE
