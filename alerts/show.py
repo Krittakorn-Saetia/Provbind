@@ -1,9 +1,13 @@
 """A readable alert view for the demo screen (Sprint Handoff §3.3, §8 Day 3).
 
-    python -m alerts.show --run $PROVBIND_RUN [--follow] [--no-color]
+    python -m alerts.show --run $PROVBIND_RUN [--follow | --rank] [--no-color]
 
 One line per alert, coloured by bucket, with its clause and attribution. Trust alerts (class
 "trust") show the failed checks. Colour is on only when stdout is a terminal.
+
+`--rank` prints the alerts most severe first: by score, then by the unrounded S the score was
+rounded from (alerts.score), then by time. Two alerts can share a whole-number score while S
+still tells them apart (PH5-04).
 """
 from __future__ import annotations
 
@@ -44,15 +48,36 @@ def format_alert(a: dict, colour: bool = False) -> str:
             f"rekor {sign.get('rekor_log_index')}")
 
 
+def rank(alerts: list[dict]) -> list[dict]:
+    """Most severe first: score, then S (score_parts.S), then the earlier alert."""
+    def key(a):
+        s = (a.get("score_parts") or {}).get("S")
+        return (-(a.get("score") or 0), -(s if isinstance(s, (int, float)) else (a.get("score") or 0) / 100),
+                str(a.get("time") or ""))
+    return sorted(alerts, key=key)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m alerts.show", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"), help="run folder (default $PROVBIND_RUN or ./run)")
     ap.add_argument("--follow", action="store_true", help="keep printing new alerts")
+    ap.add_argument("--rank", action="store_true", help="most severe first: by score, then by S, then by time")
     ap.add_argument("--no-color", action="store_true", help="plain text")
     args = ap.parse_args(argv)
     colour = sys.stdout.isatty() and not args.no_color
     path = Path(args.run) / "alerts.jsonl"
+    if args.rank:
+        alerts = []
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    alerts.append(json.loads(line))
+                except ValueError:
+                    continue
+        for a in rank(alerts):
+            print(format_alert(a, colour))
+        return 0
     while not path.exists():
         if not args.follow:
             print(f"no alerts yet ({path})", file=sys.stderr)

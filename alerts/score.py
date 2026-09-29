@@ -16,6 +16,11 @@
   outranks a signed contradiction (M2, MLB-07). g_I is read from the detection's detail.
 
 Scores never change the detection set: every detection gets exactly one score (Eq. 68).
+
+The whole-number score is for display. Ranking uses S itself, which the parts carry as "S": the
+rounding can tie two alerts that S tells apart. An undeclared file and a declared one of depth
+39 or more both show 90, since 100*S = 70 + 20*d/(1+d) rounds up there, but S is always lower for
+the declared file (PH5-04).
 """
 from __future__ import annotations
 
@@ -98,14 +103,16 @@ def score_detection(detection: Mapping, binding: Mapping | None = None) -> tuple
     """(score 0-100, bucket, the parts used) for one detection."""
     cls, sub = detection.get("class"), detection.get("subclass")
     if cls == "binding":
-        return BINDING_SCORE, bucket_of(BINDING_SCORE), {"rule": "binding: fixed score"}
+        return BINDING_SCORE, bucket_of(BINDING_SCORE), {"rule": "binding: fixed score", "S": BINDING_SCORE / 100}
 
     rho, kappa = rho_of(detection.get("context")), kappa_of(binding)
     s_c = 0.5 * rho + 0.5 * kappa
     if cls == "D_beh":
         g = g_of(detection)
-        score = min(to_score(0.6 * g + 0.4 * s_c), BEH_CAP)
-        return score, bucket_of(score), {"rule": "S_beh", "g_I": g, "rho": rho, "kappa": kappa, "cap": BEH_CAP}
+        s = 0.6 * g + 0.4 * s_c
+        score = min(to_score(s), BEH_CAP)
+        return score, bucket_of(score), {"rule": "S_beh", "S": round(s, 6), "g_I": g, "rho": rho, "kappa": kappa,
+                                         "cap": BEH_CAP}
 
     s_type, known = s_type_of(cls, sub)
     s_origin = s_origin_of(detection.get("origin"))

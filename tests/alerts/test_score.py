@@ -98,6 +98,24 @@ def test_an_undeclared_file_outranks_any_declared_one_before_rounding():       #
     assert ties and min(ties) == 39
 
 
+def test_ranking_uses_s_where_the_display_score_ties():                      # PH5-04, alerts.show --rank
+    from alerts.show import rank
+    alerts = []
+    for name, d in (("declared-depth-39", det("D_exec", "undeclared", package="pkg:pypi/x@1", depth=39)),
+                    ("undeclared", det("D_exec", "undeclared", declared=False)),
+                    ("passwd", det("D_write", "declared_file"))):
+        score, bucket, parts = score_detection(d, ROOT_POD)
+        alerts.append({"alert_id": name, "score": score, "bucket": bucket, "score_parts": parts, "time": "t"})
+    assert alerts[0]["score"] == alerts[1]["score"] == 90
+    assert [a["alert_id"] for a in rank(alerts)] == ["undeclared", "declared-depth-39", "passwd"]
+
+
+def test_every_score_carries_s():
+    for d in (det("D_exec", "undeclared"), {"class": "binding", "subclass": "unverified"},
+              {"class": "D_beh", "subclass": "anomalous_window", "clause": {"detail": "g_I 0.5"}}):
+        assert isinstance(score_detection(d, ROOT_POD)[2]["S"], float)
+
+
 def test_an_unresolved_depth_is_one_half_not_one():                           # PH5-05, M16
     parts = score_detection(det("D_write", "declared_file", package="pkg:deb/debian/login@1", depth=None), ROOT_POD)[2]
     assert parts["rho"] == 0.5

@@ -59,21 +59,38 @@ def test_ph5_03_scores_stay_in_range(record_result):
 
 
 def test_ph5_04_undeclared_outranks_declared(record_result):
-    import pytest
-    u_score, _, u = score_detection(det("D_exec", "undeclared", declared=False), ROOT_POD)
-    declared = [score_detection(det("D_exec", "undeclared", package="pkg:pypi/x@1", depth=d), ROOT_POD) for d in range(200)]
-    s_always_lower = all(p["S"] < u["S"] for _, _, p in declared)
-    ties = [d for d, (s, _, _) in enumerate(declared) if s >= u_score]
-    ok = s_always_lower and not ties
-    notes = (f"the same type and pod, depths 0 to 199: S is always lower for a declared file ({s_always_lower}), "
-             + ("and so is the score" if not ties else
-                f"but the integer score ties at {u_score} from depth {ties[0]} (100*S = 70 + 20*d/(1+d) rounds up to "
-                f"90 once d >= 39). Update-log item: rank by S, or keep one decimal in the score"))
+    """Judged on S, the score Eq. (65) defines; the whole-number score is only its display. For
+    every type, origin and pod, and every depth 0-199: S is lower for the declared file, its
+    rounded score is never higher, and ranking (alerts.show --rank) puts the undeclared file first."""
+    from alerts.show import rank
+    types = [("D_exec", "undeclared"), ("D_load", "undeclared"), ("D_write", "declared_file"), ("D_hash", "relocated"),
+             ("D_cap", "not_in_envelope"), ("D_net", "not_allowed")]
+    pods = [{"privileged": True}, {"run_as_root": True}, {"run_as_root": False}]
+    combos = s_lower = never_higher = ranked_first = 0
+    first_ties = set()
+    for cls, sub in types:
+        for origin in ("AUTHENTICATED", "INFERRED"):
+            for pod in pods:
+                u_score, _, u = score_detection(det(cls, sub, origin, declared=False), pod)
+                for d in range(200):
+                    combos += 1
+                    score, _, p = score_detection(det(cls, sub, origin, package="pkg:pypi/x@1", depth=d), pod)
+                    s_lower += p["S"] < u["S"]
+                    never_higher += score <= u_score
+                    order = rank([{"alert_id": "declared", "score": score, "score_parts": p, "time": "t"},
+                                  {"alert_id": "undeclared", "score": u_score, "score_parts": u, "time": "t"}])
+                    ranked_first += order[0]["alert_id"] == "undeclared"
+                    if score == u_score:
+                        first_ties.add(d)
+    ok = s_lower == never_higher == ranked_first == combos
+    first_tie = min(first_ties) if first_ties else None
     record_result("PH5-04", "pass" if ok else "fail",
-                  metrics={"undeclared": u_score, "first_tie_depth": ties[0] if ties else None, "S_always_lower": s_always_lower},
-                  notes=notes)
-    if not ok and s_always_lower:
-        pytest.xfail("known: the plan's integer score ties from depth 39 (recorded as fail, an update-log item)")
+                  metrics={"cases": combos, "S_lower": s_lower, "score_never_higher": never_higher,
+                           "ranked_first": ranked_first, "display_tie_from_depth": first_tie},
+                  notes=(f"{combos} cases (6 types x 2 origins x 3 pods x depths up to 199): S is lower for the declared "
+                         f"file in every case, its rounded score is never higher, and ranking by S puts the undeclared "
+                         f"file first. The whole-number display score ties from depth {first_tie} "
+                         f"(for a root pod 100*S = 70 + 20*d/(1+d), which rounds to 90 there); ranking uses S"))
     assert ok
 
 
