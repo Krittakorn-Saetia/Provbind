@@ -1,0 +1,122 @@
+# ML-A profiling corpus (Test Plan §4.1, dataset D1). Role 1 owns this file.
+#
+# Each image is re-tagged into localhost:5001 and attested with our key BEFORE profiling, so
+# the compiler reads verified evidence exactly as in production (§4.1). Then Role 1 runs each
+# image twice for 120 s under Role 3's `cap_capable` policy (MLA-03); the label is the set of
+# capabilities with a granted check, unioned over the two runs (§4.2).
+#
+# Entry fields:
+#   image      pullable reference. PIN A DIGEST when you pull (see note below); tags are examples.
+#   env        environment variables the image needs to start.
+#   command    override when the default entrypoint needs no work to exercise.
+#   port       the port the workload hits; omit for images with no server.
+#   workload   a shell snippet run from a helper pod; {host} is the image's Service name.
+#
+# Size: 26 images below (§4.1 wants at least 20, target 40). Add more from the list at the end.
+# Most capability use happens at start-up, so a light workload is enough; tune on the demo PC.
+
+# --- Web servers ---
+- image: nginx:1.27
+  port: 80
+  workload: "for i in $(seq 50); do curl -s http://{host}:80/ >/dev/null; done"
+- image: httpd:2.4
+  port: 80
+  workload: "for i in $(seq 50); do curl -s http://{host}:80/ >/dev/null; done"
+- image: caddy:2
+  port: 80
+  workload: "for i in $(seq 50); do curl -s http://{host}:80/ >/dev/null; done"
+- image: haproxy:3.0
+  port: 80
+  workload: "for i in $(seq 50); do curl -s http://{host}:80/ >/dev/null; done"
+- image: traefik:3.1
+  command: ["traefik", "--entrypoints.web.address=:80", "--ping=true"]
+  port: 80
+  workload: "for i in $(seq 50); do curl -s http://{host}:80/ping >/dev/null; done"
+
+# --- Datastores ---
+- image: postgres:16
+  env: { POSTGRES_PASSWORD: test }
+  port: 5432
+  workload: "for i in $(seq 20); do PGPASSWORD=test psql -h {host} -U postgres -c 'select 1' >/dev/null; done"
+- image: mariadb:11
+  env: { MARIADB_ROOT_PASSWORD: test }
+  port: 3306
+  workload: "for i in $(seq 20); do mariadb -h {host} -uroot -ptest -e 'select 1' >/dev/null 2>&1; done"
+- image: mysql:8
+  env: { MYSQL_ROOT_PASSWORD: test }
+  port: 3306
+  workload: "for i in $(seq 20); do mysql -h {host} -uroot -ptest -e 'select 1' >/dev/null 2>&1; done"
+- image: mongo:7
+  port: 27017
+  workload: "for i in $(seq 20); do mongosh --host {host} --eval 'db.runCommand({ping:1})' >/dev/null 2>&1; done"
+- image: influxdb:2.7
+  env: { DOCKER_INFLUXDB_INIT_MODE: setup, DOCKER_INFLUXDB_INIT_USERNAME: admin,
+         DOCKER_INFLUXDB_INIT_PASSWORD: test-password, DOCKER_INFLUXDB_INIT_ORG: sf9, DOCKER_INFLUXDB_INIT_BUCKET: b }
+  port: 8086
+  workload: "for i in $(seq 30); do curl -s http://{host}:8086/health >/dev/null; done"
+
+# --- Caches / key-value ---
+- image: redis:7
+  port: 6379
+  workload: "for i in $(seq 50); do redis-cli -h {host} set k$i v$i >/dev/null; done"
+- image: valkey/valkey:8
+  port: 6379
+  workload: "for i in $(seq 50); do redis-cli -h {host} set k$i v$i >/dev/null; done"
+- image: memcached:1.6
+  port: 11211
+  workload: "for i in $(seq 30); do printf 'set k 0 0 1\\r\\nv\\r\\nquit\\r\\n' | nc {host} 11211 >/dev/null; done"
+
+# --- Message broker ---
+- image: rabbitmq:3.13
+  port: 5672
+  workload: "for i in $(seq 30); do curl -s http://{host}:15692/metrics >/dev/null 2>&1; done"
+
+# --- Language apps ---
+- image: python:3.11-slim         # Flask-shaped: stdlib HTTP server, no extra packages
+  command: ["python", "-m", "http.server", "8080"]
+  port: 8080
+  workload: "for i in $(seq 50); do curl -s http://{host}:8080/ >/dev/null; done"
+- image: node:20-slim             # Express-shaped: a one-line HTTP server
+  command: ["node", "-e", "require('http').createServer((q,s)=>s.end('ok')).listen(3000)"]
+  port: 3000
+  workload: "for i in $(seq 50); do curl -s http://{host}:3000/ >/dev/null; done"
+- image: hashicorp/http-echo:1.0  # a static Go binary
+  command: ["/http-echo", "-listen=:5678", "-text=ok"]
+  port: 5678
+  workload: "for i in $(seq 50); do curl -s http://{host}:5678/ >/dev/null; done"
+
+# --- Monitoring (varied capability profiles) ---
+- image: prom/prometheus:v2.54.1
+  port: 9090
+  workload: "for i in $(seq 30); do curl -s http://{host}:9090/-/healthy >/dev/null; done"
+- image: grafana/grafana:11.2.0
+  port: 3000
+  workload: "for i in $(seq 30); do curl -s http://{host}:3000/api/health >/dev/null; done"
+
+# --- Utilities and jobs ---
+- image: busybox:1.36
+  command: ["sh", "-c", "while true; do date > /tmp/t; sleep 1; done"]
+  workload: ""
+- image: alpine:3.20
+  command: ["sh", "-c", "apk add --no-cache iputils >/dev/null 2>&1; ping -c 5 127.0.0.1; sleep 600"]
+  workload: ""
+- image: curlimages/curl:8.10.1
+  command: ["sh", "-c", "while true; do curl -s http://example.com/ >/dev/null 2>&1; sleep 5; done"]
+  workload: ""
+
+# --- Our own images (already attested; §4.1) ---
+- image: localhost:5001/standin-app
+  port: 8080
+  workload: "for i in $(seq 50); do curl -s http://{host}:8080/ >/dev/null; done"
+- image: localhost:5001/demo-app     # the real demo app (Role 1 delivers testbed/demo-app/)
+  port: 8080
+  workload: "for i in $(seq 50); do curl -s http://{host}:8080/ >/dev/null; done"
+
+# To reach the target of 40, add more variety from public images, e.g.:
+#   web: lighttpd, openresty;  db: cockroachdb, cassandra, couchdb;  cache: hazelcast;
+#   broker: nats, kafka;  lang: openjdk (a small Java server), ruby, php:apache;  ml: a torch job.
+#
+# PIN DIGESTS before the real run so a label always maps to one image:
+#   docker pull nginx:1.27
+#   docker image inspect --format '{{index .RepoDigests 0}}' nginx:1.27
+# and replace the tag with name@sha256:... . profile_corpus.sh records the digest either way.
