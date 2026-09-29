@@ -40,6 +40,7 @@ python -m node.run --run $PROVBIND_RUN --replay rec.jsonl
   | `--grace S` (30) | How long a container may run without a binding |
   | `--envelope-timeout S` (300) | How long a bound container may wait for its envelope before `binding / no_envelope` |
   | `--no-events` | Don't write `events.jsonl` |
+  | `--cuckoo` | Check the reference Cuckoo filter before the path index (Eq. 52). Off by default; CF-05 measures it |
   | `--mlb` | Score ML-B windows with the model beside each envelope (`<hex>.mlb/model.json`) |
   | `--windows-out FILE` | Record every closed ML-B window, for dataset D2 |
   | `--namespace NS` / `--all-namespaces` | Which namespaces to monitor |
@@ -75,6 +76,11 @@ The decision order is in `verify.py`'s docstring. Each event gets one outcome.
 - **Runtime hashes.** Without a runtime hash (path-only mode, the default) there is no D_hash, and an undeclared exec says `path-only` in its detail (PH4-09). The pipeline takes a `hasher`; there is no real hash source yet (C3, R3-T9).
 - **Runtime paths.** Looked up as reported first, then through the image's symlinks. That covers a Tetragon version that reports `/bin/sh` for `/usr/bin/dash`.
 - **Mounts** are compared as given in the binding and as real paths in the image, so `/var/run/secrets/…` on Debian also covers `/run/secrets/…`.
+
+**The Cuckoo filter (Eq. 52, M15).** With `--cuckoo`, each envelope gets the test kit's reference filter over its declared paths, checked before the path index.
+- **Correctness:** a "no" is certain; a "maybe" still consults the index. The detections are identical either way.
+- **A full filter** is dropped with an error and counted (`filter_full`), never trusted.
+- **Speed:** on the synthetic stream, CF-05 measured the filter doubling the per-event latency (p50 4.4 → 8.8 µs), so §6.3's rule says drop it. The deciding number comes from a demo-PC recording.
 
 **Cold start (C4, PH2-10).** Events that arrive before their container's binding or envelope are held, in order, and verified when both are ready. The summary reports each container's window in seconds.
 
@@ -141,7 +147,7 @@ kubectl get tracingpoliciesnamespaced -n demo
 
 ```bash
 pytest -q -m "not integration" node/tests                     # node unit tests (not yet in pytest.ini's testpaths)
-pytest -q tests/capability/test_ph4_*.py tests/capability/test_mlb_*.py   # PH4 and MLB capability tests
+pytest -q tests/capability/test_ph4_*.py tests/capability/test_mlb_*.py tests/capability/test_cf_05_*.py
 pytest -q -m integration tests/capability/test_ph4_*.py       # demo PC: live triggers, scale test
 ```
 

@@ -27,6 +27,8 @@ from typing import Mapping
 from compiler.indices import Indices, build as build_indices
 from compiler.paths import SymlinkLoop, realpath
 
+from .ref_cuckoo import CuckooFilter
+
 log = logging.getLogger("provbind.node.store")
 
 ORIGINS = ("AUTHENTICATED", "INFERRED", "CONFIGURED")
@@ -55,10 +57,16 @@ class Envelope:
     source: str = ""
     stamp: tuple = ()
     extra: dict = field(default_factory=dict)       # per-envelope state other stages attach
+    filter: CuckooFilter | None = None              # Eq. (52)'s pre-check, when turned on (CF-05)
+    filter_full: bool = False
 
     @classmethod
-    def prepare(cls, doc: Mapping, source: str = "", stamp: tuple = ()) -> Envelope:
-        """Raises ValueError for an envelope the verifier cannot use."""
+    def prepare(cls, doc: Mapping, source: str = "", stamp: tuple = (), cuckoo: bool = False) -> Envelope:
+        """Raises ValueError for an envelope the verifier cannot use.
+
+        `cuckoo` builds the reference Cuckoo filter over the declared paths (Test Plan §6.1). If
+        it fills up, the envelope runs without it, and `filter_full` says so: a failed insertion
+        would otherwise turn a declared file into a false "undeclared" (CF-06)."""
         for key in ("image", "files", "symlinks", "closure", "capabilities", "layers", "packages"):
             if key not in doc:
                 raise ValueError(f"envelope has no {key!r}")
@@ -76,8 +84,16 @@ class Envelope:
             cap_origin = "CONFIGURED"
         else:
             cap_origin = "AUTHENTICATED"
-        return cls(digest=digest, doc=dict(doc), j=build_indices(doc), closure=frozenset(doc["closure"]),
-                   links=dict(doc["symlinks"]), caps=caps, cap_origin=cap_origin, source=source, stamp=stamp)
+        env = cls(digest=digest, doc=dict(doc), j=build_indices(doc), closure=frozenset(doc["closure"]),
+                  links=dict(doc["symlinks"]), caps=caps, cap_origin=cap_origin, source=source, stamp=stamp)
+        if cuckoo:
+            f = CuckooFilter(max(len(env.j.path), 1), fp_bits=16)
+            if all(f.add(p) for p in env.j.path):
+                env.filter = f
+            else:
+                env.filter_full = True
+                log.error("envelope %s: the Cuckoo filter is full; running without it", digest)
+        return env
 
     def canonical(self, path: str | None) -> str | None:
         """The path with the image's symlinks resolved, or None if they loop."""
@@ -97,11 +113,13 @@ class Envelope:
         """
         if not path:
             return None, None
-        rec = self.j.path.get(path)
-        if rec is not None:
-            return path, rec
+        f = self.filter                       # "no" is certain; "maybe" still needs the index
+        if f is None or path in f:
+            rec = self.j.path.get(path)
+            if rec is not None:
+                return path, rec
         real = self.canonical(path)
-        if real and real != path:
+        if real and real != path and (f is None or real in f):
             rec = self.j.path.get(real)
             if rec is not None:
                 return real, rec
@@ -161,8 +179,9 @@ class Store:
     them as objects, for replay and tests; it behaves the same but never reloads.
     """
 
-    def __init__(self, run_dir: str | os.PathLike | None):
+    def __init__(self, run_dir: str | os.PathLike | None, cuckoo: bool = False):
         self.run_dir = Path(run_dir) if run_dir is not None else None
+        self.cuckoo = cuckoo
         self.bindings: dict[str, Binding] = {}
         self._bare: dict[str, str] = {}              # bare container ID -> bindings key
         self.cache: dict[str, Envelope] = {}          # digest -> prepared envelope
@@ -175,9 +194,9 @@ class Store:
         self._static_envelopes: dict[str, Mapping] | None = None
 
     @classmethod
-    def static(cls, envelopes, bindings: Mapping) -> Store:
+    def static(cls, envelopes, bindings: Mapping, cuckoo: bool = False) -> Store:
         """A store over given envelope documents and a bindings.json object."""
-        s = cls(None)
+        s = cls(None, cuckoo=cuckoo)
         s._static_envelopes = {e["image"]["digest"]: e for e in envelopes}
         s.set_bindings(bindings)
         return s
@@ -311,7 +330,8 @@ class Store:
         return None
 
     def _install(self, digest: str, doc: Mapping, source: str, stamp: tuple) -> None:
-        env = Envelope.prepare(doc, source, stamp)
+        env = Envelope.prepare(doc, source, stamp, cuckoo=self.cuckoo)
+        self.stats["filter_full"] += env.filter_full
         if env.digest != digest:
             raise ValueError(f"filed under {digest} but names {env.digest}")
         replaced = digest in self.cache
