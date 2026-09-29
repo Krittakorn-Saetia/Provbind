@@ -1,4 +1,6 @@
-"""alerts/log.py and alerts/verify_log.py: the §4.6 hash chain (PH5-10, PH5-11, E2E-12)."""
+"""alerts/log.py and alerts/verify_log.py: the §4.6 hash chain (PH5-10, PH5-11, E2E-12) and its signed
+checkpoints (PH5-12; a keyed hash stands in for cosign here, the real signature is in the PH5-12 test)."""
+import hashlib
 import json
 import re
 import threading
@@ -6,7 +8,7 @@ import threading
 import pytest
 
 from alerts import verify_log
-from alerts.log import ZERO, ViolationLog, chain_hash
+from alerts.log import ZERO, Checkpointer, ViolationLog, chain_hash, read_checkpoints
 
 from .helpers import read_jsonl
 
@@ -122,3 +124,102 @@ def test_two_writers_never_break_the_chain_or_reuse_an_id(tmp_path):
 
 def test_detection_ids_are_read_back(run):
     assert ViolationLog(run).detection_ids() == {f"det-{i:04d}" for i in range(1, 101)}
+
+
+# --- signed checkpoints (PH5-12) ------------------------------------------------------------------------
+
+class FakeSigner:
+    """sign(key, message) and verify(pub, message, bundle), with key == pub: cosign's interface."""
+
+    def __init__(self, fail=False):
+        self.fail = fail
+
+    def sign(self, key, message):
+        if self.fail:
+            raise RuntimeError("cosign: wrong password")
+        return {"mac": hashlib.sha256(key.encode() + message).hexdigest()}
+
+    def verify(self, pub, message, bundle):
+        return bundle.get("mac") == hashlib.sha256(pub.encode() + message).hexdigest()
+
+
+def signed_run(tmp_path, n=5, every=2, signer=None):
+    log = ViolationLog(tmp_path, Checkpointer("log-key", every, signer or FakeSigner()))
+    for i in range(1, n + 1):
+        log.append(alert(i))
+    return tmp_path, log
+
+
+def check(run, every=2):
+    return verify_log.verify(run, pub="log-key", every=every, verifier=FakeSigner())
+
+
+def rewrite(run, k, **change):
+    """Change record k and recompute every later hash: what someone who can write the file can do."""
+    entries = [json.loads(line) for line in lines(run)]
+    entries[k - 1]["record"].update(change)
+    prev = entries[k - 2]["hash"] if k > 1 else ZERO
+    for e in entries[k - 1:]:
+        e["prev"], e["hash"] = prev, chain_hash(prev, e["record"])
+        prev = e["hash"]
+    write(run, [json.dumps(e) for e in entries])
+
+
+def test_every_nth_record_is_signed(tmp_path):
+    run, _ = signed_run(tmp_path)
+    assert [c["k"] for c in read_checkpoints(run / "log" / "checkpoints.jsonl")] == [2, 4]
+    r = check(run)
+    assert r.ok and r.checkpoints == 2 and "records 5-5 are not signed yet" in r.reason
+
+
+def test_a_recomputed_rewrite_passes_the_plain_chain_but_not_the_checkpoints(tmp_path):     # M6
+    run, _ = signed_run(tmp_path)
+    rewrite(run, 3, score=10)
+    assert verify_log.verify(run).ok                                       # the weakness
+    r = check(run)
+    assert not r.ok and r.first_bad == 3 and "from 3 to 4 was rewritten" in r.reason
+
+
+def test_deleting_the_checkpoints_does_not_help(tmp_path):
+    run, _ = signed_run(tmp_path)
+    (run / "log" / "checkpoints.jsonl").unlink()
+    r = check(run)
+    assert not r.ok and r.first_bad == 1 and "no signed checkpoint for record 2" in r.reason
+
+
+def test_a_forged_checkpoint_fails(tmp_path):
+    run, _ = signed_run(tmp_path)
+    rewrite(run, 3, score=10)
+    cps = read_checkpoints(run / "log" / "checkpoints.jsonl")
+    cps[1]["hash"] = json.loads(lines(run)[3])["hash"]                     # without the key: no valid signature
+    (run / "log" / "checkpoints.jsonl").write_text("".join(json.dumps(c) + "\n" for c in cps))
+    r = check(run)
+    assert not r.ok and "no valid signature" in r.reason
+
+
+def test_removing_signed_records_fails(tmp_path):
+    run, _ = signed_run(tmp_path)
+    write(run, lines(run)[:3])
+    r = check(run)
+    assert not r.ok and "records were removed" in r.reason
+
+
+def test_a_failed_signature_never_loses_an_alert(tmp_path):
+    run, _ = signed_run(tmp_path, n=4, signer=FakeSigner(fail=True))
+    assert len(read_jsonl(run / "alerts.jsonl")) == 4 and verify_log.verify(run).ok
+    assert not (run / "log" / "checkpoints.jsonl").exists()
+
+
+def test_checkpoint_now_signs_the_head_once(tmp_path):
+    run, log = signed_run(tmp_path, n=5)
+    assert log.checkpoint()["k"] == 5
+    assert log.checkpoint()["k"] == 5
+    assert [c["k"] for c in read_checkpoints(run / "log" / "checkpoints.jsonl")] == [2, 4, 5]
+    assert check(run).reason.endswith("3 signed checkpoint(s) verify")
+
+
+def test_without_a_log_key_nothing_is_signed(tmp_path, monkeypatch):
+    monkeypatch.delenv("PROVBIND_LOG_KEY", raising=False)
+    log = ViolationLog(tmp_path)
+    log.append(alert(1))
+    assert log.checkpointer is None and not (tmp_path / "log" / "checkpoints.jsonl").exists()

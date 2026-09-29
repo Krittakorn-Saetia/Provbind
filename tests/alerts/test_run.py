@@ -49,7 +49,8 @@ def test_attribution_is_for_the_file_the_clause_names(run, env):
     layer0 = env["layers"][0]["digest"]
     assert a["det-0004"]["attribution"]["layer"] == layer0                   # /etc/passwd, not the writer /tmp/.x9
     assert a["det-0003"]["attribution"] == {"layer": None, "package": None, "depth": None,     # PH5-08
-                                            "process_chain": ["/usr/local/bin/python3.11", "/tmp/.x9"]}
+                                            "process_chain": ["/usr/local/bin/python3.11", "/tmp/.x9"],
+                                            "dependency_path": None}
     ls = a["det-0002"]["attribution"]
     assert (ls["layer"], ls["package"], ls["depth"]) == (layer0, env["files"]["/usr/bin/ls"]["package"], 1)
 

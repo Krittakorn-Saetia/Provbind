@@ -11,7 +11,11 @@ Tails `<run>/detections.jsonl` (Role 3) and writes one alert per detection to `<
   one call; a reader can still catch it half-written).
 - **Attribution** is for the file the clause names (`clause.path`: the written file for D_write,
   the library for D_load), not the process that acted. Package and depth come from the detection's
-  context, else from the envelope.
+  context, else from the envelope. `attribution.dependency_path` (an addition readers may ignore,
+  §4) is the path from a root package to the owning package, from the SBOM edges the controller
+  stored (alerts.attribute; PH5-07); null when there are none.
+- **The graph** (demo step 1): every LOAD_EVERY_S seconds, envelopes that appeared since are loaded
+  into Neo4j, before any alert needs them. Neo4j is optional (alerts.attribute).
 - **Signing identity** comes from the envelope (`envelopes/<hex>.json`). Without one, its fields are
   null: nothing unsigned is presented as signed.
 - **Chains** (§8): a detection joins an open chain of the same container if its pid or ppid is a pid
@@ -31,7 +35,7 @@ import sys
 import time
 from pathlib import Path
 
-from .attribute import Attributor
+from .attribute import Attributor, load_graph, load_run
 from .common import container_label, load_envelope, load_json, logger, now_iso, parse_time
 from .log import ViolationLog
 from .score import score_detection
@@ -39,6 +43,7 @@ from .score import score_detection
 log = logger("alerts")
 
 CHAIN_WINDOW_S = 60
+LOAD_EVERY_S = 2.0
 FILE_CLASSES = {"D_exec", "D_write", "D_hash", "D_load"}
 
 
@@ -75,6 +80,9 @@ class AlertEngine:
         self.chains = Chains()
         self.done = self.log.detection_ids()
         self.envelopes: dict[str, dict | None] = {}
+        self.graphs: dict[str, dict | None] = {}
+        self._graph_loads: dict = {}                     # envelope path -> mtime loaded into Neo4j
+        self._next_load = 0.0
         self._bindings: dict = {}
         self._bindings_stamp = None
         self.written = 0
@@ -101,6 +109,21 @@ class AlertEngine:
             self.envelopes[digest] = load_envelope(self.run, digest)
         return self.envelopes[digest]
 
+    def graph(self, digest: str | None) -> dict | None:
+        if not digest:
+            return None
+        if self.graphs.get(digest) is None:             # retry until the controller has written it
+            self.graphs[digest] = load_graph(self.run, digest)
+        return self.graphs[digest]
+
+    def load_graph_db(self) -> None:
+        """Load envelopes that appeared since the last scan into Neo4j (off the event path, M3)."""
+        if time.monotonic() < self._next_load:
+            return
+        self._next_load = time.monotonic() + LOAD_EVERY_S
+        if self.attributor.connected():
+            load_run(self.run, self.attributor, self._graph_loads)
+
     # --- one detection ------------------------------------------------------------------------------
 
     def alert_for(self, det: dict) -> dict:
@@ -112,12 +135,16 @@ class AlertEngine:
         cls = det.get("class")
         path = clause.get("path") if cls in FILE_CLASSES and clause.get("path") else det.get("exe")
 
+        graph = self.graph(digest)
+        if env is not None:
+            self.attributor.ensure_loaded(env, graph)
         layer_digest, _ = self.attributor.layer_of(env, digest, path)
         package, depth = ctx.get("package"), ctx.get("depth")
         if env is not None and path in (env.get("files") or {}):
             package = package if package is not None else env["files"][path].get("package")
             if depth is None and package:
                 depth = (env.get("packages") or {}).get(package, {}).get("depth")
+        dep_path = self.attributor.dependency_path(env, graph, digest, package)
 
         score, bucket, parts = score_detection(det, binding)
         if parts.get("unknown_class"):
@@ -136,7 +163,8 @@ class AlertEngine:
             "origin": det.get("origin"),
             "score": score,
             "bucket": bucket,
-            "attribution": {"layer": layer_digest, "package": package, "depth": depth, "process_chain": chain},
+            "attribution": {"layer": layer_digest, "package": package, "depth": depth, "process_chain": chain,
+                            "dependency_path": dep_path},
             "signing_identity": {"builder_id": image.get("builder_id"), "source_commit": image.get("source_commit"),
                                  "rekor_log_index": image.get("rekor_log_index")},
             "chain_id": self.chains.assign(det),
@@ -165,11 +193,13 @@ class AlertEngine:
     # --- the loop -------------------------------------------------------------------------------------
 
     def run_loop(self, once: bool = False, poll: float = 0.2) -> None:
+        self.load_graph_db()
         while not self.det_path.exists():
             if once:
                 log.info("no %s yet", self.det_path)
                 return
             time.sleep(0.5)
+            self.load_graph_db()
         buf = ""
         with open(self.det_path, encoding="utf-8") as f:
             while True:
@@ -185,6 +215,7 @@ class AlertEngine:
                     if buf.strip():
                         log.warning("the last detection line has no newline yet; left for the next run")
                     return
+                self.load_graph_db()
                 time.sleep(poll)
 
 

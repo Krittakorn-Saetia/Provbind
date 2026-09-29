@@ -1,4 +1,4 @@
-"""controller/watch.py: fail-closed verification, bindings from the pod spec, contexts (PH2-01, 02, 09)."""
+"""controller/watch.py: fail-closed verification, bindings from the pod spec, contexts (PH2-01 to 05, 08, 09)."""
 import json
 import sys
 
@@ -10,7 +10,9 @@ from compiler.tests.test_compile import PROVENANCE, SBOM
 from controller import watch
 from controller.watch import Controller, Verifier, digest_ref, main, mounts_of, security
 
-from tests.alerts.helpers import ROOT
+from alerts.trust import set_key
+
+from tests.alerts.helpers import BUNDLE, ROOT, STANDIN_HEX
 
 KEY = str(ROOT / "pipeline" / "keys" / "cosign.pub")
 HEX = "ab" * 32
@@ -62,7 +64,8 @@ def test_a_signed_image_is_verified_and_its_context_stored(tmp_path):       # PH
     b = ctl.bind("containerd://c1", "demo", "p", "app", REF)
     assert b["verified"] is True and b["envelope_ready"] is True and calls == [REF]
     ctx = json.loads((tmp_path / "run" / "contexts" / f"{HEX}.json").read_text())
-    assert ctx["verified"] and ctx["checks"] == {"v_sig": True, "v_B": True, "v_P": True}
+    assert ctx["verified"] and ctx["checks"] == {"v_sig": True, "v_B": True, "v_P": True,
+                                                 "v_trans": None, "v_trust": True}   # no Rekor bundle in the fake
     assert ctx["key"]["key_id"].startswith("sha256:") and ctx["t0"] and ctx["rekor_log_index"] == 123456789
 
 
@@ -154,3 +157,61 @@ def test_no_kubernetes_client_exits_3_and_invents_nothing(tmp_path, monkeypatch)
 
 def test_image_mode_rejects_a_tag(tmp_path):
     assert main(["--run", str(tmp_path / "run"), "--image", "localhost:5001/demo-app:latest"]) == 3
+
+
+# --- v_trust, v_trans and the SBOM's edges (PH2-04, PH2-05, PH5-07) ----------------------------------
+
+def test_a_revoked_key_fails_admission_with_reason_key(tmp_path):          # PH2-05
+    ctl, calls = controller(tmp_path)
+    set_key(tmp_path / "run", KEY, "revoked", None)
+    b = ctl.bind("containerd://c1", "demo", "p", "app", REF)
+    assert b["verified"] is False and b["reason"].startswith("key: ") and calls == []
+    ctx = json.loads((tmp_path / "run" / "contexts" / f"{HEX}.json").read_text())
+    assert ctx["checks"]["v_trust"] is False and ctx["checks"]["v_sig"] is True
+
+
+def test_the_key_state_is_read_on_every_admission(tmp_path):
+    ctl, _ = controller(tmp_path)
+    assert ctl.bind("containerd://c1", "demo", "p", "app", REF)["verified"] is True
+    set_key(tmp_path / "run", KEY, "revoked", None)                      # cosign's result is cached,
+    assert ctl.bind("containerd://c2", "demo", "p2", "app", REF)["verified"] is False   # the key state is not
+    set_key(tmp_path / "run", KEY, "active", None)
+    assert ctl.bind("containerd://c3", "demo", "p3", "app", REF)["verified"] is True
+
+
+def standin_cosign(bundle_text):
+    digest = "sha256:" + STANDIN_HEX
+    fake = FakeCosign(digest, SBOM, PROVENANCE)
+    fake.out["download"] = bundle_text
+    return digest, fake
+
+
+def test_the_rekor_inclusion_proof_is_checked_at_admission(tmp_path):      # PH2-04
+    digest, fake = standin_cosign(BUNDLE.read_text())
+    ctx = Verifier(KEY, cosign=fake, run=tmp_path).verify(f"localhost:5001/standin-app@{digest}")
+    assert ctx["verified"] is True and ctx["checks"]["v_trans"] is True and "inclusion proof" in ctx["reason"]
+
+
+def test_a_corrupted_rekor_bundle_fails_v_trans(tmp_path):                 # PH2-04
+    bundle = json.loads(BUNDLE.read_text())
+    proof = bundle["verificationMaterial"]["tlogEntries"][0]["inclusionProof"]
+    proof["hashes"][0] = proof["hashes"][1]
+    digest, fake = standin_cosign(json.dumps(bundle))
+    ctx = Verifier(KEY, cosign=fake, run=tmp_path).verify(f"localhost:5001/standin-app@{digest}")
+    assert ctx["verified"] is False and ctx["checks"]["v_trans"] is False and ctx["reason"].startswith("v_trans: ")
+
+
+def test_the_sbom_edges_are_stored_beside_the_context(tmp_path):           # PH5-07
+    ctl, _ = controller(tmp_path)
+    ctl.bind("containerd://c1", "demo", "p", "app", REF)
+    g = json.loads((tmp_path / "run" / "contexts" / f"{HEX}.sbom.json").read_text())
+    assert g["digest"] == DIGEST and g["edges"]["pkg:pypi/requests@2.32.3"] == ["pkg:pypi/urllib3@2.2.2"]
+
+
+def test_a_moved_tag_keeps_the_running_digest(tmp_path):                   # PH2-08
+    ctl, _ = controller(tmp_path)
+    p = pod()
+    p["status"]["container_statuses"][0]["image"] = "localhost:5001/demo-app:moved-to-another-image"
+    ctl.handle_pod("ADDED", p)
+    b = bindings(tmp_path)["containerd://c1"]
+    assert b["image_digest"] == DIGEST and b["ref"] == REF and b["verified"] is True

@@ -80,6 +80,8 @@ kubectl -n "$NAMESPACE" create deployment "$DEPLOY" --image="$DEMO_REF" --port=8
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout="${WAIT_S}s"
 ( source testbed/scenarios/lib.sh; ENVELOPE_TIMEOUT="$WAIT_S" wait_for_envelope )
+python3 -m alerts.attribute --run "$PROVBIND_RUN" \
+  || echo "Neo4j is not reachable: attribution uses the envelope's layer field (Sprint Handoff §10)"
 echo "envelope: $PROVBIND_RUN/envelopes/${DEMO_REF##*sha256:}.json; layer graph: http://localhost:7474"
 
 step "2. benign-1: kubectl exec ... sh -c 'ls /' (expect two Lows)"
@@ -107,6 +109,7 @@ step "alerts"
 python3 -m alerts.show --run "$PROVBIND_RUN"
 
 step "6. tamper-1: verify_log passes, one character changes, verify_log fails"
+if [ -n "${PROVBIND_LOG_KEY:-}" ]; then python3 -m alerts.log checkpoint --run "$PROVBIND_RUN" || true; fi
 python3 -m alerts.verify_log --run "$PROVBIND_RUN" && LOG_OK_BEFORE=1 || LOG_OK_BEFORE=0
 make --no-print-directory tamper
 python3 -m alerts.verify_log --run "$PROVBIND_RUN" && LOG_FAILS_AFTER=0 || LOG_FAILS_AFTER=1

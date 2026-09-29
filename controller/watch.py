@@ -9,11 +9,17 @@ Watches pods in the namespace. For each started container it:
    moved tag cannot redirect the evidence (PH2-08). Verification is Role 2's `compiler.evidence`:
    `cosign verify` plus `verify-attestation` for CycloneDX and SLSA v1, with the public key. It
    requires an image-signature entry for the digest, because cosign v3's `verify` alone also passes
-   an image that is attested but never signed. **Any failure, including a missing cosign, gives
-   `verified: false`**: the controller fails closed.
+   an image that is attested but never signed. Two more checks follow (Eqs. 11-12):
+   - **v_trans**: the signature's Rekor entry (its sign/v1 bundle) must carry an RFC 6962 inclusion
+     proof that hashes to its root (PH2-04). Offline signing has no entry: not applicable.
+   - **v_trust**: the key must not be revoked, disabled or compromised in `keystatus.json`, the
+     stand-in for KMS key state that Phase 6 reads too (PH2-05). This one is checked on every
+     admission, not cached, so a pod started after a revocation is not verified.
+   **Any failure, including a missing cosign, gives `verified: false`**: the controller fails closed.
 2. **Stores the verification context** Γ_I (Eq. 22, PH2-09) in `contexts/<hex>.json`: the key and its
-   id, the three checks, the builder, commit and Rekor log index, the signature bundle with its
-   transparency entry, and t0, the verification time. Phase 6 (`alerts.trust`) reads it.
+   id, the five checks, the builder, commit and Rekor log index, the signature bundle with its
+   transparency entry, and t0, the verification time. Phase 6 (`alerts.trust`) reads it. The SBOM's
+   dependency edges go beside it, in `contexts/<hex>.sbom.json`, for the dependency path (PH5-07).
 3. **Writes the binding** in `bindings.json` (§4.2) as soon as the container ID is known: whole-file,
    temp file and rename. `mounts` are the container's volume mounts plus the files Kubernetes manages;
    `run_as_root` and `privileged` come from the container's securityContext, then the pod's.
@@ -38,8 +44,9 @@ import sys
 import time
 from pathlib import Path
 
+from alerts.attribute import graph_path, sbom_graph
 from alerts.common import atomic_write_json, envelope_path, hex_of, load_json, locked, logger, now_iso
-from alerts.trust import key_id_of
+from alerts.trust import key_check, key_id_of, verify_inclusion
 from compiler import evidence, oci
 
 log = logger("controller")
@@ -87,11 +94,22 @@ def signature_bundle(bundles_output: str, hex_digest: str) -> dict | None:
     return best
 
 
+def transparency_check(bundle: dict | None) -> tuple[bool | None, str]:
+    """v_trans (Eq. 11) on the signature's sign/v1 bundle: None when there is no entry to check."""
+    entries = ((bundle or {}).get("verificationMaterial") or {}).get("tlogEntries") or []
+    if not entries:
+        return None, "no transparency entry in the signature bundle"
+    return verify_inclusion(entries[0])
+
+
 class Verifier:
-    def __init__(self, key: str, offline: bool = False, registry_name: str | None = None, cosign=None):
+    def __init__(self, key: str, offline: bool = False, registry_name: str | None = None, cosign=None,
+                 run: str | Path | None = None):
         self.key, self.offline, self.registry_name = key, offline, registry_name
         self.cosign = cosign
+        self.run = Path(run) if run is not None else None       # for keystatus.json (v_trust)
         self.cache: dict[str, dict] = {}
+        self.graphs: dict[str, dict] = {}                       # digest -> the SBOM's edges
         try:
             self.key_id = key_id_of(key)
         except (OSError, ValueError) as e:
@@ -99,14 +117,30 @@ class Verifier:
             self.key_id = None
 
     def verify(self, ref: str) -> dict:
-        """Γ_I for the image: verified or not, and why. Cached per digest."""
+        """Γ_I for the image: verified or not, and why. The cosign checks and v_trans run once per
+        digest; v_trust is checked on every call."""
         repo, digest = oci.parse_ref(ref)
-        if digest in self.cache:
-            return self.cache[digest]
+        if digest not in self.cache:
+            self.cache[digest] = self._evidence(repo, digest, ref)
+        ctx = dict(self.cache[digest], checks=dict(self.cache[digest]["checks"]))
+        if ctx["verified"]:
+            ok, why = key_check(ctx, self._keystatus())
+            ctx["checks"]["v_trust"] = ok
+            if ok is False:
+                ctx.update(verified=False, reason=f"key: {why}")
+                log.warning("%s NOT verified: %s", hex_of(digest)[:12], ctx["reason"])
+        return ctx
+
+    def _keystatus(self) -> dict:
+        doc = load_json(self.run / "keystatus.json", {}) if self.run is not None else {}
+        return doc if isinstance(doc, dict) else {}
+
+    def _evidence(self, repo: str, digest: str, ref: str) -> dict:
         fetch_ref = f"{oci.with_registry(repo, self.registry_name)}@{digest}"
         ctx = {"digest": digest, "ref": ref, "t0": now_iso(), "offline": self.offline,
                "key": {"path": str(self.key), "key_id": self.key_id},
-               "verified": False, "checks": {"v_sig": False, "v_B": False, "v_P": False}, "reason": None,
+               "verified": False, "reason": None,
+               "checks": {"v_sig": False, "v_B": False, "v_P": False, "v_trans": None, "v_trust": None},
                "builder_id": None, "source_commit": None, "rekor_log_index": None, "signature_bundle": None}
         cosign = self.cosign or evidence.Cosign(self.key, offline=self.offline)
         started = time.perf_counter()
@@ -114,23 +148,29 @@ class Verifier:
             if self.key_id is None:
                 raise evidence.EvidenceError("v_sig: the public key cannot be read")
             ev = evidence.collect(fetch_ref, digest, cosign)
-            ctx.update(verified=True, checks=dict(ev.verification), builder_id=ev.builder_id,
-                       source_commit=ev.source_commit, rekor_log_index=ev.rekor_log_index,
-                       reason="signature and both attestations verified")
+            ctx["checks"].update(ev.verification)
+            ctx.update(verified=True, builder_id=ev.builder_id, source_commit=ev.source_commit,
+                       rekor_log_index=ev.rekor_log_index, reason="signature and both attestations verified")
+            self.graphs[digest] = sbom_graph(ev.sbom)
             if not self.offline:
                 ctx["signature_bundle"] = signature_bundle(cosign.download_signature(fetch_ref), hex_of(digest))
+                ok, why = transparency_check(ctx["signature_bundle"])
+                ctx["checks"]["v_trans"] = ok
+                if ok is False:
+                    ctx.update(verified=False, reason=f"v_trans: {why}")
+                elif ok:
+                    ctx["reason"] += "; the Rekor inclusion proof verifies"
         except evidence.EvidenceError as e:          # collect stops at the first failed check
             order = ("v_sig", "v_B", "v_P")
             failed = str(e).split(":", 1)[0]
             if failed in order:
-                ctx["checks"] = {k: i < order.index(failed) for i, k in enumerate(order)}
+                ctx["checks"].update({k: i < order.index(failed) for i, k in enumerate(order)})
             ctx["reason"] = str(e)
         except Exception as e:                   # cosign missing, timeout, anything: fail closed
             ctx["reason"] = f"{type(e).__name__}: {e}"
         ctx["verify_ms"] = round((time.perf_counter() - started) * 1000, 1)
         (log.info if ctx["verified"] else log.warning)("%s %s: %s", hex_of(digest)[:12],
                                                        "verified" if ctx["verified"] else "NOT verified", ctx["reason"])
-        self.cache[digest] = ctx
         return ctx
 
 
@@ -182,7 +222,9 @@ class Controller:
         self.run = Path(run).resolve()
         self.key = str(Path(key).resolve()) if not os.path.isabs(key) else key
         self.registry_name = registry_name
-        self.verifier = verifier or Verifier(self.key, offline, registry_name)
+        self.verifier = verifier or Verifier(self.key, offline, registry_name, run=self.run)
+        if getattr(self.verifier, "run", None) is None:
+            self.verifier.run = self.run
         self.compile_fn = compile_fn or self._compile
         self.compiled: dict[str, bool] = {}
         self.bindings_path = self.run / "bindings.json"
@@ -219,6 +261,9 @@ class Controller:
         ctx_path = self.run / "contexts" / f"{hex_of(digest)}.json"
         if load_json(ctx_path) != ctx:
             atomic_write_json(ctx_path, ctx)
+        graph = getattr(self.verifier, "graphs", {}).get(digest)
+        if graph is not None and load_json(graph_path(self.run, digest)) != {"digest": digest, **graph}:
+            atomic_write_json(graph_path(self.run, digest), {"digest": digest, **graph})
         env = envelope_path(self.run, digest)
         binding = {"namespace": namespace, "pod": pod, "container": container, "image_digest": digest,
                    "verified": bool(ctx["verified"]), "run_as_root": bool(run_as_root), "privileged": bool(privileged),
