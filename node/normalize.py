@@ -52,6 +52,14 @@ CAPABILITIES = (
 
 # The kernel functions the policies hook, and the kind each becomes. test_policies.py checks
 # that every `call` in node/tetragon/*.yaml is listed here.
+# The container runtime's own setup step. runc (1.2+) and crun re-execute themselves from a sealed
+# memfd, so `kubectl exec` shows up in the pod as an exec of /proc/self/fd/N with the argument
+# "init", started by the host's runc. Seen on the demo VM (containerd, kind): it scored as a
+# CRITICAL D_exec/undeclared inside benign-1. Only that exact shape is dropped; a process in the
+# container that runs a memfd (fileless malware) has a container parent and is still verified.
+RUNTIME_INIT_EXE = re.compile(r"^/proc/self/fd/[0-9]+$")
+RUNTIME_PARENTS = frozenset({"runc", "crun"})
+
 KPROBE_KINDS = {
     "security_file_permission": "write",
     "security_path_truncate": "write",
@@ -263,6 +271,8 @@ class Normalizer:
             if t is None:
                 return self._drop("no_time")
         parent = parent if isinstance(parent, dict) else {}
+        if _is_runtime_init(proc, parent):
+            return self._drop("runtime_init")
         return Event(time=time, t=t, kind=kind, container_id=cid, namespace=pod["namespace"],
                      pod=_str(pod.get("name")), container=_str(container.get("name")),
                      pid=_int(proc.get("pid")), ppid=_int(parent.get("pid")),
@@ -325,6 +335,14 @@ class Normalizer:
         proto = _opt_str(sock.get("protocol")) or "IPPROTO_TCP"
         ev.protocol = proto.lower().removeprefix("ipproto_")
         return self._keep(ev)
+
+
+def _is_runtime_init(proc: dict, parent: dict) -> bool:
+    """runc's or crun's init step (see RUNTIME_INIT_EXE): memfd path, argument "init", runtime parent."""
+    binary, parent_bin = _opt_str(proc.get("binary")), _opt_str(parent.get("binary"))
+    return (binary is not None and RUNTIME_INIT_EXE.match(binary) is not None
+            and (_opt_str(proc.get("arguments")) or "").strip() == "init"
+            and parent_bin is not None and posixpath.basename(parent_bin) in RUNTIME_PARENTS)
 
 
 def _exe(proc: dict) -> str | None:

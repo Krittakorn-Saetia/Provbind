@@ -365,3 +365,31 @@ def test_session_does_not_mutate_emitted_events(s, app):
     before = copy.deepcopy(doc)
     Normalizer()(doc)
     assert doc == before
+
+
+# the container runtime's init step (runc re-executing from a memfd for `kubectl exec`) ----------
+
+def test_runc_init_from_memfd_is_dropped(s):
+    runc = s.proc("/usr/local/sbin/runc", pid=900, arguments="--root /run/containerd/runc/k8s.io exec")
+    init = s.proc("/proc/self/fd/7", pid=901, parent=runc, arguments="init")
+    ev, stats = one(s.exec(init))
+    assert ev is None and stats == {"drop:runtime_init": 1}
+
+
+def test_memfd_exec_from_a_container_process_is_kept(s, app):
+    """Fileless malware runs a memfd too: with a container parent it must still reach the verifier."""
+    ev, _ = one(s.exec(s.proc("/proc/self/fd/7", pid=4471, parent=app, arguments="init")))
+    assert ev is not None and ev.exe == "/proc/self/fd/7"
+
+
+@pytest.mark.parametrize("binary,args,parent", [
+    ("/proc/self/fd/7", "", "/usr/local/sbin/runc"),             # not the init step
+    ("/proc/self/fd/7", "init --evil", "/usr/local/sbin/runc"),
+    ("/tmp/.x9", "init", "/usr/local/sbin/runc"),                # not a memfd path
+    ("/proc/self/fd/x", "init", "/usr/local/sbin/runc"),
+    ("/proc/self/fd/7", "init", "/usr/local/sbin/runc-helper"),  # parent is not the runtime
+])
+def test_runtime_init_needs_the_exact_shape(s, binary, args, parent):
+    p = s.proc(parent, pid=900)
+    ev, _ = one(s.exec(s.proc(binary, pid=901, parent=p, arguments=args)))
+    assert ev is not None
