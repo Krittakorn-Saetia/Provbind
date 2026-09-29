@@ -57,6 +57,9 @@ Role 4's `controller/` and `alerts/` folders and Role 1's `testbed/demo-app/` ar
 | `pip install -r requirements.txt` | Install every Python dependency |
 | `pytest -m "not integration"` | Unit tests; runs anywhere |
 | `pytest -m integration` | Tests that need the cluster, Tetragon or the registry; demo PC only |
-| `pipeline/build-and-attest.sh <dir> <name>` | Phase 1 for one image |
-| `python -m compiler.compile <ref@digest> --run $PROVBIND_RUN` | Phase 3, once the compiler is written |
+| `pipeline/build-and-attest.sh <dir> <name>` | Phase 1 for one image: build, push, sign, attest the SBOM and the provenance |
+| `python -m compiler.compile <ref@digest> --run $PROVBIND_RUN` | Phase 3: verify the evidence, then write `envelopes/<hex>.json` |
+| `python -m compiler.compile <ref@digest> --run $PROVBIND_RUN --features-out ml/data/features.jsonl` | The same, and append the image's ML-A features (the feature side of dataset D1) |
+| `python -m ml.dataset` | Join Role 1's `ml/data/labels.jsonl` (MLA-03) to the features by digest, into `ml/data/dataset.jsonl` |
+| `python -m ml.train --out ml/model` | Train ML-A on D1 (cross-validated by image). The compiler uses `ml/model/` when it exists; `PROVBIND_CAPS_MODEL=none` forces the allowlist |
 | `python -m eval.report --run $PROVBIND_RUN` | Capability test report, `run/results/REPORT.md` |
