@@ -29,6 +29,8 @@ Two rules keep D_load from drowning the node (PH4-11):
 - A declared library outside the closure is reported only when the process that maps it is in
   the closure, and only once per container and library. A process outside the closure (sh, ls)
   was reported when it started, and the libraries it needs add nothing.
+  Such a mapping is SUPPRESSED, not conforming: it is not written again, and it never enters
+  an ML-B window.
 
 A library in no layer is always reported.
 """
@@ -44,6 +46,17 @@ from .store import Binding, Envelope, under
 
 WEAK = {("D_exec", "outside_closure"), ("D_load", "outside_closure")}
 PATH_ONLY = "; path-only: no runtime hash, so relocation was not checked"
+
+
+class _Suppressed:
+    """A repeat of a weak detection already reported: not written again, but not conforming
+    either, so ML-B's gate keeps it out of the windows (Algorithm 2, lines 2-4)."""
+
+    def __repr__(self):
+        return "SUPPRESSED"
+
+
+SUPPRESSED = _Suppressed()
 
 # §4.4 detection fields, in the contract's order
 FIELDS = ("id", "time", "container_id", "namespace", "pod", "container", "image_digest", "pid", "ppid",
@@ -135,9 +148,15 @@ class Verifier:
         self.stats: Counter = Counter()
         self._weak_loads: set[tuple] = set()
 
-    def verify(self, ev: Event, env: Envelope, binding: Binding, mounts=()) -> dict | None:
+    def verify(self, ev: Event, env: Envelope, binding: Binding, mounts=()):
+        """A detection, None (conforming), or SUPPRESSED (a weak repeat, neither)."""
         det = self._decide(ev, env, binding, mounts)
-        self.stats["conforming" if det is None else f"{det['class']}/{det['subclass']}"] += 1
+        if det is None:
+            self.stats["conforming"] += 1
+        elif det is SUPPRESSED:
+            self.stats["suppressed"] += 1
+        else:
+            self.stats[f"{det['class']}/{det['subclass']}"] += 1
         return det
 
     def _decide(self, ev: Event, env: Envelope, binding: Binding, mounts) -> dict | None:
@@ -189,7 +208,7 @@ class Verifier:
             if not is_exec:
                 loader, _ = env.lookup(ev.exe)
                 if loader not in env.closure or (ev.container_id, key) in self._weak_loads:
-                    return None
+                    return SUPPRESSED                              # judged at its exec, or reported already
                 self._weak_loads.add((ev.container_id, key))
             return detection(ev, binding, klass, "outside_closure",
                              ("closure", key, f"declared in layer {rec[1]}, but not reachable from the entrypoint"),

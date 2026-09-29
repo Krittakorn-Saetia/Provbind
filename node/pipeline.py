@@ -169,7 +169,7 @@ class Pipeline:
         else:
             det = self.verifier.verify(ev, env, b, mounts)
         self.stats["verified"] += 1
-        if det is not None:
+        if isinstance(det, dict):
             self._emit(det)
         if self.behaviour is not None:
             for d in self.behaviour.observe(ev, det, env, b):

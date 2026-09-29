@@ -21,6 +21,7 @@ import base64
 import copy
 import hashlib
 import json
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -342,3 +343,32 @@ def library(attack2_files: int = 300, start: str = "2026-09-28T10:00:00Z") -> Li
 
 def library_copy(lib: Library) -> Library:
     return copy.deepcopy(lib)
+
+
+def benign_session(seconds: float, seed: int = 0, start: str = "2026-09-28T11:00:00Z", rate: float = 0.2) -> list:
+    """The demo app under a synthetic load generator, for ML-B (Test Plan §5, dataset D2).
+
+    Requests arrive at random (`rate` per second). A request writes the app's cache file 30% of
+    the time and its log 60% of the time, and 2% of requests make a DNS lookup. This stands in
+    for D2 in the cloud; the real D2 is three hours of the demo image on the demo PC.
+    """
+    rng = random.Random(seed)
+    s = Session(start=start, step_ms=1)
+    shim = s.proc("/usr/local/bin/containerd-shim-runc-v2", pid=4100, pod=None)
+    app = s.proc("/usr/local/bin/python3.11", pid=4402, parent=shim, arguments="app.py")
+    s.exec(app)
+    s.mmap(app, "/usr/local/bin/python3.11")
+    s.mmap(app, "/usr/local/lib/libpython3.11.so.1.0")
+    s.mmap(app, "/usr/lib/x86_64-linux-gnu/libc.so.6")
+    end = s.now + int(seconds * 1_000_000_000)
+    while True:
+        s.sleep(rng.expovariate(rate))
+        if s.now >= end:
+            break
+        if rng.random() < 0.3:
+            s.write(app, "/tmp/cache.json")
+        if rng.random() < 0.6:
+            s.write(app, "/tmp/app.log")
+        if rng.random() < 0.02:
+            s.connect(app, "10.96.0.10", 53)
+    return s.lines()

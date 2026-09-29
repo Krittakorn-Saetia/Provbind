@@ -11,6 +11,8 @@ stderr; at the end, one JSON summary line goes to stdout.
   events arrive. Held events are released as soon as their envelope is ready.
 - **Replay (--replay).** Bindings and envelopes are read once. Time is the events' own time, so
   a replay gives the same detections every time.
+- **ML-B (--mlb).** Conforming events also go into per-process windows, scored with the model
+  beside each envelope (node/mlb.py). --windows-out records every closed window, for dataset D2.
 
 Exit codes: 0 done · 2 bad arguments · 3 bad input (the replay file is missing, or it is the
 events.jsonl this run appends to).
@@ -27,8 +29,9 @@ import sys
 import time
 from pathlib import Path
 
+from .mlb import Behaviour, ModelCache
 from .normalize import Normalizer
-from .output import DetectionWriter, EventWriter, dumps
+from .output import DetectionWriter, EventWriter, JsonlWriter, dumps
 from .pipeline import Pipeline
 from .store import Store
 from .verify import Egress, Verifier
@@ -36,12 +39,15 @@ from .verify import Egress, Verifier
 log = logging.getLogger("provbind.node")
 
 
-def build(run_dir: Path, args, on_event, on_detection) -> tuple[Store, Pipeline]:
+def build(run_dir: Path, args, on_event, on_detection, on_window=None) -> tuple[Store, Pipeline]:
     store = Store(run_dir)
     store.refresh()
     egress = Egress.load(args.egress) if args.egress else None
+    behaviour = None
+    if args.mlb or on_window is not None:
+        behaviour = Behaviour(model_for=ModelCache(run_dir) if args.mlb else None, on_window=on_window)
     pipeline = Pipeline(store, Verifier(egress), grace=args.grace, envelope_timeout=args.envelope_timeout,
-                        on_event=on_event, on_detection=on_detection)
+                        on_event=on_event, on_detection=on_detection, behaviour=behaviour)
     return store, pipeline
 
 
@@ -56,6 +62,7 @@ def summary(normalizer: Normalizer, store: Store, pipeline: Pipeline, started: f
             "cold_start_s": {cid: c["window_s"] for cid, c in pipeline.cold.items()},
             "envelopes": {"cached": sorted(store.cache), **{k: store.stats[k] for k in
                           ("loads", "reloads", "evictions", "bad_envelopes", "hits", "misses")}},
+            "mlb": dict(sorted(pipeline.behaviour.stats.items())) if pipeline.behaviour is not None else None,
             "seconds": round(time.monotonic() - started, 3)}
 
 
@@ -112,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="seconds before a bound container without an envelope is reported (default 300)")
     ap.add_argument("--egress", metavar="FILE", help='egress allow list for D_net: {"allow": ["10.0.0.0/8", …]}')
     ap.add_argument("--no-events", action="store_true", help="do not write events.jsonl")
+    ap.add_argument("--mlb", action="store_true",
+                    help="ML-B: score windows with the model beside each envelope (<hex>.mlb/model.json)")
+    ap.add_argument("--windows-out", metavar="FILE", help="ML-B: append every closed window to FILE (dataset D2)")
     ap.add_argument("--tick", type=float, default=0.5, help="live mode: seconds between reloads (default 0.5)")
     ap.add_argument("--summary", metavar="FILE", help="also write the summary JSON to FILE")
     ap.add_argument("--log-level", default="INFO")
@@ -135,8 +145,9 @@ def main(argv: list[str] | None = None) -> int:
     normalizer = Normalizer(namespaces)
     events = None if args.no_events else EventWriter(events_path)
     detections = DetectionWriter(run_dir / "detections.jsonl")
+    windows = JsonlWriter(args.windows_out) if args.windows_out else None
     try:
-        store, pipeline = build(run_dir, args, events, detections)
+        store, pipeline = build(run_dir, args, events, detections, windows.write if windows else None)
     except (OSError, ValueError) as e:
         log.error("cannot start: %s", e)
         return 2
@@ -151,9 +162,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             live(sys.stdin.fileno(), normalizer, store, pipeline, args.tick, lambda: bool(stopping))
     finally:
-        if events is not None:
-            events.close()
-        detections.close()
+        for writer in (events, detections, windows):
+            if writer is not None:
+                writer.close()
     out = summary(normalizer, store, pipeline, started)
     if args.summary:
         Path(args.summary).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")

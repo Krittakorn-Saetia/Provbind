@@ -9,7 +9,7 @@ import pytest
 from node.normalize import Event, parse_time
 from node.store import Binding, Envelope
 from node.synth import DEMO_CID, DEMO_POD, DIGEST, SAMPLE, demo_bindings, demo_envelope, fake_sha
-from node.verify import FIELDS, PATH_ONLY, WEAK, Egress, Verifier, binding_failure, detection, is_weak
+from node.verify import FIELDS, PATH_ONLY, SUPPRESSED, WEAK, Egress, Verifier, binding_failure, detection, is_weak
 
 PY = "/usr/local/bin/python3.11"
 MOUNTS = ("/etc/hosts", "/etc/hostname", "/etc/resolv.conf", "/dev/termination-log",
@@ -175,13 +175,19 @@ def test_declared_library_outside_the_closure_is_weak_once_per_container(env, b)
     nss = "/usr/lib/x86_64-linux-gnu/libnss_dns.so.2"
     first = v.verify(ev("load", path=nss), env, b, MOUNTS)
     assert kind_of(first) == ("D_load", "outside_closure") and is_weak(first)
-    assert v.verify(ev("load", path=nss, pid=5000), env, b, MOUNTS) is None
+    assert v.verify(ev("load", path=nss, pid=5000), env, b, MOUNTS) is SUPPRESSED
     other = ev("load", path=nss, container_id="containerd://" + "ab" * 32)
     assert kind_of(v.verify(other, env, b, MOUNTS)) == ("D_load", "outside_closure")
 
 
 def test_libraries_of_a_process_outside_the_closure_are_not_judged(env, b):
-    assert check(env, b, ev("load", exe="/usr/bin/ls", path="/usr/lib/x86_64-linux-gnu/libselinux.so.1")) is None
+    assert check(env, b, ev("load", exe="/usr/bin/ls", path="/usr/lib/x86_64-linux-gnu/libselinux.so.1")) is SUPPRESSED
+
+
+def test_suppressed_is_counted_apart_from_conforming(env, b):
+    v = Verifier()
+    v.verify(ev("load", exe="/usr/bin/ls", path="/usr/lib/x86_64-linux-gnu/libselinux.so.1"), env, b, MOUNTS)
+    assert v.stats == {"suppressed": 1} and repr(SUPPRESSED) == "SUPPRESSED"
 
 
 def test_modified_library_is_d_hash(env, b):
