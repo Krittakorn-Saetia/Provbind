@@ -1,7 +1,9 @@
 """Compare PROVBIND alerts and Falco lines against the ground truth (Role 1).
 
-    python -m eval.compare --run $PROVBIND_RUN            # prints the table
+    python -m eval.compare --run $PROVBIND_RUN            # the table, then the scoring matrix
+    python -m eval.compare --run $PROVBIND_RUN --write    # also results/SCORING.md and SCORING.json
     python -m eval.compare --run $PROVBIND_RUN --json     # machine-readable rows
+    python -m eval.compare --run $PROVBIND_RUN --matrix-json   # machine-readable scoring matrix
 
 Sprint Handoff §5 (Day 3): "matches alerts and Falco lines to ground-truth rows by pod and
 time window, and prints one row per scenario: the truth, PROVBIND's alerts with their highest
@@ -194,10 +196,128 @@ def render_table(rows):
     return "\n".join(out)
 
 
+# --- Scoring matrix (EV-01, EV-02; the metrics EV-04 names) -----------------------------------------
+#
+# Every ground-truth row is one run, judged per system: a malicious run the system detected is a TP,
+# one it missed an FN; a benign run it alerted on is an FP, one it stayed quiet on a TN. "Detected"
+# is the table's rule: PROVBIND raised an alert above Low (trust alerts are High), Falco fired any rule.
+#
+# Two scopes, because Falco watches runtime behaviour only and has no notion of supply-chain trust:
+# - "all": every detection scenario;
+# - "runtime": the trust-* scenarios left out, for a like-for-like PROVBIND vs Falco comparison.
+# tamper-1 is an integrity check of the violation log (E2E-12), not a detection case, so it is listed
+# but never counted.
+
+SYSTEMS = (("PROVBIND", "provbind_detected"), ("Falco", "falco_detected"))
+NON_DETECTION_SCENARIOS = frozenset({"tamper-1"})
+MIN_RUNS = 3                                    # Test Plan §12.2, dataset D4
+
+
+def _ratio(num, den):
+    return round(num / den, 4) if den else None
+
+
+def confusion(rows, field):
+    """TP, FP, FN and TN for one system over ground-truth rows (runs)."""
+    c = {"TP": 0, "FP": 0, "FN": 0, "TN": 0}
+    for r in rows:
+        malicious, hit = r.get("label") == "malicious", bool(r.get(field))
+        c[("TP" if hit else "FN") if malicious else ("FP" if hit else "TN")] += 1
+    return c
+
+
+def metrics(c):
+    """Precision, recall, F1, false-positive rate and accuracy; None where a denominator is 0."""
+    tp, fp, fn, tn = c["TP"], c["FP"], c["FN"], c["TN"]
+    precision, recall = _ratio(tp, tp + fp), _ratio(tp, tp + fn)
+    f1 = (round(2 * precision * recall / (precision + recall), 4)
+          if precision is not None and recall is not None and precision + recall else None)
+    return {"precision": precision, "recall": recall, "f1": f1,
+            "fpr": _ratio(fp, fp + tn), "accuracy": _ratio(tp + tn, tp + fp + fn + tn)}
+
+
+def scoring_matrix(rows):
+    """The per-scenario summary and the per-system confusion matrix and metrics, as plain data."""
+    counted = [r for r in rows if r.get("scenario") not in NON_DETECTION_SCENARIOS
+               and r.get("label") in ("malicious", "benign")]
+    scopes = {"all": counted,
+              "runtime": [r for r in counted if not str(r.get("scenario", "")).startswith("trust-")]}
+
+    per_scenario = {}
+    for r in rows:
+        s = per_scenario.setdefault(r.get("scenario", ""), {
+            "scenario": r.get("scenario", ""), "label": r.get("label", ""), "runs": 0,
+            "counted": r.get("scenario") not in NON_DETECTION_SCENARIOS,
+            **{name: 0 for name, _ in SYSTEMS}})
+        s["runs"] += 1
+        for name, field in SYSTEMS:
+            s[name] += bool(r.get(field))
+
+    out = {"scopes": {}, "per_scenario": list(per_scenario.values()),
+           "too_few_runs": sorted(s["scenario"] for s in per_scenario.values() if s["runs"] < MIN_RUNS)}
+    for scope, subset in scopes.items():
+        mal = sum(r["label"] == "malicious" for r in subset)
+        out["scopes"][scope] = {
+            "runs": len(subset), "malicious": mal, "benign": len(subset) - mal,
+            "systems": {name: {**confusion(subset, field), **metrics(confusion(subset, field))}
+                        for name, field in SYSTEMS}}
+    return out
+
+
+def _fmt(v):
+    return "—" if v is None else f"{v:.2f}" if isinstance(v, float) else str(v)
+
+
+def _grid(header, body):
+    widths = [max(len(str(x)) for x in col) for col in zip(header, *body)]
+    lines = [" | ".join(str(c).ljust(w) for c, w in zip(header, widths)),
+             "-+-".join("-" * w for w in widths)]
+    lines += [" | ".join(str(c).ljust(w) for c, w in zip(row, widths)) for row in body]
+    return "\n".join(lines)
+
+
+def render_matrix(m):
+    names = [name for name, _ in SYSTEMS]
+    parts = ["Scoring matrix", "",
+             _grid(["Scenario", "Truth", "Runs"] + [f"{n} detected" for n in names],
+                   [[s["scenario"] + ("" if s["counted"] else " (not counted)"), s["label"], s["runs"]]
+                    + [f"{s[n]}/{s['runs']}" for n in names] for s in m["per_scenario"]])]
+    for scope, title in (("all", "All detection scenarios"),
+                         ("runtime", "Runtime scenarios only (trust-* left out: Falco has no trust check)")):
+        sc = m["scopes"][scope]
+        parts += ["", f"{title}: {sc['runs']} runs, {sc['malicious']} malicious / {sc['benign']} benign",
+                  _grid(["System", "TP", "FP", "FN", "TN", "Precision", "Recall", "F1", "FPR", "Accuracy"],
+                        [[n] + [_fmt(sc["systems"][n][k]) for k in
+                                ("TP", "FP", "FN", "TN", "precision", "recall", "f1", "fpr", "accuracy")]
+                         for n in names])]
+        if sc["runs"] and sc["malicious"] != sc["benign"]:
+            parts.append(f"note: unbalanced ({sc['malicious']} malicious vs {sc['benign']} benign runs); "
+                         "accuracy favours the larger class")
+    if m["too_few_runs"]:
+        parts += ["", f"note: fewer than {MIN_RUNS} runs (Test Plan §12.2, D4): " + ", ".join(m["too_few_runs"])]
+    parts += ["", "Detected = PROVBIND alert above Low / any Falco rule. tamper-1 checks the log, not detection."]
+    return "\n".join(parts)
+
+
+def write_scoring(run, rows, m):
+    """Write results/SCORING.md and results/SCORING.json beside REPORT.md; return their paths."""
+    d = os.path.join(run, "results")
+    os.makedirs(d, exist_ok=True)
+    md, js = os.path.join(d, "SCORING.md"), os.path.join(d, "SCORING.json")
+    with open(md, "w", encoding="utf-8") as f:
+        f.write("# PROVBIND scoring matrix\n\n```\n" + render_table(rows) + "\n\n" + render_matrix(m) + "\n```\n")
+    with open(js, "w", encoding="utf-8") as f:
+        json.dump({"rows": rows, "matrix": m}, f, indent=2)
+    return md, js
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="PROVBIND vs Falco vs ground truth")
     ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"))
     ap.add_argument("--json", action="store_true", help="print the rows as JSON")
+    ap.add_argument("--matrix-json", action="store_true", help="print the scoring matrix as JSON")
+    ap.add_argument("--write", action="store_true",
+                    help="also write results/SCORING.md and results/SCORING.json in the run folder")
     args = ap.parse_args(argv)
 
     gt = load_ground_truth(os.path.join(args.run, "ground_truth.csv"))
@@ -207,12 +327,21 @@ def main(argv=None):
 
     if args.json:
         print(json.dumps(rows, indent=2))
-    elif not rows:
+        return 0
+    if not rows:
         print("compare: no ground-truth rows in "
               f"{os.path.join(args.run, 'ground_truth.csv')}", file=sys.stderr)
         return 1
+    m = scoring_matrix(rows)
+    if args.matrix_json:
+        print(json.dumps(m, indent=2))
     else:
         print(render_table(rows))
+        print()
+        print(render_matrix(m))
+    if args.write:
+        for path in write_scoring(args.run, rows, m):
+            print(f"compare: wrote {path}", file=sys.stderr)
     return 0
 
 

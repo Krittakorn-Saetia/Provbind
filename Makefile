@@ -82,8 +82,8 @@ profile:  ## profile the ML-A corpus for capability labels (MLA-03); writes ml/d
 assemble-labels:  ## rebuild ml/data/labels.jsonl from captured events under ml/data/raw
 	python3 -m testbed.profiling.run --raw ml/data/raw --out ml/data/labels.jsonl
 
-compare:  ## print the PROVBIND vs Falco vs ground-truth table (EV-01)
-	python3 -m eval.compare --run $(PROVBIND_RUN)
+compare:  ## the PROVBIND vs Falco table and scoring matrix (EV-01); writes results/SCORING.md
+	python3 -m eval.compare --run $(PROVBIND_RUN) --write
 
 report:  ## write $(PROVBIND_RUN)/results/REPORT.md from the recorded results
 	python3 -m eval.report --run $(PROVBIND_RUN)
