@@ -62,6 +62,11 @@ trust2:  ## run the trust-2 scenario (our key revoked in keystatus.json); RESTOR
 ph4-14:  ## write the new file /tmp/new.txt in the demo pod inside a ph4-14 row (Role 3's PH4-14)
 	./testbed/scenarios/ph4_14.sh
 
+.PHONY: loadgen
+
+loadgen:  ## benign load for ML-B's dataset D2: 4 h by default, DURATION=3600 for the held-out hour
+	./testbed/loadgen.sh
+
 falco-capture:  ## stream Falco JSON into $(PROVBIND_RUN)/falco.jsonl (run in the background)
 	./eval/capture_falco.sh
 

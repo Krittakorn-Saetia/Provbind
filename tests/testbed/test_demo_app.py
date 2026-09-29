@@ -53,6 +53,13 @@ def test_cache_burst_writes_and_reads(demo_modules, tmp_path):
     assert len(files) == 25
 
 
+def test_cache_entry_rotates_within_slots(demo_modules, tmp_path):
+    app, _ = demo_modules
+    paths = {app.cache_entry(base_dir=str(tmp_path / "c"), slots=3) for _ in range(20)}
+    assert all(pathlib.Path(p).is_file() for p in paths)
+    assert len(list((tmp_path / "c").iterdir())) <= 3        # bounded: the benign load never grows the disk
+
+
 def test_payload_is_empty_in_source_tree():
     # Guard: the committed payload module must stay empty (no binary/blob in the repo).
     payload = (DEMO / "requestz-helper" / "requestz_helper" / "_payload.py").read_text()
