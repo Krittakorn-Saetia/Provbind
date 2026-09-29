@@ -35,7 +35,7 @@ They are stacked: **merge them in this order.** Each targets `main`, and each di
 | R3-T2 | TracingPolicies: write on all paths, truncate, `cap_capable`, executable mmap, `tcp_connect`; Helm export filter | PH4-02a, PH4-02b; MLA-03 (Role 1) | Written and statically tested; not yet loaded into Tetragon | [#11](https://github.com/Krittakorn-Saetia/Provbind/pull/11) |
 | R3-T3 | Envelope and bindings store: reload on change, J_I, one cached envelope per digest (Eq. 52) | PH4-04 | Done in the cloud; the live scale test is written (integration) | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
 | R3-T4 | Verifier: decision order, mount exclusion, binding failures, detection records (§4.4) | PH4-03, PH4-05 to 18 | Done in the cloud | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
-| R3-T5 | `python -m node.run`: live and replay, `events.jsonl` and `detections.jsonl`, cold-start holding | PH2-10 | Done in the cloud; windows appear in the summary. PH2-10's test file is outside this session's files (Q2) | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
+| R3-T5 | `python -m node.run`: live and replay, `events.jsonl` and `detections.jsonl`, cold-start holding | PH2-10 | Done in the cloud; windows appear in the summary. PH2-10's test file was added by Role 2 (Q2) | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
 | R3-T6 | Replay harness: a recording plus `ground_truth.csv` → results per scenario; the synthetic §7 library | PH4-* | Done | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
 | R3-T7 | ML-B: gate, windows, Ψ_I, per-image Isolation Forest (as JSON, no pickle), g_I, θ_A, D_beh; range guard; D2 tooling (`python -m node.mlb`, `ml/data/mlb/`) | MLB-01 to 06 | Done in the cloud. MLB-01 and 02 pass (code properties). MLB-03 to 06 need real D2 | [#13](https://github.com/Krittakorn-Saetia/Provbind/pull/13) |
 | R3-T8 | Cuckoo filter on the event path, on and off (`--cuckoo`); a full filter is dropped loudly (CF-06's concern) | CF-05; CF-01 (the node's filter holds every declared path: unit test) | Done in the cloud. Synthetic: the filter doubles the per-event latency, so the §6.3 rule says drop | [#14](https://github.com/Krittakorn-Saetia/Provbind/pull/14) |
@@ -75,7 +75,12 @@ They are stacked: **merge them in this order.** Each targets `main`, and each di
 | MLB-06 | P1 | `test_mlb_03_06_model.py` | not_run (3 synthetic images) | D2 for 3 or more images |
 | CF-01 | P0 | `test_cf_reference_example.py` (test kit, not Role 3's file) | not_run without an envelope | `PROVBIND_ENVELOPE=run/envelopes/<hex>.json`. The node builds the same reference filter; `node/tests/test_cuckoo_path.py` checks that it holds every declared path |
 | CF-05 | P1 | `test_cf_05_event_path.py` | not_run. Synthetic: p50 4.4 µs without the filter, 8.8 µs with it; detections identical; decision **drop** | `PROVBIND_RECORDING` |
-| PH2-10, MLA-07, OH-01, OH-02, OH-03, OH-06 | P1–P2 | none | none | These IDs' file names are outside this session's allowed files (Q2). CF-05 records the filter-off p50 and p99 that OH-01 asks for |
+| PH2-10 | P1 | `test_ph2_10_cold_start.py` (Role 2, 29 Sep) | not_run. Synthetic, live `node.run` with the binding written 0.5 s late: one window of about 0.8 s, 0 events lost | `PROVBIND_NODE_SUMMARY` (a `node.run --summary` file from a run that deployed a pod) |
+| MLA-07 | P1 | `test_mla_07_dcap_per_method.py` (Role 2, 29 Sep) | not_run. The synthetic benign rows have no capability events, so both envelopes give 0 D_cap | `PROVBIND_RECORDING` with `cap.yaml`, plus `PROVBIND_MLA07_ENVELOPES="<ML-A>,<allowlist>"` |
+| OH-01 | P1 | `test_oh_node_cost.py` (Role 2, 29 Sep) | not_run. About 6,500 synthetic events: p50 about 5 µs, p99 about 18 µs | `PROVBIND_RECORDING` with 100,000 events or more |
+| OH-02 | P1 | `test_oh_node_cost.py` | not_run. `node.run --replay`'s CPU seconds and peak memory | `PROVBIND_RECORDING`, plus `PROVBIND_TETRAGON_CPU_S` and `PROVBIND_TETRAGON_RSS_KB` from Tetragon alone under the same load |
+| OH-03 | P1 | `test_oh_node_cost.py` | not_run. A synthetic storm of 10,000 execs: all reach the node (no ring buffer involved) | `PROVBIND_OH03_STORM` (a recording of the storm) |
+| OH-06 | P2 | `test_oh_node_cost.py` | not_run. Synthetic replicas of one image: hit rate 1.0 at 1, 10 and 50 | `PROVBIND_OH06_SUMMARIES` (three `node.run --summary` files from the scale test) |
 | All other R3 IDs | | not written yet | | |
 
 A simulated demo-PC run (the synthetic library written out as a recording, a run folder and a `ground_truth.csv`) gave:
@@ -89,7 +94,7 @@ With synthetic D2 written to a D2 folder as well, MLB-01 to 05 passed, the model
 - **Q1. Contract fields for cap and connect events.** `events.jsonl` (§4.3) has no field for a capability or a destination.
   - What happens now: these events are verified in memory but not written. A replay of `events.jsonl` therefore has no D_cap or D_net, and no ML-B features that count them.
   - Proposal: cap events get `cap` and `granted`; connect events get `daddr`, `dport` and `protocol`. Readers ignore unknown fields, so adding them is cheap (Sprint Handoff §4), but it is a contract change, so it needs the team.
-- **Q2. Files outside this session's scope.**
+- **Q2. Files outside this session's scope.** *Answered 29 September: Role 2 added `node/tests` to `testpaths` (#11) and wrote the six test files (#14); see `docs/ROLE3-FIXES-2026-09-29.md`.*
   - `pytest.ini`'s `testpaths` does not include `node/tests`, so `pytest -q` from the root does not collect the node unit tests directly. The capability tests run them in a subprocess (PH4-01/02 run two suites; PH4-17 runs all of `node/tests`), as Role 2's PH3 tests do. Please add `node/tests`.
   - Six R3 test IDs need files outside the allowed patterns: `test_ph2_10_*.py`, `test_mla_07_*.py` and `test_oh_*.py`. The code they need is here (cold-start windows in the `node.run` summary; per-event latency with `Pipeline(timing=True)`). May a later session add them?
 - **Q3. Profiling for MLA-03 (Role 1).** `cap.yaml` is namespaced to `demo`. Profile the ML-A corpus in `demo`, or copy the policy (and the export filter in `values.yaml`) to the corpus namespace.
@@ -119,7 +124,7 @@ With synthetic D2 written to a D2 folder as well, MLB-01 to 05 passed, the model
 
 ## Next steps
 
-1. **Merge #11 to #14 in order.** Add `node/tests` to `pytest.ini`'s `testpaths` (Q2).
+1. **Merge #11 to #14 in order.** (`node/tests` is now in `pytest.ini`'s `testpaths`: Q2, done in #11.)
 2. **Demo PC, Day 1 work:**
    - load `node/tetragon/values.yaml` and the policies;
    - save 5 minutes of output as `node/testdata/raw.jsonl`;
@@ -128,4 +133,4 @@ With synthetic D2 written to a D2 folder as well, MLB-01 to 05 passed, the model
 3. **Demo PC, scenarios.** Record one session while Role 1's scenarios run (`node/README.md`, "Recipe on the demo PC"). Then run the PH4 tests and CF-05 with `PROVBIND_RECORDING`, and PH4-04 live.
 4. **Demo PC, ML-B.** Build D2 (4 hours or more, plus a held-out hour: `ml/data/mlb/README.md`), then run the MLB tests.
 5. **Stretch, R3-T9: runtime hashing.** Check Tetragon's PID namespace in kind first, then hash `/proc/<pid>/exe` through the pipeline's `hasher` hook. That unblocks PH4-07, 08 and 18.
-6. **If Q2 is allowed:** test files for PH2-10 (the summary's `cold_start_s`), MLA-07 (D_cap per benign scenario, ML-A envelope against the allowlist envelope) and OH-01 to 03, OH-06.
+6. ~~If Q2 is allowed: test files for PH2-10, MLA-07 and OH-01 to 03, OH-06.~~ Done by Role 2 on 29 September at Korn's request, together with Q2's `testpaths` (see `docs/ROLE3-FIXES-2026-09-29.md`).
