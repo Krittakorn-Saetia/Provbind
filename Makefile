@@ -1,100 +1,77 @@
-# ==============================================================================
-# PROVBIND Sprint Orchestration Makefile (make demo)
-# ==============================================================================
+# PROVBIND Makefile. Role 1 owns the testbed and evaluation targets below (Sprint Handoff §3.3).
+# Role 4 extends this file with the controller, alerts and `make demo` targets; Roles 2 and 3
+# drive their steps through the commands documented in the handoff.
+#
+# All parts talk through $(PROVBIND_RUN) (default ./run). Cluster targets (up/down, scenarios,
+# profiling, Falco capture) need the demo PC (Docker, kind, Tetragon, Falco). The `test`,
+# `compare`, `report` and `corpus-check` targets run anywhere.
 
-# Variables
-RUN_DIR ?= ./run
-PYTHON  ?= python3
+PROVBIND_RUN ?= ./run
+export PROVBIND_RUN
 
-.PHONY: all setup test demo clean verify
+.PHONY: help up down demo-app benign attack attack2 trust tamper falco-capture \
+        profile assemble-labels compare report corpus-check test
 
-# Default target
-all: test
+help:  ## list the targets
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort \
+	  | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
 
-# ------------------------------------------------------------------------------
-# 1. SETUP: Prepare run directories and environment
-# ------------------------------------------------------------------------------
-setup:
-	@echo "📁 Setting up run directory at $(RUN_DIR)..."
-	@mkdir -p $(RUN_DIR)
-	@mkdir -p $(RUN_DIR)/envelopes
-	@mkdir -p $(RUN_DIR)/log
-	@echo "✅ Setup complete."
+## --- cluster (demo PC) ---------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-# 2. TEST: Run unit tests and validate schema contracts
-# ------------------------------------------------------------------------------
-test: setup
-	@echo "🧪 Running Role 4 unit tests and contract validation..."
-	@$(PYTHON) alerts/score.py
-	@$(PYTHON) contracts/check_contracts.py $(RUN_DIR)
-	@echo "🎉 All pre-flight tests passed!"
+up:  ## start kind + registry, Tetragon, Falco, Neo4j, and the demo namespace (Sprint Handoff §10)
+	./testbed/kind-with-registry.sh
+	helm repo add cilium https://helm.cilium.io >/dev/null 2>&1 || true
+	helm repo add falcosecurity https://falcosecurity.github.io/charts >/dev/null 2>&1 || true
+	helm repo update >/dev/null
+	helm upgrade --install tetragon cilium/tetragon -n kube-system
+	kubectl rollout status -n kube-system ds/tetragon
+	helm upgrade --install falco falcosecurity/falco -n falco --create-namespace \
+	  --set driver.kind=modern_ebpf --set falco.json_output=true
+	docker rm -f neo4j >/dev/null 2>&1 || true
+	docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/provbind-demo neo4j:5
+	kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
 
-# ------------------------------------------------------------------------------
-# 3. DEMO: Complete 5-Step End-to-End PROVBIND Evaluation Scenario
-# ------------------------------------------------------------------------------
-demo: setup
-	@echo "======================================================================"
-	@echo "🚀 STARTING PROVBIND END-TO-END LIVE DEMONSTRATION"
-	@echo "======================================================================"
-	@echo ""
+down:  ## tear the cluster and the registry down
+	kind delete cluster || true
+	docker rm -f kind-registry neo4j >/dev/null 2>&1 || true
 
-	@# Step 1: Deploy & Bind (Admission Watcher & Cosign Signature Verification)
-	@echo "----------------------------------------------------------------------"
-	@echo "📌 STEP 1: Pod Admission, Cosign Verification & Envelope Compilation"
-	@echo "----------------------------------------------------------------------"
-	@$(PYTHON) controller/watch.py --mock --run $(RUN_DIR)
-	@echo ""
+demo-app:  ## build, push, sign and attest the demo app into the local registry (needs Role 2's pipeline)
+	pipeline/build-and-attest.sh testbed/demo-app demo-app
 
-	@# Step 2: Benign Execution Simulation
-	@echo "----------------------------------------------------------------------"
-	@echo "📌 STEP 2: Executing Benign Container Activity (ls /)"
-	@echo "----------------------------------------------------------------------"
-	@echo '{"id":"det-0001","time":"2026-09-28T10:00:00Z","container_id":"containerd://demo-app","namespace":"demo","pod":"demo-app-7d9f","container":"app","image_digest":"sha256:1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff","pid":101,"ppid":100,"exe":"/usr/bin/ls","parent_exe":"/bin/sh","class":"D_exec","subclass":"outside_closure","clause":{"kind":"process_closure","path":"/usr/bin/ls","detail":"outside entrypoint closure"},"origin":"AUTHENTICATED","context":{"depth":null}}' >> $(RUN_DIR)/detections.jsonl
-	@PYTHONPATH=. $(PYTHON) alerts/run.py --run $(RUN_DIR) --once
-	@echo ""
+benign:  ## run the benign-1 scenario and append its ground-truth row
+	./testbed/scenarios/benign.sh
 
-	@# Step 3: Attack Execution Simulation (Dropped Binary & Immutable Write)
-	@echo "----------------------------------------------------------------------"
-	@echo "📌 STEP 3: Simulating Supply-Chain Exploit (/tmp/.x9 & /etc/passwd write)"
-	@echo "----------------------------------------------------------------------"
-	@echo '{"id":"det-0002","time":"2026-09-28T10:01:00Z","container_id":"containerd://demo-app","namespace":"demo","pod":"demo-app-7d9f","container":"app","image_digest":"sha256:1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff","pid":201,"ppid":200,"exe":"/tmp/.x9","parent_exe":"/usr/local/bin/python3.11","class":"D_exec","subclass":"undeclared","clause":{"kind":"file_set","path":"/tmp/.x9","detail":"in no layer of attested image"},"origin":"AUTHENTICATED","context":{"depth":null}}' >> $(RUN_DIR)/detections.jsonl
-	@echo '{"id":"det-0003","time":"2026-09-28T10:01:01Z","container_id":"containerd://demo-app","namespace":"demo","pod":"demo-app-7d9f","container":"app","image_digest":"sha256:1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff","pid":202,"ppid":200,"exe":"/etc/passwd","parent_exe":"/usr/local/bin/python3.11","class":"D_write","subclass":"declared_file","clause":{"kind":"immutable_file","path":"/etc/passwd","detail":"write intent to read-only image file"},"origin":"AUTHENTICATED","context":{"depth":null}}' >> $(RUN_DIR)/detections.jsonl
-	@PYTHONPATH=. $(PYTHON) alerts/run.py --run $(RUN_DIR) --once
-	@echo ""
+attack:  ## run the attack-1 scenario (undeclared exec + declared write)
+	./testbed/scenarios/attack.sh
 
-	@# Display live color-coded alerts
-	@$(PYTHON) alerts/show.py --run $(RUN_DIR)
-	@echo ""
+attack2:  ## run the attack-2 scenario (in-envelope burst, expects D_beh)
+	./testbed/scenarios/attack2.sh
 
-	@# Step 4: Merkle Log Tamper Demonstration
-	@echo "----------------------------------------------------------------------"
-	@echo "📌 STEP 4: Merkle Log Tamper-Evidence Check"
-	@echo "----------------------------------------------------------------------"
-	@$(PYTHON) alerts/verify_log.py $(RUN_DIR)
-	@echo ""
+trust:  ## run the trust-1 scenario (mark requestz-helper malicious in the local advisory)
+	./testbed/scenarios/trust.sh
 
-	@# Step 5: Data Contract Compliance Check
-	@echo "----------------------------------------------------------------------"
-	@echo "📌 STEP 5: Validating Final Data Contracts Across Roles"
-	@echo "----------------------------------------------------------------------"
-	@$(PYTHON) contracts/check_contracts.py $(RUN_DIR)
-	@echo ""
-	@echo "======================================================================"
-	@echo "🎉 PROVBIND LIVE DEMONSTRATION COMPLETED SUCCESSFULLY!"
-	@echo "======================================================================"
+tamper:  ## run the tamper-1 scenario (edit one character in the violation log)
+	./testbed/scenarios/tamper.sh
 
-# ------------------------------------------------------------------------------
-# 4. VERIFY: Standalone Merkle log integrity audit
-# ------------------------------------------------------------------------------
-verify:
-	@$(PYTHON) alerts/verify_log.py $(RUN_DIR)
+falco-capture:  ## stream Falco JSON into $(PROVBIND_RUN)/falco.jsonl (run in the background)
+	./eval/capture_falco.sh
 
-# ------------------------------------------------------------------------------
-# 5. CLEAN: Reset run directory and temporary logs
-# ------------------------------------------------------------------------------
-clean:
-	@echo "🧹 Cleaning temporary run files..."
-	@rm -rf $(RUN_DIR)
-	@rm -rf ./test_run
-	@echo "✨ Clean complete."
+profile:  ## profile the ML-A corpus for capability labels (MLA-03); writes ml/data/labels.jsonl
+	./testbed/profile_corpus.sh
+
+## --- runs anywhere -------------------------------------------------------------------------
+
+assemble-labels:  ## rebuild ml/data/labels.jsonl from captured events under ml/data/raw
+	python3 -m testbed.profiling.run --raw ml/data/raw --out ml/data/labels.jsonl
+
+compare:  ## print the PROVBIND vs Falco vs ground-truth table (EV-01)
+	python3 -m eval.compare --run $(PROVBIND_RUN)
+
+report:  ## write $(PROVBIND_RUN)/results/REPORT.md from the recorded results
+	python3 -m eval.report --run $(PROVBIND_RUN)
+
+corpus-check:  ## sanity-check ml/corpus.yaml
+	python3 -m pytest -q tests/testbed/test_corpus.py
+
+test:  ## run the unit and capability tests that run anywhere
+	python3 -m pytest -q -m "not integration"
