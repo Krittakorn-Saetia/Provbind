@@ -221,3 +221,15 @@ def test_report_ignores_scoring_json(tmp_path, capsys):
     (d / "EV-01.json").write_text('{"id": "EV-01", "status": "pass"}')
     assert set(report.load_results(str(d))) == {"EV-01"}
     assert "skipping" not in capsys.readouterr().err
+
+
+def test_no_dcap_ablation_ignores_only_dcap():
+    gt = _gt(scenario="benign-1", label="benign")
+    r = compare.compare([gt], [_alert(bucket="medium", cls="D_cap", sub="not_in_envelope"),
+                               _alert(bucket="low", cls="D_exec", sub="outside_closure")], [])[0]
+    assert r["provbind_detected"] is True and r["provbind_detected_no_dcap"] is False
+    r = compare.compare([_gt()], [_alert(), _alert(bucket="medium", cls="D_cap", sub="not_in_envelope")], [])[0]
+    assert r["provbind_detected"] is True and r["provbind_detected_no_dcap"] is True
+    m = compare.scoring_matrix([r])
+    assert m["scopes"]["all"]["systems"]["PROVBIND w/o D_cap"]["TP"] == 1
+    assert "ablation" in compare.render_matrix(m)

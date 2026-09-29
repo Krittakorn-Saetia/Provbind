@@ -144,6 +144,7 @@ def compare(ground_truth, alerts, falco):
             if label not in classes:
                 classes.append(label)
         buckets = [a.get("bucket", "") for a in my_alerts]
+        buckets_no_dcap = [a.get("bucket", "") for a in my_alerts if a.get("class") != "D_cap"]
         top_bucket = min(buckets, key=lambda b: _rank(b, BUCKET_ORDER)).lower() if buckets else ""
 
         rules = []
@@ -163,6 +164,9 @@ def compare(ground_truth, alerts, falco):
             "provbind_top_bucket": top_bucket,
             # "detected" for the comparison table means an alert above the benign floor (Low).
             "provbind_detected": any(_rank(b, BUCKET_ORDER) < BUCKET_ORDER.index("low") for b in buckets),
+            # The same, ignoring D_cap: an ablation for runs whose envelope has no ML-A capabilities.
+            "provbind_detected_no_dcap": any(_rank(b, BUCKET_ORDER) < BUCKET_ORDER.index("low")
+                                             for b in buckets_no_dcap),
             "provbind_alerted": bool(my_alerts),
             "falco_hits": len(falco_hits),
             "falco_rules": rules,
@@ -208,7 +212,10 @@ def render_table(rows):
 # tamper-1 is an integrity check of the violation log (E2E-12), not a detection case, so it is listed
 # but never counted.
 
-SYSTEMS = (("PROVBIND", "provbind_detected"), ("Falco", "falco_detected"))
+# "PROVBIND w/o D_cap" is an ablation, never the headline: without ML-A profiling the envelope lists no
+# capabilities, so every capability the app uses is a D_cap (ROLE1-READINESS §3), benign runs included.
+SYSTEMS = (("PROVBIND", "provbind_detected"), ("PROVBIND w/o D_cap", "provbind_detected_no_dcap"),
+           ("Falco", "falco_detected"))
 NON_DETECTION_SCENARIOS = frozenset({"tamper-1"})
 MIN_RUNS = 3                                    # Test Plan §12.2, dataset D4
 
@@ -295,7 +302,9 @@ def render_matrix(m):
                          "accuracy favours the larger class")
     if m["too_few_runs"]:
         parts += ["", f"note: fewer than {MIN_RUNS} runs (Test Plan §12.2, D4): " + ", ".join(m["too_few_runs"])]
-    parts += ["", "Detected = PROVBIND alert above Low / any Falco rule. tamper-1 checks the log, not detection."]
+    parts += ["", "Detected = PROVBIND alert above Low / any Falco rule. tamper-1 checks the log, not detection.",
+              "PROVBIND w/o D_cap = the same alerts minus D_cap: an ablation for envelopes without ML-A "
+              "capabilities; PROVBIND is the headline."]
     return "\n".join(parts)
 
 

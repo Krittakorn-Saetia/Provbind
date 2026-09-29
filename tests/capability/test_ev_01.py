@@ -39,6 +39,8 @@ def test_ev_01(record_result):
                    **{f"provbind_{k}": pb[k] for k in ("TP", "FP", "FN", "TN", "precision", "recall", "accuracy")},
                    **{f"falco_{k}": fa[k] for k in ("TP", "FP", "FN", "TN", "precision", "recall", "accuracy")},
                    "runtime_provbind_f1": rt_pb["f1"], "runtime_falco_f1": rt_fa["f1"],
+                   "provbind_no_dcap_f1": matrix["scopes"]["all"]["systems"]["PROVBIND w/o D_cap"]["f1"],
+                   "provbind_no_dcap_fpr": matrix["scopes"]["all"]["systems"]["PROVBIND w/o D_cap"]["fpr"],
                    "too_few_runs": matrix["too_few_runs"]}
     # The pass criterion is that the per-system table is produced across the scenarios.
     record_result("EV-01", "pass" if rows else "fail", metrics=metrics, artifacts=[art],
