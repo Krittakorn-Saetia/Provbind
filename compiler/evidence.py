@@ -5,6 +5,11 @@ signature (v_sig) and two attestations, each bound to the image digest (v_B for 
 CycloneDX SBOM, v_P for the SLSA v1 provenance). The debug copies under run/attest/ are
 never read. cosign v2 and v3 print different layouts (handoff Section 5, fact 2), so the
 output is read defensively.
+
+cosign v3 differs from v2 in two ways that matter here (handoff T3; the real v3 output is in
+compiler/tests/fixtures/): `cosign verify` also returns the attestation bundles as verified
+"signatures", so exit 0 alone doesn't mean the image was signed; and its output no longer
+carries the Rekor entry, which is read from the signature bundle instead.
 """
 from __future__ import annotations
 
@@ -22,6 +27,9 @@ log = logging.getLogger("provbind.evidence")
 
 CYCLONEDX = "https://cyclonedx.org/bom"
 SLSA_V1 = "https://slsa.dev/provenance/v1"
+SIGN_V1 = "https://sigstore.dev/cosign/sign/v1"          # cosign v3's image signature statement
+IMAGE_SIGNATURE_TYPES = (SIGN_V1, "cosign container image signature")    # v3; v2's simple signing
+GIT_COMMIT = re.compile(r"^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$")         # SHA-1 or SHA-256
 BUILDER_URI = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")     # the schema's builder_id pattern
 TIMEOUT_S = 300
 
@@ -35,15 +43,18 @@ class Cosign:
 
     def __init__(self, key: str, offline: bool = False, binary: str = "cosign",
                  run: Callable[..., subprocess.CompletedProcess] = subprocess.run):
-        self.key, self.binary, self._run = key, binary, run
+        self.key, self.binary, self._run, self.offline = key, binary, run, offline
         self.flags = ["--insecure-ignore-tlog=true"] if offline else []
 
-    def _cosign(self, check: str, command: str, *args: str) -> str:
-        cmd = [self.binary, command, "--key", self.key, *self.flags, *args]
+    def _exec(self, cmd: list[str]) -> subprocess.CompletedProcess:
         try:
-            out = self._run(cmd, capture_output=True, text=True, timeout=TIMEOUT_S)
+            return self._run(cmd, capture_output=True, text=True, timeout=TIMEOUT_S)
         except FileNotFoundError:
             raise RuntimeError(f"{self.binary} not found on PATH") from None
+
+    def _cosign(self, check: str, command: str, *args: str) -> str:
+        try:
+            out = self._exec([self.binary, command, "--key", self.key, *self.flags, *args])
         except subprocess.TimeoutExpired:
             raise EvidenceError(f"{check}: cosign {command} timed out after {TIMEOUT_S} s") from None
         if out.returncode != 0:
@@ -56,6 +67,22 @@ class Cosign:
     def verify_attestation(self, ref: str, predicate: str) -> str:
         check = "v_B" if predicate == "cyclonedx" else "v_P"
         return self._cosign(check, "verify-attestation", "--type", predicate, ref)
+
+    def download_signature(self, ref: str) -> str:
+        """The signature bundles attached to `ref`, as `cosign download signature` prints them
+        (not a verification: see signature_log_index). Offline there is no Rekor entry to
+        read, so nothing runs. A failure gives "" and a warning, never an EvidenceError."""
+        if self.offline:
+            return ""
+        try:
+            out = self._exec([self.binary, "download", "signature", ref])
+        except subprocess.TimeoutExpired:
+            log.warning("cosign download signature timed out after %d s", TIMEOUT_S)
+            return ""
+        if out.returncode != 0:
+            log.warning("cosign download signature failed: %s", _reason(out.stderr))
+            return ""
+        return out.stdout
 
 
 def _reason(stderr: str) -> str:
@@ -125,15 +152,36 @@ def statement(obj: Any) -> dict | None:
 
 
 def binds(stmt: dict, hex_digest: str, predicate_type: str) -> bool:
-    """v_B / v_P: the statement has the expected predicateType and names the image digest
-    among its subjects."""
+    """v_B / v_P: the statement has the expected predicateType, at least one subject, and
+    every subject's digest.sha256 is the image digest (handoff T3; PH1-01)."""
     if stmt.get("predicateType") != predicate_type:
         return False
-    for s in stmt.get("subject") or ():
+    subjects = stmt.get("subject")
+    if not isinstance(subjects, list) or not subjects:
+        return False
+    for s in subjects:
         d = s.get("digest") if isinstance(s, dict) else None
-        if isinstance(d, dict) and d.get("sha256") == hex_digest:
-            return True
-    return False
+        if not isinstance(d, dict) or d.get("sha256") != hex_digest:
+            return False
+    return True
+
+
+def image_signatures(verify_output: str, digest: str) -> list[dict]:
+    """v_sig: the entries of `cosign verify` output that sign the image `digest` itself.
+
+    An entry counts when its critical.type is an image-signature type (cosign v3's sign/v1,
+    or v2's simple signing) and its critical.image names the digest. cosign v3 also lists
+    the attestation bundles, so an image that was attested but never signed still makes
+    `cosign verify` exit 0; those entries don't count here.
+    """
+    found = []
+    for value in json_values(verify_output):
+        critical = value.get("critical") if isinstance(value, dict) else None
+        image = critical.get("image") if isinstance(critical, dict) else None
+        if (isinstance(image, dict) and critical.get("type") in IMAGE_SIGNATURE_TYPES
+                and image.get("docker-manifest-digest") == digest):
+            found.append(value)
+    return found
 
 
 def parse_time(value: Any) -> datetime | None:
@@ -212,17 +260,53 @@ def find_log_index(value: Any) -> int | None:
     return None
 
 
+def signature_log_index(bundles_output: str, hex_digest: str) -> int | None:
+    """tau_I with cosign v3: the Rekor entry of the image-signature bundle, or None.
+
+    `cosign download signature` prints one Sigstore bundle per line: the image signature
+    (a DSSE in-toto statement of type sign/v1 with an empty predicate) and the attestations.
+    Take the bundles whose statement is sign/v1 and binds to the image digest, and read
+    each one's own entry, verificationMaterial.tlogEntries[0].logIndex. (The entry's
+    inclusionProof holds a second logIndex, the log tree's, so find_log_index's first match
+    is not used here.) Of several, the latest integratedTime wins, then the last line.
+
+    Trust: `download signature` verifies nothing, and this function doesn't check the
+    bundle's signature again. `cosign verify` has just verified the image's signature
+    bundles with our key, tlog inclusion included, and the index is recorded for audit;
+    Role 4's transparency check (PH6) can re-verify it against Rekor.
+    """
+    best, best_key = None, None
+    for line, value in enumerate(json_values(bundles_output)):
+        stmt = statement(value) if isinstance(value, dict) and "dsseEnvelope" in value else None
+        if stmt is None or not binds(stmt, hex_digest, SIGN_V1):
+            continue
+        entries = (value.get("verificationMaterial") or {}).get("tlogEntries")
+        entry = entries[0] if isinstance(entries, list) and entries and isinstance(entries[0], dict) else {}
+        index = _as_log_index(entry.get("logIndex"))
+        if index is None:
+            continue
+        integrated = _as_log_index(entry.get("integratedTime"))
+        key = (integrated if integrated is not None else -1, line)
+        if best_key is None or key > best_key:
+            best, best_key = index, key
+    return best
+
+
 def signing_identity(provenance: dict) -> tuple[str, str | None]:
     """builder_id = runDetails.builder.id; source_commit = the gitCommit of the first
-    resolvedDependencies entry that has one."""
+    resolvedDependencies entry that has one that is a commit hash (40 or 64 hex digits).
+    Anything else, such as the "unknown" gen_provenance.py writes outside a git checkout,
+    gives None."""
     builder = ((provenance.get("runDetails") or {}).get("builder") or {}).get("id")
     if not isinstance(builder, str) or not BUILDER_URI.match(builder):
         raise EvidenceError(f"v_P: provenance runDetails.builder.id is not a URI: {builder!r}")
     for dep in (provenance.get("buildDefinition") or {}).get("resolvedDependencies") or ():
         digest = dep.get("digest") if isinstance(dep, dict) else None
         commit = digest.get("gitCommit") if isinstance(digest, dict) else None
-        if isinstance(commit, str) and commit:
+        if isinstance(commit, str) and GIT_COMMIT.match(commit):
             return builder, commit
+        if commit is not None:
+            log.info("provenance gitCommit %.40r is not a commit hash; ignored", commit)
     return builder, None
 
 
@@ -233,7 +317,10 @@ def collect(ref: str, digest: str, cosign: Cosign) -> Evidence:
     `digest` is the image digest every statement must bind to.
     """
     hex_digest = digest.split(":", 1)[1]
-    log_index = find_log_index(list(json_values(cosign.verify(ref))))            # v_sig
+    signatures = image_signatures(cosign.verify(ref), digest)                     # v_sig
+    if not signatures:
+        raise EvidenceError(f"v_sig: cosign verified no image signature for {digest} "
+                            "(attestations alone don't count)")
 
     sbom = newest_binding(cosign.verify_attestation(ref, "cyclonedx"), hex_digest, CYCLONEDX)
     if sbom is None or not isinstance(sbom.get("predicate"), dict):
@@ -243,6 +330,9 @@ def collect(ref: str, digest: str, cosign: Cosign) -> Evidence:
         raise EvidenceError(f"v_P: no verified SLSA v1 provenance binds to {digest}")
 
     builder, commit = signing_identity(prov["predicate"])
+    log_index = find_log_index(signatures)                           # cosign v2 prints the entry
     if log_index is None:
-        log.info("no Rekor log index in the cosign verify output; recorded as null")
+        log_index = signature_log_index(cosign.download_signature(ref), hex_digest)     # v3
+    if log_index is None:
+        log.info("no Rekor log index for the image signature; recorded as null")
     return Evidence(digest, sbom["predicate"], prov["predicate"], builder, commit, log_index)

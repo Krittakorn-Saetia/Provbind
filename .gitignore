@@ -6,6 +6,11 @@ run/
 ml/data/raw/
 eval/mlc/data/
 
+# ML-A dataset D1 and the trained model: made on the demo PC, kept out of `git add -A` by default.
+# To share them on purpose, `git add -f` the file (or delete these lines once the team decides).
+ml/data/*.jsonl
+ml/model/
+
 # Python
 __pycache__/
 *.pyc

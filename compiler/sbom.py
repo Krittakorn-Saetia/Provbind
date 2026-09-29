@@ -5,6 +5,12 @@ outgoing edges but no incoming ones; a multi-source BFS then gives each componen
 shortest distance. A component in no edge gets depth None (unresolved), never 1: syft's
 edges are incomplete (handoff Section 5, fact 6), so a missing edge says nothing about
 where a package sits. Edges use bom-refs; packages are keyed by the component's purl.
+
+A component without a purl is not a package here. On the stand-in these are syft's Windows
+PE launchers inside pip and setuptools (cli-64.exe, gui-32.exe, ...; syft:package:type
+"binary", no purl, in no edge): no file can be matched to them, no reader can name them,
+and keyed by their bom-refs they only made unresolved_fraction and ML-A's pkg.count.other
+look worse (19.7% unresolved on the stand-in instead of 9.7%).
 """
 from __future__ import annotations
 
@@ -26,16 +32,24 @@ def _walk(components: Iterable[dict] | None) -> Iterator[dict]:
 
 
 def package_components(bom: dict) -> list[dict]:
-    """The package components, nested ones included, in document order."""
-    return [c for c in _walk(bom.get("components")) if c.get("type", "library") in PACKAGE_TYPES]
+    """The package components, nested ones included, in document order: a package type and
+    a purl. Components of a package type without a purl are logged and left out."""
+    typed = [c for c in _walk(bom.get("components")) if c.get("type", "library") in PACKAGE_TYPES]
+    packages = [c for c in typed if c.get("purl")]
+    if len(packages) < len(typed):
+        names = sorted({str(c.get("name")) for c in typed if not c.get("purl")})
+        log.info("%d SBOM components have no purl and are left out of packages: %s",
+                 len(typed) - len(packages), ", ".join(names[:10]) + (", ..." if len(names) > 10 else ""))
+    return packages
 
 
 def depths(bom: dict) -> tuple[dict[str, dict], float]:
     """(packages, unresolved_fraction) for the envelope.
 
-    packages maps each package's purl (its bom-ref if it has no purl) to {"depth": ...}.
-    Components that share a purl keep the smallest non-null depth. unresolved_fraction is
-    the share of packages entries with a null depth, or 0 when there are none.
+    packages maps each package's purl to {"depth": ...}; components without a purl are left
+    out (package_components). Components that share a purl keep the smallest non-null depth.
+    unresolved_fraction is the share of packages entries with a null depth, or 0 when there
+    are none.
     """
     edges: dict[str, list[str]] = {}
     for d in bom.get("dependencies") or ():
@@ -60,12 +74,8 @@ def depths(bom: dict) -> tuple[dict[str, dict], float]:
     # signed says how it is reached.
     packages: dict[str, dict] = {}
     for c in package_components(bom):
-        ref = c.get("bom-ref")
-        key = c.get("purl") or ref
-        if not key:
-            log.warning("SBOM component %r has neither a purl nor a bom-ref; skipped", c.get("name"))
-            continue
-        d = depth.get(ref)
+        ref, key = c.get("bom-ref"), c["purl"]
+        d = depth.get(ref) if ref else None
         prev = packages.get(key)
         if prev is None or (d is not None and (prev["depth"] is None or d < prev["depth"])):
             packages[key] = {"depth": d}
