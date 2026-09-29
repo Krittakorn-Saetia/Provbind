@@ -29,6 +29,9 @@ up:  ## start kind + registry, Tetragon, Falco, Neo4j, and the demo namespace (S
 	helm repo update >/dev/null
 	helm upgrade --install tetragon cilium/tetragon -n kube-system $(TETRAGON_VALUES)
 	kubectl rollout status -n kube-system ds/tetragon
+	kubectl rollout status -n kube-system deploy/tetragon-operator --timeout=300s
+	until kubectl get crd tracingpoliciesnamespaced.cilium.io >/dev/null 2>&1; do sleep 2; done
+	kubectl wait --for condition=established --timeout=120s crd/tracingpoliciesnamespaced.cilium.io
 	helm upgrade --install falco falcosecurity/falco -n falco --create-namespace \
 	  --set driver.kind=modern_ebpf --set falco.json_output=true
 	docker rm -f neo4j >/dev/null 2>&1 || true
