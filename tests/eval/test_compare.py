@@ -211,3 +211,13 @@ def test_main_writes_scoring_files(tmp_path, capsys):
     assert (tmp_path / "results" / "SCORING.md").exists()
     doc = __import__("json").loads((tmp_path / "results" / "SCORING.json").read_text())
     assert doc["matrix"]["scopes"]["all"]["systems"]["PROVBIND"]["TP"] == 1
+
+
+def test_report_ignores_scoring_json(tmp_path, capsys):
+    from eval import report
+    d = tmp_path / "results"
+    d.mkdir()
+    (d / "SCORING.json").write_text('{"rows": [], "matrix": {}}')
+    (d / "EV-01.json").write_text('{"id": "EV-01", "status": "pass"}')
+    assert set(report.load_results(str(d))) == {"EV-01"}
+    assert "skipping" not in capsys.readouterr().err

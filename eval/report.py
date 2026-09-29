@@ -14,7 +14,7 @@ def load_results(results_dir):
     if not os.path.isdir(results_dir):
         return out
     for name in os.listdir(results_dir):
-        if name.endswith(".json"):
+        if name.endswith(".json") and name != "SCORING.json":    # make compare's matrix, not a test result
             path = os.path.join(results_dir, name)
             try:
                 with open(path, encoding="utf-8") as f:
