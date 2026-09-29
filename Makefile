@@ -30,6 +30,7 @@ up:  ## start kind + registry, Tetragon, Falco, Neo4j, and the demo namespace (S
 	docker rm -f neo4j >/dev/null 2>&1 || true
 	docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/provbind-demo neo4j:5
 	kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
+	$(if $(wildcard node/tetragon/cap.yaml),kubectl apply -f node/tetragon/write.yaml -f node/tetragon/truncate.yaml -f node/tetragon/cap.yaml,@echo "make up: node/tetragon/ is not merged yet; apply Role 3's policies once it is")
 
 down:  ## tear the cluster and the registry down
 	kind delete cluster || true
@@ -52,6 +53,14 @@ trust:  ## run the trust-1 scenario (mark requestz-helper malicious in the local
 
 tamper:  ## run the tamper-1 scenario (edit one character in the violation log)
 	./testbed/scenarios/tamper.sh
+
+.PHONY: trust2 ph4-14
+
+trust2:  ## run the trust-2 scenario (our key revoked in keystatus.json); RESTORE=1 undoes it
+	./testbed/scenarios/trust2.sh
+
+ph4-14:  ## write the new file /tmp/new.txt in the demo pod inside a ph4-14 row (Role 3's PH4-14)
+	./testbed/scenarios/ph4_14.sh
 
 falco-capture:  ## stream Falco JSON into $(PROVBIND_RUN)/falco.jsonl (run in the background)
 	./eval/capture_falco.sh

@@ -6,6 +6,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 source testbed/scenarios/lib.sh
 
+start_port_forward
 START="$(now)"
 for _ in 1 2 3; do app_curl /; done
 # Keep -it: Falco's shell rule looks for a terminal (Sprint Handoff §5 pitfall).

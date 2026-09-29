@@ -8,6 +8,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 source testbed/scenarios/lib.sh
 
 wait_for_envelope
+start_port_forward
 START="$(now)"
 app_curl /update
 sleep 30                     # let the exec and write events flow through the pipeline

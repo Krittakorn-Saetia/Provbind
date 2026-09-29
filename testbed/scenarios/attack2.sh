@@ -7,9 +7,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 source testbed/scenarios/lib.sh
 
 wait_for_envelope
+start_port_forward
 START="$(now)"
-app_curl /update2
-sleep 30                     # 20 s of writes plus time for the ML-B window to close
+app_curl /update2             # returns after the ~20 s paced burst
+sleep 40                      # Role 3 handoff §4: keep the row open >= 35 s (a D_beh is timed at its window's end)
 END="$(now)"
 
 record_gt attack-2 malicious "$START" "$END" "D_beh only"

@@ -12,17 +12,23 @@ The attack-3..8 endpoints (P1 scenarios) are not implemented in this prototype a
 from __future__ import annotations
 
 import os
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CACHE_DIR = "/tmp/.cache"
 
 
-def cache_burst(base_dir: str = CACHE_DIR, n: int = 300) -> int:
-    """Write n new files and read them back (attack-2). Pure Python file I/O: no new executables,
-    no writes to declared files. Returns the number of files written."""
+def cache_burst(base_dir: str = CACHE_DIR, n: int = 300, duration: float = 20.0) -> int:
+    """Write n new files over about `duration` seconds and read them back (attack-2: 300 files in
+    20 s, Test Plan §7). Pure Python file I/O inside the long-running server process (ML-B ignores
+    processes younger than 10 s): no new executables, no writes to declared files. Returns the
+    number of files written."""
     os.makedirs(base_dir, exist_ok=True)
+    pause = duration / n if n else 0
     written = 0
     for i in range(n):
+        if pause:
+            time.sleep(pause)
         p = os.path.join(base_dir, f"c{i}.dat")
         with open(p, "w", encoding="utf-8") as f:
             f.write(f"payload-{i}\n")

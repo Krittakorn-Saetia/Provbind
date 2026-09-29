@@ -10,6 +10,9 @@ source testbed/scenarios/lib.sh
 : "${PROVBIND_ADVISORY:=$PROVBIND_RUN/advisories/requestz-helper.json}"
 : "${TRUST_SETTLE:=30}"      # seconds to let the trust loop re-evaluate (>= ΔR)
 
+if [ "${RESTORE:-0}" = "1" ]; then           # `RESTORE=1 make trust` removes the advisory again
+  rm -f "$PROVBIND_ADVISORY"; echo "trust-1: advisory removed"; exit 0
+fi
 mkdir -p "$(dirname "$PROVBIND_ADVISORY")"
 START="$(now)"
 # A local advisory in OSV format, MAL- id (Test Plan §12.5). Copies the shape of a real report.

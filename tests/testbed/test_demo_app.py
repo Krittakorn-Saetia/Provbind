@@ -47,7 +47,7 @@ def test_check_update_is_noop_without_payload(demo_modules, tmp_path):
 
 def test_cache_burst_writes_and_reads(demo_modules, tmp_path):
     app, _ = demo_modules
-    n = app.cache_burst(base_dir=str(tmp_path / ".cache"), n=25)
+    n = app.cache_burst(base_dir=str(tmp_path / ".cache"), n=25, duration=0)
     assert n == 25
     files = list((tmp_path / ".cache").glob("c*.dat"))
     assert len(files) == 25
@@ -57,3 +57,13 @@ def test_payload_is_empty_in_source_tree():
     # Guard: the committed payload module must stay empty (no binary/blob in the repo).
     payload = (DEMO / "requestz-helper" / "requestz_helper" / "_payload.py").read_text()
     assert 'PAYLOAD_B64 = ""' in payload
+
+
+def test_dockerfile_pins_both_stages_to_the_standin_base():
+    # Korn's §5.2 step 1: both FROM lines use the stand-in's digest (gen_provenance records the first).
+    root = DEMO.parents[1]
+    standin = [l.split()[1] for l in (root / "testbed/standin-app/Dockerfile").read_text().splitlines()
+               if l.startswith("FROM ")]
+    demo = [l.split()[1] for l in (DEMO / "Dockerfile").read_text().splitlines() if l.startswith("FROM ")]
+    assert len(demo) == 2 and "@sha256:" in standin[0]
+    assert demo == [standin[0], standin[0]]
