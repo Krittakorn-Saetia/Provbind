@@ -11,6 +11,8 @@
 #   command    override when the default entrypoint needs no work to exercise.
 #   port       the port the workload hits; omit for images with no server.
 #   workload   a shell snippet run from a helper pod; {host} is the image's Service name.
+#   helper     the helper pod's image (default: curlimages/curl). Datastores use their own image,
+#              which ships the client the workload needs (redis-cli, psql, mariadb, mysql, mongosh).
 #
 # Size: 26 images below (§4.1 wants at least 20, target 40). Add more from the list at the end.
 # Most capability use happens at start-up, so a light workload is enough; tune on the demo PC.
@@ -37,17 +39,21 @@
 - image: postgres:16
   env: { POSTGRES_PASSWORD: test }
   port: 5432
+  helper: postgres:16
   workload: "for i in $(seq 20); do PGPASSWORD=test psql -h {host} -U postgres -c 'select 1' >/dev/null; done"
 - image: mariadb:11
   env: { MARIADB_ROOT_PASSWORD: test }
   port: 3306
+  helper: mariadb:11
   workload: "for i in $(seq 20); do mariadb -h {host} -uroot -ptest -e 'select 1' >/dev/null 2>&1; done"
 - image: mysql:8
   env: { MYSQL_ROOT_PASSWORD: test }
   port: 3306
+  helper: mysql:8
   workload: "for i in $(seq 20); do mysql -h {host} -uroot -ptest -e 'select 1' >/dev/null 2>&1; done"
 - image: mongo:7
   port: 27017
+  helper: mongo:7
   workload: "for i in $(seq 20); do mongosh --host {host} --eval 'db.runCommand({ping:1})' >/dev/null 2>&1; done"
 - image: influxdb:2.7
   env: { DOCKER_INFLUXDB_INIT_MODE: setup, DOCKER_INFLUXDB_INIT_USERNAME: admin,
@@ -58,12 +64,15 @@
 # --- Caches / key-value ---
 - image: redis:7
   port: 6379
+  helper: redis:7
   workload: "for i in $(seq 50); do redis-cli -h {host} set k$i v$i >/dev/null; done"
 - image: valkey/valkey:8
   port: 6379
+  helper: redis:7                  # redis-cli speaks the same protocol
   workload: "for i in $(seq 50); do redis-cli -h {host} set k$i v$i >/dev/null; done"
 - image: memcached:1.6
   port: 11211
+  helper: busybox:1.36             # for nc
   workload: "for i in $(seq 30); do printf 'set k 0 0 1\\r\\nv\\r\\nquit\\r\\n' | nc {host} 11211 >/dev/null; done"
 
 # --- Message broker ---

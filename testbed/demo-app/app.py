@@ -4,6 +4,7 @@ Endpoints drive the demo scenarios (Test Plan §7); all effects happen only insi
 demo container:
   GET /         -> "ok"
   GET /healthz  -> "ok"
+  GET /cache    -> the app's own benign cache-file write (the load generator's traffic for ML-B's D2)
   GET /update   -> attack-1: requestz_helper.check_update() drops and runs the test payload
   GET /update2  -> attack-2: an in-envelope burst of new files under /tmp/.cache (declared binaries
                    only), which no deterministic rule flags but ML-B should (D_beh)
@@ -12,17 +13,23 @@ The attack-3..8 endpoints (P1 scenarios) are not implemented in this prototype a
 from __future__ import annotations
 
 import os
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CACHE_DIR = "/tmp/.cache"
 
 
-def cache_burst(base_dir: str = CACHE_DIR, n: int = 300) -> int:
-    """Write n new files and read them back (attack-2). Pure Python file I/O: no new executables,
-    no writes to declared files. Returns the number of files written."""
+def cache_burst(base_dir: str = CACHE_DIR, n: int = 300, duration: float = 20.0) -> int:
+    """Write n new files over about `duration` seconds and read them back (attack-2: 300 files in
+    20 s, Test Plan §7). Pure Python file I/O inside the long-running server process (ML-B ignores
+    processes younger than 10 s): no new executables, no writes to declared files. Returns the
+    number of files written."""
     os.makedirs(base_dir, exist_ok=True)
+    pause = duration / n if n else 0
     written = 0
     for i in range(n):
+        if pause:
+            time.sleep(pause)
         p = os.path.join(base_dir, f"c{i}.dat")
         with open(p, "w", encoding="utf-8") as f:
             f.write(f"payload-{i}\n")
@@ -31,6 +38,22 @@ def cache_burst(base_dir: str = CACHE_DIR, n: int = 300) -> int:
         with open(os.path.join(base_dir, f"c{i}.dat"), encoding="utf-8") as f:
             f.read()
     return written
+
+
+APP_CACHE_DIR = "/tmp/app-cache"
+
+
+def cache_entry(base_dir: str = APP_CACHE_DIR, slots: int = 50) -> str:
+    """The app's own, benign cache-file write (GET /cache): rewrite one of `slots` small files and
+    read it back. The load generator calls it at random, so ML-B's benign data (D2, Test Plan §5)
+    contains ordinary file writes and attack-2's burst is judged against them."""
+    os.makedirs(base_dir, exist_ok=True)
+    path = os.path.join(base_dir, f"entry{int(time.time() * 1000) % slots}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write('{"cached_at": %d}\n' % int(time.time()))
+    with open(path, encoding="utf-8") as f:
+        f.read()
+    return path
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -45,6 +68,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/healthz"):
             self._send(200, "ok")
+        elif self.path == "/cache":
+            cache_entry()
+            self._send(200, "cached")
         elif self.path == "/update":
             from requestz_helper import check_update
             started = check_update()

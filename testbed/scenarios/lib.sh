@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Shared helpers for the Role 1 scenario scripts (Sprint Handoff §5). Sourced, not run.
-# Runs on the demo PC; needs kubectl and python3. All scenarios talk to the demo app by
-# hitting its own endpoint from inside its pod, so no port-forward is needed.
+# Runs on the demo PC; needs kubectl, curl and python3. Scenarios reach the demo app through
+# `kubectl port-forward` from the host, so a trigger runs NOTHING inside the app container: a
+# `kubectl exec … curl` would add its own D_exec to the scenario's window (Role 3 handoff §4: no other
+# activity in the pod during a scenario), and would fail attack-2's "no deterministic detection".
 set -euo pipefail
 
 : "${PROVBIND_RUN:=./run}"
@@ -10,12 +12,38 @@ set -euo pipefail
 : "${POD_PREFIX:=demo-app}"
 : "${PORT:=8080}"
 : "${ENVELOPE_TIMEOUT:=120}"
+: "${LOCAL_PORT:=18080}"
+: "${CURL_TIMEOUT:=90}"         # attack-2's paced burst holds its request for about 20 s
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-# Hit an app endpoint from inside the pod (the attack endpoints act inside the container).
+PF_PID=""
+stop_port_forward() {
+  if [ -n "$PF_PID" ]; then kill "$PF_PID" 2>/dev/null || true; wait "$PF_PID" 2>/dev/null || true; fi
+  PF_PID=""
+}
+
+# Forward LOCAL_PORT on the host to the app's PORT. Call it before a scenario's START time.
+start_port_forward() {
+  if [ -n "$PF_PID" ] && kill -0 "$PF_PID" 2>/dev/null; then return 0; fi
+  kubectl port-forward -n "$NAMESPACE" "deploy/$DEPLOY" "${LOCAL_PORT}:${PORT}" >/dev/null 2>&1 &
+  PF_PID=$!
+  trap stop_port_forward EXIT
+  local _
+  for _ in $(seq 1 40); do
+    curl -s -o /dev/null --max-time 2 "http://127.0.0.1:${LOCAL_PORT}/healthz" && return 0
+    sleep 0.5
+  done
+  echo "lib: kubectl port-forward to deploy/$DEPLOY:${PORT} did not come up" >&2
+  return 1
+}
+
+# GET an app endpoint (the attack endpoints act inside the app's own process). A failed trigger
+# stops the script, so no ground-truth row is written for a run that did not happen.
 app_curl() {
-  kubectl exec -n "$NAMESPACE" "deploy/$DEPLOY" -- curl -s "http://127.0.0.1:${PORT}$1" >/dev/null || true
+  start_port_forward
+  curl -sf -o /dev/null --max-time "$CURL_TIMEOUT" "http://127.0.0.1:${LOCAL_PORT}$1" \
+    || { echo "lib: GET $1 failed" >&2; return 1; }
 }
 
 # Wait until the pod's binding shows envelope_ready: true (Sprint Handoff §4.2, pitfall: trigger

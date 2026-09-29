@@ -65,3 +65,21 @@ def test_write_labels_roundtrip(tmp_path):
     run.write_labels([{"image": "nginx:1.27", "digest": "sha256:aaa", "labels": ["CAP_CHOWN"]}], str(out))
     lines = out.read_text().strip().splitlines()
     assert json.loads(lines[0])["digest"] == "sha256:aaa"
+
+
+def test_assemble_keeps_only_the_images_own_pod(tmp_path):
+    # meta.json names the profiling pod; events from other pods in `demo` (the running demo app,
+    # the workload helper) must not become this image's labels.
+    raw = tmp_path / "raw"
+    d = raw / "nginx"
+    d.mkdir(parents=True)
+    (d / "meta.json").write_text(json.dumps({"image": "nginx:1.27", "digest": "sha256:aaa",
+                                             "pod": "prof-nginx-1-27"}))
+    lines = [_kprobe("CAP_NET_BIND_SERVICE", pod="prof-nginx-1-27"),
+             _kprobe("CAP_SYS_ADMIN", pod="demo-app-7d9f"),        # another pod in the namespace
+             _kprobe("CAP_NET_RAW", pod="wl-prof-nginx-1-27-1")]   # the workload helper pod
+    (d / "run1.jsonl").write_text("\n".join(lines) + "\n")
+    (d / "run2.jsonl").write_text(lines[0] + "\n")
+    rows, _ = run.assemble(str(raw), namespace="demo")
+    assert rows[0]["labels"] == ["CAP_NET_BIND_SERVICE"]
+    assert rows[0]["run_disagreement"] == 0

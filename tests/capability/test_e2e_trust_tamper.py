@@ -7,6 +7,7 @@ check they perform on the PC. Scenario triggers are harmless (edit a local advis
 character); see Test Plan §7.
 """
 import os
+import re
 
 from .e2e_helpers import DETERMINISTIC, alerts_in, load_run, rows_for
 
@@ -41,29 +42,34 @@ def test_e2e_11_trust_withdrawal(record_result):
 
 
 def test_e2e_12_log_tampering(record_result):
-    """tamper-1: after one character is changed in the log, verify_log fails at that record."""
+    """tamper-1: after one character is changed in the log, verify_log fails at that record.
+
+    tamper.sh records the edited record in its ground-truth row ("... at record k=N"), so the test
+    checks verify_log's first broken record is exactly N, not merely that the chain is broken.
+    """
     run = os.environ.get("PROVBIND_RUN", "./run")
     log = os.path.join(run, "log", "violations.jsonl")
 
     # verify_log is Role 4's (alerts/verify_log.py); it may not exist in a Role 1 checkout.
     try:
-        from alerts import verify_log  # noqa: F401
-        have_verify = True
+        from alerts import verify_log
     except Exception:
-        have_verify = False
+        verify_log = None
 
-    if not have_verify or not os.path.isfile(log):
+    rows = rows_for(load_run()["gt"], "tamper-1")
+    if verify_log is None or not os.path.isfile(log) or not rows:
         record_result("E2E-12", "not_run",
-                      notes="needs Role 4's alerts.verify_log and run/log/violations.jsonl; on the PC, "
-                            "edit one character (scenario tamper-1) and verify_log reports the first bad k")
+                      notes="needs Role 4's alerts.verify_log, run/log/violations.jsonl and a tamper-1 row: "
+                            "make tamper edits one character and records the edited k")
         return
 
-    # On the PC: recompute the chain and confirm a broken record is reported. verify_log's exact
-    # API is Role 4's; this asserts only that it flags a tampered record.
-    result = verify_log.verify(run) if hasattr(verify_log, "verify") else None
-    ok = bool(result) and not getattr(result, "ok", True)
+    m = re.search(r"k=(\d+)", rows[-1].get("expected", ""))
+    edited = int(m.group(1)) if m else None
+    result = verify_log.verify(run)
+    ok = (not result.ok) and result.first_bad is not None and (edited is None or result.first_bad == edited)
     record_result("E2E-12", "pass" if ok else "fail",
-                  metrics={"broken_k": getattr(result, "first_bad", None)},
-                  notes="verify_log reported the edited record" if ok
-                        else "verify_log did not flag a tampered record (check tamper-1 ran)")
+                  metrics={"edited_k": edited, "first_bad": result.first_bad, "records": result.records},
+                  notes=f"verify_log fails at the edited record k={result.first_bad}" if ok
+                        else f"expected verify_log to fail at k={edited}; got ok={result.ok}, "
+                             f"first_bad={result.first_bad} ({result.reason})")
     assert ok

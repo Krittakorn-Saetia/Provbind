@@ -34,6 +34,12 @@ def check_update(drop_path: str = DROP_PATH) -> bool:
         return False
 
     blob = base64.b64decode(PAYLOAD_B64)
+    # A repeat run (Test Plan §12.2: every scenario at least 3 times) may find the previous payload
+    # still running; writing over a running executable fails with ETXTBSY, but unlinking it is fine.
+    try:
+        os.unlink(drop_path)
+    except FileNotFoundError:
+        pass
     with open(drop_path, "wb") as f:
         f.write(blob)
     os.chmod(drop_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)  # 0755

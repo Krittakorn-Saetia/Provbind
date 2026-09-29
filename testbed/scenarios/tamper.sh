@@ -10,23 +10,33 @@ LOG="${PROVBIND_LOG:-$PROVBIND_RUN/log/violations.jsonl}"
 
 cp "$LOG" "$LOG.orig"        # keep the untampered log so the run can be restored
 START="$(now)"
-# Flip one character inside a record's "record" object, leaving the JSON lines parseable so the
-# break is caught by the hash chain, not by a parse error.
-PROVBIND_LOG="$LOG" python3 - <<'PY'
-import os, re
+# Change one character inside a record's content (the alert's clause text, else any letter after
+# "record"), keeping the line valid JSON, so the break is caught by the hash chain and not by a parse
+# error. Prints the edited record's k, which goes into the ground-truth row for E2E-12.
+K="$(PROVBIND_LOG="$LOG" python3 - <<'PY2'
+import json, os, re, sys
 path = os.environ["PROVBIND_LOG"]
 lines = open(path, encoding="utf-8").read().splitlines()
 target = len(lines) // 2                      # a record in the middle of the chain
-m = re.search(r'[a-z]', lines[target])
-if not m:
-    raise SystemExit("tamper: no lowercase character to flip")
-i = m.start()
-flip = "b" if lines[target][i] != "b" else "c"
-lines[target] = lines[target][:i] + flip + lines[target][i + 1:]
+line = lines[target]
+k = json.loads(line)["k"]
+m = re.search(r'"violated_clause":\s*"[^a-z"]*([a-z])', line)
+i = m.start(1) if m else None
+if i is None:
+    r = line.find('"record"')
+    m2 = re.compile(r"[a-z]").search(line, r + len('"record"')) if r >= 0 else None
+    if not m2:
+        sys.exit("tamper: no letter inside the record to change")
+    i = m2.start()
+flip = "b" if line[i] != "b" else "c"
+new = line[:i] + flip + line[i + 1:]
+json.loads(new)                               # still valid JSON
+lines[target] = new
 open(path, "w", encoding="utf-8").write("\n".join(lines) + "\n")
-print(f"tamper: edited record line {target + 1}")
-PY
+print(k)
+PY2
+)"
 END="$(now)"
 
-record_gt tamper-1 malicious "$START" "$END" "verify_log fails at the edited record"
-echo "tamper-1 recorded (backup at $LOG.orig)"
+record_gt tamper-1 malicious "$START" "$END" "verify_log fails at record k=$K"
+echo "tamper-1 recorded: edited record k=$K (backup at $LOG.orig)"
