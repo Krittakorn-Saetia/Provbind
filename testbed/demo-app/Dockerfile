@@ -21,7 +21,7 @@ WORKDIR /app
 # executes anything inside the container (it would add its own detection to the scenario's window).
 # Install the test package from local source only (never from PyPI); it carries the embedded payload.
 COPY --from=builder /build/requestz-helper ./requestz-helper
-RUN pip install --no-cache-dir --no-index ./requestz-helper
+RUN pip install --no-cache-dir --no-index --no-build-isolation ./requestz-helper
 COPY app.py .
 EXPOSE 8080
 CMD ["python", "app.py"]
