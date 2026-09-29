@@ -494,7 +494,7 @@ Each row names a part of the draft, the tests that decide it, and the update if 
 | Source of H(f) | PH4-07 to 09 | Name the hash source; add the hash guard (C3) | |
 | Admission to envelope timing | PH2-10 | Describe asynchronous compilation, buffering and the measured window (C4) | |
 | Training source of ℳ_I^beh | MLB-03, MLB-06 | State the training source; per-image or global model (C5) | |
-| Scoring values | PH5-01 to 05 | Add the value tables and a worked example (M1, M16) | |
+| Scoring values | PH5-01 to 05 | Add the value tables and a worked example (M1, M16) | PH5-01 to 05 pass (29 Sep 2026, PR #17's code on Korn-PC). PH5-04 holds on S (Eq. 65). The whole-number display score ties an undeclared file with a declared one from depth 39 (100·S = 70 + 20δ/(1+δ)). So the update should also say that alerts are ranked by S, and that 100·S is rounded for display only. |
 | S_beh against S_det | MLB-07 | Cap S_beh or give it its own queue (M2) | |
 | Graph writes at runtime | PH3-10, OH-01 | Keep runtime graph writes off the event path (M3) | |
 | Package scope in the graph | PH3-11 | Add a DECLARES edge; scope DEPENDS_ON per image (M4) | |
