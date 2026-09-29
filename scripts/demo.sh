@@ -24,7 +24,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${DEMO_REF:?set DEMO_REF to the ref@digest that make demo-app printed}"
 : "${PROVBIND_KEY:=pipeline/keys/cosign.pub}"
 : "${TETRAGON_CONTAINER:=export-stdout}"
-: "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml}"
+: "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml}"
 : "${MLB:=}"
 : "${WAIT_S:=120}"
 
@@ -64,7 +64,7 @@ wait_alerts() {   # seconds minimum class [subclass]
 }
 
 step "0. background: controller, node, alerts, trust loop, Falco"
-kubectl apply -f $POLICIES >/dev/null
+for policy in $POLICIES; do kubectl apply -f "$policy" >/dev/null; done   # one -f per file
 python3 -m controller.watch --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --key "$PROVBIND_KEY" \
   > "$LOGS/controller.out" 2> "$LOGS/controller.log" & PIDS+=($!)
 ( kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0 \
