@@ -5,7 +5,8 @@ These are static checks; whether Tetragon accepts a policy is checked on the dem
 from pathlib import Path
 
 import pytest
-import yaml
+
+yaml = pytest.importorskip("yaml")      # in requirements.txt, not requirements-role2.txt
 
 from node.normalize import KPROBE_KINDS
 
