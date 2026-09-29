@@ -1,92 +1,171 @@
-#!/usr/bin/env python3
-"""
-contracts/check_contracts.py
-Schema validator for PROVBIND data contract files.
-Validates bindings.json, envelopes/*.json, detections.jsonl, and alerts.jsonl.
-"""
+"""Check a run folder against the Sprint Handoff §4 contracts (Role 4 keeps this, §3.4).
 
+    python contracts/check_contracts.py --run $PROVBIND_RUN
+
+| File | Checked against |
+|---|---|
+| `envelopes/<hex>.json` | `contracts/envelope.schema.json`, and the file name is the image digest's hex |
+| `bindings.json` | §4.2: the required keys and their types |
+| `detections.jsonl` | §4.4's keys, and `node/detection.schema.json` (Role 3) when it exists |
+| `alerts.jsonl` | §4.5's keys and bucket values |
+| `log/violations.jsonl` | the §4.6 hash chain (alerts.verify_log) |
+
+Files that do not exist yet are skipped. stdout: one JSON summary; the findings go to stderr.
+Exit 0 when every present file passes, 1 otherwise.
+"""
+from __future__ import annotations
+
+import argparse
 import json
-import sys
 import os
+import re
+import sys
+from pathlib import Path
 
-def validate_json_schema(obj, required_keys, file_name):
-    missing = [k for k in required_keys if k not in obj]
-    if missing:
-        print(f"❌ [Contract Error] {file_name} missing required keys: {missing}")
-        return False
-    return True
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
-def check_bindings(path):
-    if not os.path.exists(path):
-        print(f"⚠️ {path} does not exist yet (skipping check)")
-        return True
-    with open(path, "r") as f:
-        data = json.load(f)
-    required = ["namespace", "pod", "container", "image_digest", "verified", "run_as_root", "privileged", "mounts", "envelope_ready"]
-    valid = True
-    for container_id, binding in data.items():
-        if not validate_json_schema(binding, required, f"bindings.json ({container_id})"):
-            valid = False
-    if valid:
-        print(f"✅ bindings.json contract valid ({len(data)} entries)")
-    return valid
+DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+BINDING_TYPES = {"namespace": str, "pod": str, "container": str, "image_digest": str, "verified": bool,
+                 "run_as_root": bool, "privileged": bool, "mounts": list, "envelope_ready": bool}
+DETECTION_KEYS = ["id", "time", "container_id", "namespace", "pod", "container", "image_digest", "pid", "ppid",
+                  "exe", "parent_exe", "class", "subclass", "clause", "origin", "context"]
+ALERT_KEYS = ["alert_id", "detection_id", "time", "image_digest", "container", "class", "subclass",
+              "violated_clause", "origin", "score", "bucket", "attribution", "signing_identity", "chain_id", "log_k"]
+BUCKETS = {"critical", "high", "medium", "low"}
 
-def check_envelope(path):
-    if not os.path.exists(path):
-        print(f"⚠️ {path} does not exist yet (skipping check)")
-        return True
-    with open(path, "r") as f:
-        data = json.load(f)
-    required = ["schema", "image", "layers", "files", "symlinks", "closure", "packages", "capabilities", "unresolved_fraction", "compiled_at"]
-    if not validate_json_schema(data, required, path):
-        return False
-    print(f"✅ {os.path.basename(path)} contract valid")
-    return True
 
-def check_jsonl(path, required_keys, schema_name):
-    if not os.path.exists(path):
-        print(f"⚠️ {path} does not exist yet (skipping check)")
-        return True
-    valid = True
+def jsonl(path: Path):
+    with open(path, encoding="utf-8") as f:
+        for n, line in enumerate(f, 1):
+            if line.strip():
+                try:
+                    yield n, json.loads(line)
+                except ValueError as e:
+                    yield n, e
+
+
+def check_envelopes(run: Path, errors: list) -> int:
+    folder = run / "envelopes"
+    if not folder.is_dir():
+        return 0
+    try:
+        import jsonschema
+        validator = jsonschema.Draft202012Validator(json.loads((ROOT / "contracts" / "envelope.schema.json").read_text()))
+    except ImportError:
+        validator = None
     count = 0
-    with open(path, "r") as f:
-        for i, line in enumerate(f, 1):
-            if not line.strip():
-                continue
-            count += 1
-            record = json.loads(line)
-            if not validate_json_schema(record, required_keys, f"{schema_name} line {i}"):
-                valid = False
-    if valid:
-        print(f"✅ {os.path.basename(path)} contract valid ({count} records)")
-    return valid
+    for path in sorted(folder.glob("*.json")):
+        count += 1
+        try:
+            env = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as e:
+            errors.append(f"{path.name}: not JSON ({e})")
+            continue
+        if validator is not None:
+            for err in list(validator.iter_errors(env))[:3]:
+                errors.append(f"{path.name}: {'/'.join(map(str, err.path)) or '(top)'}: {err.message[:120]}")
+        digest = (env.get("image") or {}).get("digest", "")
+        if path.stem != digest.split(":", 1)[-1]:
+            errors.append(f"{path.name}: the file name is not the hex of image.digest {digest}")
+    return count
 
-def main():
-    run_dir = sys.argv[1] if len(sys.argv) > 1 else "."
-    print(f"🔍 Validating PROVBIND data contracts in: {run_dir}\n" + "-"*50)
-    
-    b_ok = check_bindings(os.path.join(run_dir, "bindings.json"))
-    
-    env_dir = os.path.join(run_dir, "envelopes")
-    e_ok = True
-    if os.path.exists(env_dir):
-        for fname in os.listdir(env_dir):
-            if fname.endswith(".json"):
-                if not check_envelope(os.path.join(env_dir, fname)):
-                    e_ok = False
 
-    det_keys = ["id", "time", "container_id", "namespace", "pod", "container", "image_digest", "pid", "ppid", "exe", "parent_exe", "class", "subclass", "clause", "origin", "context"]
-    d_ok = check_jsonl(os.path.join(run_dir, "detections.jsonl"), det_keys, "detections.jsonl")
+def check_bindings(run: Path, errors: list) -> int:
+    path = run / "bindings.json"
+    if not path.exists():
+        return 0
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        errors.append(f"bindings.json: not JSON ({e})")
+        return 0
+    if not isinstance(doc, dict):
+        errors.append("bindings.json: not an object keyed by container ID")
+        return 0
+    for cid, b in doc.items():
+        for key, kind in BINDING_TYPES.items():
+            if not isinstance(b, dict) or key not in b:
+                errors.append(f"bindings.json {cid}: missing {key}")
+            elif not isinstance(b[key], kind):
+                errors.append(f"bindings.json {cid}: {key} is not {kind.__name__}")
+        if isinstance(b, dict) and isinstance(b.get("image_digest"), str) and not DIGEST.match(b["image_digest"]):
+            errors.append(f"bindings.json {cid}: image_digest is not sha256:<64 hex>")
+        if isinstance(b, dict) and any(not str(m).startswith("/") for m in b.get("mounts") or []):
+            errors.append(f"bindings.json {cid}: a mount is not an absolute path")
+    return len(doc)
 
-    alt_keys = ["alert_id", "detection_id", "time", "image_digest", "container", "class", "subclass", "violated_clause", "origin", "score", "bucket", "attribution", "signing_identity", "chain_id", "log_k"]
-    a_ok = check_jsonl(os.path.join(run_dir, "alerts.jsonl"), alt_keys, "alerts.jsonl")
 
-    if b_ok and e_ok and d_ok and a_ok:
-        print("-" * 50 + "\n🎉 All data contracts passed validation successfully!")
-        sys.exit(0)
-    else:
-        print("-" * 50 + "\n❌ Data contract validation failed.")
-        sys.exit(1)
+def check_detections(run: Path, errors: list) -> int:
+    path = run / "detections.jsonl"
+    if not path.exists():
+        return 0
+    validator = None
+    schema_path = ROOT / "node" / "detection.schema.json"
+    if schema_path.exists():
+        try:
+            import jsonschema
+            validator = jsonschema.Draft202012Validator(json.loads(schema_path.read_text()))
+        except ImportError:
+            pass
+    count = 0
+    for n, det in jsonl(path):
+        count += 1
+        if isinstance(det, Exception):
+            errors.append(f"detections.jsonl:{n}: not JSON")
+            continue
+        missing = [k for k in DETECTION_KEYS if k not in det]
+        if missing:
+            errors.append(f"detections.jsonl:{n}: missing {missing}")
+        if validator is not None:
+            for err in list(validator.iter_errors(det))[:2]:
+                errors.append(f"detections.jsonl:{n}: {err.message[:120]}")
+    return count
+
+
+def check_alerts(run: Path, errors: list) -> int:
+    path = run / "alerts.jsonl"
+    if not path.exists():
+        return 0
+    count = 0
+    for n, a in jsonl(path):
+        count += 1
+        if isinstance(a, Exception):
+            errors.append(f"alerts.jsonl:{n}: not JSON")
+            continue
+        missing = [k for k in ALERT_KEYS if k not in a]
+        if missing:
+            errors.append(f"alerts.jsonl:{n}: missing {missing}")
+        if str(a.get("bucket")) not in BUCKETS:
+            errors.append(f"alerts.jsonl:{n}: bucket {a.get('bucket')!r}")
+    return count
+
+
+def check_log(run: Path, errors: list) -> int:
+    if not (run / "log" / "violations.jsonl").exists():
+        return 0
+    from alerts.verify_log import verify
+    result = verify(run)
+    if not result.ok:
+        errors.append(f"log/violations.jsonl: {result.reason}")
+    return result.records
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"), help="run folder (default $PROVBIND_RUN or ./run)")
+    ap.add_argument("run_dir", nargs="?", help=argparse.SUPPRESS)          # the old positional form
+    args = ap.parse_args(argv)
+    run = Path(args.run_dir or args.run)
+    errors: list[str] = []
+    counts = {"envelopes": check_envelopes(run, errors), "bindings": check_bindings(run, errors),
+              "detections": check_detections(run, errors), "alerts": check_alerts(run, errors),
+              "log_records": check_log(run, errors)}
+    for e in errors:
+        print(f"[check_contracts] {e}", file=sys.stderr)
+    print(json.dumps({"ok": not errors, "checked": counts, "errors": len(errors)}))
+    return 0 if not errors else 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

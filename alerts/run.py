@@ -1,182 +1,207 @@
-#!/usr/bin/env python3
-"""
-alerts/run.py
-Main alert processing engine for PROVBIND Role 4.
-Tails detections.jsonl, groups process ancestry chains, invokes multi-factor scoring and layer attribution,
-and appends formatted alerts to alerts.jsonl and log/violations.jsonl.
-"""
+"""Phase 5: detections -> score -> attribute -> chain -> alert -> log (Sprint Handoff §3.3, §8).
 
-import os
-import sys
-import json
-import time
+    python -m alerts.run --run $PROVBIND_RUN [--once]
+
+Tails `<run>/detections.jsonl` (Role 3) and writes one alert per detection to `<run>/alerts.jsonl`
+(§4.5) and the hash-chained `<run>/log/violations.jsonl` (§4.6), through alerts.log.
+
+- **Once per detection.** Detections already in the log are skipped, so a restart or a second
+  `--once` never alerts one twice.
+- **Complete lines only.** A line is read only once its newline is there (Role 3 writes each line in
+  one call; a reader can still catch it half-written).
+- **Attribution** is for the file the clause names (`clause.path`: the written file for D_write,
+  the library for D_load), not the process that acted. Package and depth come from the detection's
+  context, else from the envelope.
+- **Signing identity** comes from the envelope (`envelopes/<hex>.json`). Without one, its fields are
+  null: nothing unsigned is presented as signed.
+- **Chains** (§8): a detection joins an open chain of the same container if its pid or ppid is a pid
+  already in the chain and its `time` is within 60 s of the chain's last detection. Times are the
+  events' own times, not arrival order (Role 3's handoff §2). The chain ID is taken from the first
+  detection's number, so it is stable across restarts.
+
+stdout: one JSON summary when `--once` finishes; logs go to stderr.
+"""
+from __future__ import annotations
+
 import argparse
-from datetime import datetime, timezone
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
 
-# Ensure local directory is in python path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from .attribute import Attributor
+from .common import container_label, load_envelope, load_json, logger, now_iso, parse_time
+from .log import ViolationLog
+from .score import score_detection
 
-try:
-    from alerts.score import calculate_severity
-    from alerts.attribute import LayerAttributor
-    from alerts.log import ViolationLogger
-except ImportError:
-    from score import calculate_severity
-    from attribute import LayerAttributor
-    from log import ViolationLogger
+log = logger("alerts")
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="PROVBIND Alert Processing Engine")
-    parser.add_argument("--run", default="./run", help="Path to run directory")
-    parser.add_argument("--once", action="store_true", help="Process existing detections and exit (non-tailing mode)")
-    return parser.parse_args()
+CHAIN_WINDOW_S = 60
+FILE_CLASSES = {"D_exec", "D_write", "D_hash", "D_load"}
+
+
+class Chains:
+    def __init__(self, window: float = CHAIN_WINDOW_S):
+        self.window = window
+        self.open: dict[str, list[dict]] = {}          # container_id -> chains
+        self.counter = 0
+
+    def assign(self, detection: dict) -> str:
+        cid = detection.get("container_id") or ""
+        pid, ppid = detection.get("pid"), detection.get("ppid")
+        t = parse_time(detection.get("time"))
+        t = time.time() if t is None else t
+        for chain in self.open.setdefault(cid, []):
+            if abs(t - chain["last"]) <= self.window and (pid in chain["pids"] or ppid in chain["pids"]):
+                if pid is not None:
+                    chain["pids"].add(pid)
+                chain["last"] = max(chain["last"], t)
+                return chain["id"]
+        m = re.search(r"(\d+)$", str(detection.get("id") or ""))
+        self.counter += 1
+        chain_id = f"chain-{m.group(1)}" if m else f"chain-x{self.counter:04d}"
+        self.open[cid].append({"id": chain_id, "pids": {pid} if pid is not None else set(), "last": t})
+        return chain_id
+
 
 class AlertEngine:
-    def __init__(self, run_dir="./run"):
-        self.run_dir = run_dir
-        self.det_path = os.path.join(run_dir, "detections.jsonl")
-        self.alerts_path = os.path.join(run_dir, "alerts.jsonl")
-        self.attributor = LayerAttributor()
-        self.logger = ViolationLogger(run_dir)
-        self.active_chains = {}  # chain_id -> {'pids': set(), 'last_time': float}
-        self.alert_counter = 0
-        self.chain_counter = 0
+    def __init__(self, run: str | Path, attributor: Attributor | None = None):
+        self.run = Path(run)
+        self.det_path = self.run / "detections.jsonl"
+        self.log = ViolationLog(self.run)
+        self.attributor = attributor if attributor is not None else Attributor()
+        self.chains = Chains()
+        self.done = self.log.detection_ids()
+        self.envelopes: dict[str, dict | None] = {}
+        self._bindings: dict = {}
+        self._bindings_stamp = None
+        self.written = 0
 
-    def _get_chain_id(self, pid, ppid, event_time_sec):
-        """Groups process ancestry into chains if pid/ppid match within 60 seconds."""
-        stale_keys = [cid for cid, cinfo in self.active_chains.items() if event_time_sec - cinfo["last_time"] > 60]
-        for cid in stale_keys:
-            del self.active_chains[cid]
+    # --- inputs -------------------------------------------------------------------------------------
 
-        for cid, cinfo in self.active_chains.items():
-            if pid in cinfo["pids"] or ppid in cinfo["pids"]:
-                cinfo["pids"].add(pid)
-                cinfo["last_time"] = event_time_sec
-                return cid
-
-        self.chain_counter += 1
-        cid = f"chain-{self.chain_counter:04d}"
-        self.active_chains[cid] = {
-            "pids": {pid, ppid},
-            "last_time": event_time_sec
-        }
-        return cid
-
-    def _get_signing_identity(self, image_digest):
-        """Extracts builder_id, source_commit, and rekor_log_index from compiled envelope."""
-        digest_clean = image_digest.replace(":", "_")
-        env_path = os.path.join(self.run_dir, "envelopes", f"{digest_clean}.json")
-        if os.path.exists(env_path):
-            with open(env_path, "r") as f:
-                envelope = json.load(f)
-                img = envelope.get("image", {})
-                return {
-                    "builder_id": img.get("builder_id", "sf9-26/local-build"),
-                    "source_commit": img.get("source_commit", "unknown"),
-                    "rekor_log_index": img.get("rekor_log_index", 123456789)
-                }
-        return {
-            "builder_id": "sf9-26/local-build",
-            "source_commit": "unknown",
-            "rekor_log_index": 123456789
-        }
-
-    def process_detection(self, detection):
-        self.alert_counter += 1
-        alert_id = f"alr-{self.alert_counter:04d}"
-        det_id = detection.get("id", f"det-{self.alert_counter:04d}")
-
-        det_class = detection.get("class", "D_exec")
-        subclass = detection.get("subclass", "undeclared")
-        origin = detection.get("origin", "AUTHENTICATED")
-        image_digest = detection.get("image_digest", "sha256:unknown")
-        exe_path = detection.get("exe") or detection.get("clause", {}).get("path", "/unknown")
-        pid = detection.get("pid", 0)
-        ppid = detection.get("ppid", 0)
-
-        time_str = detection.get("time", datetime.now(timezone.utc).isoformat())
+    def bindings(self) -> dict:
+        path = self.run / "bindings.json"
         try:
-            event_sec = datetime.fromisoformat(time_str.replace("Z", "+00:00")).timestamp()
-        except ValueError:
-            event_sec = time.time()
+            st = path.stat()
+            stamp = (st.st_mtime_ns, st.st_size, st.st_ino)
+        except OSError:
+            return self._bindings
+        if stamp != self._bindings_stamp:
+            doc = load_json(path, {})
+            if isinstance(doc, dict):
+                self._bindings, self._bindings_stamp = doc, stamp
+        return self._bindings
 
-        chain_id = self._get_chain_id(pid, ppid, event_sec)
+    def envelope(self, digest: str | None) -> dict | None:
+        if not digest:
+            return None
+        if self.envelopes.get(digest) is None:          # retry until the compiler has written it
+            self.envelopes[digest] = load_envelope(self.run, digest)
+        return self.envelopes[digest]
 
-        layer_digest, layer_index = self.attributor.attribute_file(image_digest, exe_path, self.run_dir)
+    # --- one detection ------------------------------------------------------------------------------
 
-        in_no_layer = (layer_digest is None and subclass == "undeclared")
-        score, bucket = calculate_severity(
-            detection_class=det_class,
-            subclass=subclass,
-            origin=origin,
-            depth=detection.get("context", {}).get("depth"),
-            in_no_layer=in_no_layer,
-            is_root=True,
-            privileged=False
-        )
+    def alert_for(self, det: dict) -> dict:
+        digest = det.get("image_digest")
+        env = self.envelope(digest)
+        binding = self.bindings().get(det.get("container_id"))
+        clause = det.get("clause") or {}
+        ctx = det.get("context") or {}
+        cls = det.get("class")
+        path = clause.get("path") if cls in FILE_CLASSES and clause.get("path") else det.get("exe")
 
-        signing_id = self._get_signing_identity(image_digest)
+        layer_digest, _ = self.attributor.layer_of(env, digest, path)
+        package, depth = ctx.get("package"), ctx.get("depth")
+        if env is not None and path in (env.get("files") or {}):
+            package = package if package is not None else env["files"][path].get("package")
+            if depth is None and package:
+                depth = (env.get("packages") or {}).get(package, {}).get("depth")
 
-        clause_info = detection.get("clause", {})
-        violated_clause_str = f"{clause_info.get('kind', 'file_set')}: {clause_info.get('path', exe_path)} is {clause_info.get('detail', 'contradicts signed attestation')}"
-
-        alert = {
-            "alert_id": alert_id,
-            "detection_id": det_id,
-            "time": time_str,
-            "image_digest": image_digest,
-            "container": f"{detection.get('namespace', 'demo')}/{detection.get('pod', 'pod')}/{detection.get('container', 'app')}",
-            "class": det_class,
-            "subclass": subclass,
-            "violated_clause": violated_clause_str,
-            "origin": origin,
+        score, bucket, parts = score_detection(det, binding)
+        if parts.get("unknown_class"):
+            log.warning("%s: class %s/%s has no s_type; scored with %s", det.get("id"), cls,
+                        det.get("subclass"), parts["s_type"])
+        image = (env or {}).get("image") or {}
+        chain = [x for x in (det.get("parent_exe"), det.get("exe")) if x]
+        return {
+            "detection_id": det.get("id"),
+            "time": det.get("time") or now_iso(),
+            "image_digest": digest,
+            "container": container_label(det),
+            "class": cls,
+            "subclass": det.get("subclass"),
+            "violated_clause": f"{clause.get('kind', '')}: {clause.get('path', '')}: {clause.get('detail', '')}",
+            "origin": det.get("origin"),
             "score": score,
             "bucket": bucket,
-            "attribution": {
-                "layer": layer_digest,
-                "package": detection.get("context", {}).get("package"),
-                "depth": detection.get("context", {}).get("depth"),
-                "process_chain": [detection.get("parent_exe", "unknown"), exe_path]
-            },
-            "signing_identity": signing_id,
-            "chain_id": chain_id,
-            "log_k": 0
+            "attribution": {"layer": layer_digest, "package": package, "depth": depth, "process_chain": chain},
+            "signing_identity": {"builder_id": image.get("builder_id"), "source_commit": image.get("source_commit"),
+                                 "rekor_log_index": image.get("rekor_log_index")},
+            "chain_id": self.chains.assign(det),
+            # Additions readers may ignore (§4): where it happened, and how the score was made.
+            "namespace": det.get("namespace"), "pod": det.get("pod"), "container_id": det.get("container_id"),
+            "pid": det.get("pid"), "ppid": det.get("ppid"), "score_parts": parts,
         }
 
-        k, leaf_hash = self.logger.append_alert(alert)
-        alert["log_k"] = k
+    def handle(self, line: str) -> None:
+        try:
+            det = json.loads(line)
+        except ValueError:
+            log.warning("skipped a detection line that is not JSON: %.80s", line)
+            return
+        if not isinstance(det, dict):
+            return
+        if det.get("id") in self.done:
+            self.chains.assign(det)                        # rebuild chain state after a restart
+            return
+        alert = self.log.append(self.alert_for(det))
+        self.done.add(det.get("id"))
+        self.written += 1
+        log.info("%s %s %s/%s %d %s %s", alert["alert_id"], alert["detection_id"], alert["class"],
+                 alert["subclass"], alert["score"], alert["bucket"], alert["chain_id"])
 
-        with open(self.alerts_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(alert, ensure_ascii=False) + "\n")
+    # --- the loop -------------------------------------------------------------------------------------
 
-        print(f"🚨 [AlertEngine] Fired [{bucket.upper()}] Alert {alert_id} ({det_class}/{subclass}, Score: {score}) -> Chain: {chain_id}")
-
-    def run(self, once=False):
-        print(f"⚙️ [AlertEngine] Starting alert engine on {self.det_path}...")
-        
-        while not os.path.exists(self.det_path):
+    def run_loop(self, once: bool = False, poll: float = 0.2) -> None:
+        while not self.det_path.exists():
             if once:
-                print("ℹ️ [AlertEngine] detections.jsonl not found.")
+                log.info("no %s yet", self.det_path)
                 return
             time.sleep(0.5)
-
-        with open(self.det_path, "r", encoding="utf-8") as f:
+        buf = ""
+        with open(self.det_path, encoding="utf-8") as f:
             while True:
-                line = f.readline()
-                if not line:
-                    if once:
-                        break
-                    time.sleep(0.2)
+                chunk = f.read(65536)
+                if chunk:
+                    buf += chunk
+                    *lines, buf = buf.split("\n")
+                    for line in lines:
+                        if line.strip():
+                            self.handle(line)
                     continue
+                if once:
+                    if buf.strip():
+                        log.warning("the last detection line has no newline yet; left for the next run")
+                    return
+                time.sleep(poll)
 
-                if line.strip():
-                    try:
-                        detection = json.loads(line)
-                        self.process_detection(detection)
-                    except json.JSONDecodeError:
-                        continue
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="python -m alerts.run", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"), help="run folder (default $PROVBIND_RUN or ./run)")
+    ap.add_argument("--once", action="store_true", help="process the detections written so far, then exit")
+    args = ap.parse_args(argv)
+    engine = AlertEngine(args.run)
+    try:
+        engine.run_loop(once=args.once)
+    except KeyboardInterrupt:
+        pass
+    print(json.dumps({"alerts_written": engine.written, "detections_seen": len(engine.done)}))
+    return 0
+
 
 if __name__ == "__main__":
-    args = parse_args()
-    engine = AlertEngine(args.run)
-    engine.run(args.once)
+    sys.exit(main())

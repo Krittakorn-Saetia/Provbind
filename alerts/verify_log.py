@@ -1,60 +1,87 @@
-#!/usr/bin/env python3
-"""
-alerts/verify_log.py
-Merkle violation log integrity checker for PROVBIND.
-Recomputes RFC 6962 hash chain in log/violations.jsonl and reports the first broken record if tampered.
-"""
+"""Recompute the violation log's hash chain and report the first broken record (PH5-10, PH5-11).
 
+    python -m alerts.verify_log --run $PROVBIND_RUN        # Sprint Handoff §3.3
+
+stdout: one JSON line, {"ok": ..., "first_bad": k or null, "records": n, "reason": ...}.
+Exit codes: 0 the chain verifies; 1 a record is broken (first_bad says which); 2 no log to verify.
+
+A record is broken when its line is not JSON, its k is not the next number, its prev is not the
+previous record's hash, or its hash does not match its record. Checking k matters: Role 1's
+tamper-1 flips the first lowercase letter of a line, which is the "k" key itself.
+
+Role 1's E2E-12 calls verify(run) and reads .ok and .first_bad.
+"""
+from __future__ import annotations
+
+import argparse
+import json
 import os
 import sys
-import json
-import hashlib
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
-def verify_log(run_dir="./run"):
-    log_path = os.path.join(run_dir, "log", "violations.jsonl")
-    if not os.path.exists(log_path):
-        print(f"⚠️ [Log Verifier] {log_path} does not exist.")
-        return True
+from .log import ZERO, chain_hash
 
-    expected_prev = "0" * 64
-    entry_count = 0
 
-    with open(log_path, "r", encoding="utf-8") as f:
-        for line_num, line in enumerate(f, 1):
-            if not line.strip():
-                continue
-            entry_count += 1
+@dataclass
+class Result:
+    ok: bool
+    first_bad: int | None
+    records: int
+    reason: str
+
+
+def verify_file(path: str | Path) -> Result:
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = [ln for ln in f.read().splitlines() if ln.strip()]
+    except OSError as e:
+        return Result(False, None, 0, f"no log: {e.strerror or e}")
+    if not lines:
+        return Result(False, None, 0, "the log is empty")
+    prev = ZERO
+    for k, line in enumerate(lines, 1):
+        try:
             entry = json.loads(line)
-            k = entry.get("k")
-            prev = entry.get("prev")
-            stored_hash = entry.get("hash")
-            record = entry.get("record")
+        except ValueError as e:
+            return Result(False, k, k - 1, f"record {k} is not JSON ({e.msg})")
+        if not isinstance(entry, dict):
+            return Result(False, k, k - 1, f"record {k} is not an object")
+        if entry.get("k") != k:
+            return Result(False, k, k - 1, f"record {k} says k={entry.get('k')!r}")
+        if entry.get("prev") != prev:
+            return Result(False, k, k - 1, f"record {k}: prev is not the hash of record {k - 1}")
+        try:
+            h = chain_hash(prev, entry.get("record"))
+        except (TypeError, ValueError) as e:
+            return Result(False, k, k - 1, f"record {k} cannot be hashed ({e})")
+        if entry.get("hash") != h:
+            return Result(False, k, k - 1, f"record {k}: hash does not match its record")
+        prev = h
+    return Result(True, None, len(lines), "the chain verifies")
 
-            # Check previous hash link
-            if prev != expected_prev:
-                print(f"❌ [Log Verifier] TAMPER DETECTED at record k={k} (line {line_num}): 'prev' mismatch!")
-                print(f"   Expected prev: {expected_prev}")
-                print(f"   Found prev:    {prev}")
-                return False
 
-            # Recompute canonical leaf hash and chain hash
-            canon = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-            leaf_hash = hashlib.sha256(canon).digest()
-            computed_hash = hashlib.sha256(bytes.fromhex(prev) + leaf_hash).hexdigest()
+def verify(run: str | Path) -> Result:
+    return verify_file(Path(run) / "log" / "violations.jsonl")
 
-            # Check computed record hash
-            if stored_hash != computed_hash:
-                print(f"❌ [Log Verifier] TAMPER DETECTED at record k={k} (line {line_num}): record content or hash modified!")
-                print(f"   Stored hash:   {stored_hash}")
-                print(f"   Computed hash: {computed_hash}")
-                return False
 
-            expected_prev = stored_hash
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="python -m alerts.verify_log", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"), help="run folder (default $PROVBIND_RUN or ./run)")
+    ap.add_argument("run_dir", nargs="?", help=argparse.SUPPRESS)          # the old positional form
+    args = ap.parse_args(argv)
+    result = verify(args.run_dir or args.run)
+    print(json.dumps(asdict(result)))
+    if result.ok:
+        print(f"[verify_log] OK: {result.records} records", file=sys.stderr)
+        return 0
+    if result.first_bad is None:
+        print(f"[verify_log] {result.reason}", file=sys.stderr)
+        return 2
+    print(f"[verify_log] BROKEN at record k={result.first_bad}: {result.reason}", file=sys.stderr)
+    return 1
 
-    print(f"✅ [Log Verifier] Merkle violation log integrity verified OK ({entry_count} records processed).")
-    return True
 
 if __name__ == "__main__":
-    run_dir = sys.argv[1] if len(sys.argv) > 1 else "./run"
-    success = verify_log(run_dir)
-    sys.exit(0 if success else 1)
+    sys.exit(main())

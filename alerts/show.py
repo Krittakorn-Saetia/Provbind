@@ -1,89 +1,84 @@
-#!/usr/bin/env python3
-"""
-alerts/show.py
-Terminal alert viewer CLI for PROVBIND Role 4.
-Displays color-coded alerts categorized by severity bucket for live demo presentation.
-"""
+"""A readable alert view for the demo screen (Sprint Handoff §3.3, §8 Day 3).
 
+    python -m alerts.show --run $PROVBIND_RUN [--follow] [--no-color]
+
+One line per alert, coloured by bucket, with its clause and attribution. Trust alerts (class
+"trust") show the failed checks. Colour is on only when stdout is a terminal.
+"""
+from __future__ import annotations
+
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
+import time
+from pathlib import Path
 
-class Colors:
-    CRITICAL = "\033[91m\033[1m"  # Bold Red
-    HIGH     = "\033[93m\033[1m"  # Bold Yellow
-    MEDIUM   = "\033[94m"         # Blue
-    LOW      = "\033[92m"         # Green
-    RESET    = "\033[0m"
-    BOLD     = "\033[1m"
+COLOURS = {"critical": "\033[1;91m", "high": "\033[1;93m", "medium": "\033[94m", "low": "\033[92m"}
+RESET = "\033[0m"
 
-def format_alert(alert):
-    bucket = alert.get("bucket", "low").upper()
-    score = alert.get("score", 0)
-    alert_id = alert.get("alert_id", "alr-????")
-    chain_id = alert.get("chain_id", "chain-????")
-    time_str = alert.get("time", "")
-    container = alert.get("container", "")
-    cls = alert.get("class", "")
-    subcls = alert.get("subclass", "")
-    violated = alert.get("violated_clause", "")
-    
-    attr = alert.get("attribution", {})
-    layer = attr.get("layer") or "Side-Loaded (No Layer)"
-    proc_chain = " -> ".join(attr.get("process_chain", []))
 
-    signing = alert.get("signing_identity", {})
-    builder = signing.get("builder_id", "unknown")
-    commit = signing.get("source_commit", "unknown")
+def short(value, n=12):
+    if not value:
+        return "none"
+    s = str(value)
+    return s.split(":", 1)[1][:n] if s.startswith("sha256:") else s
 
-    if bucket == "CRITICAL":
-        color = Colors.CRITICAL
-    elif bucket == "HIGH":
-        color = Colors.HIGH
-    elif bucket == "MEDIUM":
-        color = Colors.MEDIUM
+
+def format_alert(a: dict, colour: bool = False) -> str:
+    bucket = str(a.get("bucket") or "low").lower()
+    head = f"{a.get('alert_id', '?'):<9} {bucket.upper():<8} {a.get('score', ''):>3}"
+    if colour:
+        head = COLOURS.get(bucket, "") + head + RESET
+    attr = a.get("attribution") or {}
+    sign = a.get("signing_identity") or {}
+    what = f"{a.get('class')}/{a.get('subclass')}"
+    where = a.get("container", "")
+    if a.get("class") == "trust":
+        detail = f"trust withdrawn ({', '.join(a.get('trust_reason') or [])}): {a.get('violated_clause', '')}"
     else:
-        color = Colors.LOW
+        detail = a.get("violated_clause", "")
+    return (f"{head}  {what:<26} {a.get('chain_id') or '-':<11} {where}  |  {detail}  |  "
+            f"layer {short(attr.get('layer'))}, package {attr.get('package') or 'none'}, depth {attr.get('depth')}  |  "
+            f"builder {sign.get('builder_id') or 'unknown'}, commit {short(sign.get('source_commit'), 8)}, "
+            f"rekor {sign.get('rekor_log_index')}")
 
-    output = f"{color}[{bucket} - Score {score}]{Colors.RESET} {Colors.BOLD}{alert_id}{Colors.RESET} (Chain: {chain_id})\n"
-    output += f"  🕒 Time:      {time_str}\n"
-    output += f"  📦 Container: {container}\n"
-    output += f"  ⚡ Deviation: {cls} ({subcls})\n"
-    output += f"  📜 Violated:  {violated}\n"
-    output += f"  🔍 Layer:     {layer}\n"
-    output += f"  🔗 Lineage:   {proc_chain}\n"
-    output += f"  🔏 Provenance: Builder={builder} | Commit={commit}\n"
-    output += f"  🔒 Merkle Leaf: Log Index k={alert.get('log_k')}\n"
-    output += "-" * 60
-    return output
 
-def main():
-    parser = argparse.ArgumentParser(description="PROVBIND Live Alert Viewer")
-    parser.add_argument("--run", default="./run", help="Path to run directory")
-    args = parser.parse_args()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="python -m alerts.show", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"), help="run folder (default $PROVBIND_RUN or ./run)")
+    ap.add_argument("--follow", action="store_true", help="keep printing new alerts")
+    ap.add_argument("--no-color", action="store_true", help="plain text")
+    args = ap.parse_args(argv)
+    colour = sys.stdout.isatty() and not args.no_color
+    path = Path(args.run) / "alerts.jsonl"
+    while not path.exists():
+        if not args.follow:
+            print(f"no alerts yet ({path})", file=sys.stderr)
+            return 0
+        time.sleep(0.5)
+    buf = ""
+    with open(path, encoding="utf-8") as f:
+        while True:
+            chunk = f.read(65536)
+            if chunk:
+                buf += chunk
+                *lines, buf = buf.split("\n")
+                for line in lines:
+                    if line.strip():
+                        try:
+                            print(format_alert(json.loads(line), colour), flush=True)
+                        except ValueError:
+                            continue
+                continue
+            if not args.follow:
+                return 0
+            time.sleep(0.5)
 
-    alerts_file = os.path.join(args.run, "alerts.jsonl")
-    print(f"{Colors.BOLD}============================================================{Colors.RESET}")
-    print(f"{Colors.BOLD}🛡️  PROVBIND CONTINUOUS INTEGRITY VERIFICATION - ALERTS LIVE VIEW{Colors.RESET}")
-    print(f"{Colors.BOLD}============================================================{Colors.RESET}\n")
-
-    if not os.path.exists(alerts_file):
-        print(f"Waiting for alerts in {alerts_file}...")
-        sys.exit(0)
-
-    count = 0
-    with open(alerts_file, "r", encoding="utf-8") as f:
-        for line in f:
-            if line.strip():
-                count += 1
-                try:
-                    alert = json.loads(line)
-                    print(format_alert(alert))
-                except json.JSONDecodeError:
-                    continue
-
-    print(f"\nTotal Alerts Displayed: {count}")
 
 if __name__ == "__main__":
-    main()
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)

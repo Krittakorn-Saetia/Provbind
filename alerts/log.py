@@ -1,67 +1,88 @@
-#!/usr/bin/env python3
-"""
-alerts/log.py
-Tamper-evident Merkle violation logger for PROVBIND.
-Appends alert records to log/violations.jsonl using RFC 6962 leaf hashing and hash chaining.
-"""
+"""Phase 5 Step 5: the hash-chained violation log, `<run>/log/violations.jsonl` (Sprint Handoff §4.6).
 
-import os
-import json
+Each line is {"k": k, "prev": H(k-1), "hash": H(k), "record": <the alert>}, with exactly this rule:
+
+    canon = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    h = hashlib.sha256(bytes.fromhex(prev) + hashlib.sha256(canon).digest()).hexdigest()
+    # prev for k = 1 is 64 zeros; prev for k > 1 is the hash of record k - 1
+
+It is a plain hash chain (Eq. 79), not a Merkle tree: anyone who can rewrite the file can recompute
+every later hash (M6; signed checkpoints are PH5-12, P1).
+
+ViolationLog.append() is the only writer of both the log and `alerts.jsonl`. Under one lock it
+numbers the alert (log_k = k, alert_id = alr-<k>), appends the log entry, then the alert line, so
+the logged record is exactly the alert in alerts.jsonl, and two writers (alerts.run and
+alerts.trust) never break the chain or reuse an ID, across restarts too.
+"""
+from __future__ import annotations
+
 import hashlib
+import json
+import os
+from pathlib import Path
 
-class ViolationLogger:
-    def __init__(self, run_dir="./run"):
-        self.log_dir = os.path.join(run_dir, "log")
-        os.makedirs(self.log_dir, exist_ok=True)
-        self.log_path = os.path.join(self.log_dir, "violations.jsonl")
-        self.k, self.last_hash = self._get_last_state()
+from .common import locked
 
-    def _get_last_state(self):
-        """Reads the last k index and hash from log/violations.jsonl."""
-        if not os.path.exists(self.log_path) or os.path.getsize(self.log_path) == 0:
-            return 0, "0" * 64
+ZERO = "0" * 64
 
-        last_line = None
-        with open(self.log_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    last_line = line
 
-        if last_line:
-            data = json.loads(last_line)
-            return data["k"], data["hash"]
-        return 0, "0" * 64
+def canonical(record) -> bytes:
+    return json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
-    def append_alert(self, alert_record):
-        """
-        Appends an alert record with RFC 6962 leaf hash and prev link.
-        Rule:
-        canon = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-        h = hashlib.sha256(bytes.fromhex(prev) + hashlib.sha256(canon).digest()).hexdigest()
-        """
-        self.k += 1
-        prev = self.last_hash
 
-        canon = json.dumps(alert_record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        leaf_hash = hashlib.sha256(canon).digest()
-        h = hashlib.sha256(bytes.fromhex(prev) + leaf_hash).hexdigest()
+def chain_hash(prev: str, record) -> str:
+    return hashlib.sha256(bytes.fromhex(prev) + hashlib.sha256(canonical(record)).digest()).hexdigest()
 
-        entry = {
-            "k": self.k,
-            "prev": prev,
-            "hash": h,
-            "record": alert_record
-        }
 
-        with open(self.log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+def _append_line(path: Path, line: str) -> None:
+    with open(path, "a", encoding="utf-8", newline="\n") as f:
+        f.write(line + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
-        self.last_hash = h
-        print(f"🔒 [ViolationLogger] Appended alert to Merkle log (k={self.k}, hash={h[:12]}...)")
-        return self.k, h
 
-if __name__ == "__main__":
-    logger = ViolationLogger(run_dir="/tmp/test_run")
-    sample_alert = {"alert_id": "alr-0001", "class": "D_exec", "subclass": "undeclared"}
-    k, h = logger.append_alert(sample_alert)
-    print(f"Logged sample alert at k={k}, hash={h}")
+class ViolationLog:
+    def __init__(self, run: str | Path):
+        self.run = Path(run)
+        self.path = self.run / "log" / "violations.jsonl"
+        self.alerts_path = self.run / "alerts.jsonl"
+        self.lock_path = self.run / "log" / ".append.lock"
+
+    def entries(self) -> list[dict]:
+        """Every parseable entry, in file order (verify_log checks the file itself)."""
+        out = []
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            out.append(json.loads(line))
+                        except ValueError:
+                            continue
+        except OSError:
+            pass
+        return out
+
+    def _head(self) -> tuple[int, str]:
+        entries = self.entries()
+        if not entries:
+            return 0, ZERO
+        last = entries[-1]
+        return int(last.get("k", len(entries))), str(last.get("hash", ZERO))
+
+    def append(self, alert: dict) -> dict:
+        """Number `alert`, log it and write it to alerts.jsonl. Returns the alert as written."""
+        with locked(self.lock_path):
+            k, prev = self._head()
+            k += 1
+            alert = {"alert_id": f"alr-{k:04d}",
+                     **{key: v for key, v in alert.items() if key not in ("alert_id", "log_k")}, "log_k": k}
+            entry = {"k": k, "prev": prev, "hash": chain_hash(prev, alert), "record": alert}
+            _append_line(self.path, json.dumps(entry, ensure_ascii=False))
+            _append_line(self.alerts_path, json.dumps(alert, ensure_ascii=False))
+        return alert
+
+    def detection_ids(self) -> set[str]:
+        """Detections already alerted, so a restart never alerts one twice."""
+        return {e["record"]["detection_id"] for e in self.entries()
+                if isinstance(e.get("record"), dict) and e["record"].get("detection_id")}

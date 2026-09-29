@@ -75,3 +75,30 @@ corpus-check:  ## sanity-check ml/corpus.yaml
 
 test:  ## run the unit and capability tests that run anywhere
 	python3 -m pytest -q -m "not integration"
+
+## --- Role 4: controller, alerts, trust loop, demo (Sprint Handoff §3.3, §8) -------------------------
+
+PROVBIND_KEY ?= pipeline/keys/cosign.pub
+
+.PHONY: controller alerts trust-loop show verify-log check-contracts demo
+
+controller:  ## watch pods in namespace demo: verify, store the context, bind, compile
+	python3 -m controller.watch --run $(PROVBIND_RUN) --key $(PROVBIND_KEY)
+
+alerts:  ## tail detections.jsonl into alerts.jsonl and the violation log
+	python3 -m alerts.run --run $(PROVBIND_RUN)
+
+trust-loop:  ## re-evaluate trust every 300 s and on any change to keystatus.json or advisories/
+	python3 -m alerts.trust --run $(PROVBIND_RUN)
+
+show:  ## print the alerts, one line each
+	python3 -m alerts.show --run $(PROVBIND_RUN)
+
+verify-log:  ## recompute the violation log's hash chain; exit 1 at the first broken record
+	python3 -m alerts.verify_log --run $(PROVBIND_RUN)
+
+check-contracts:  ## check the run folder against the Sprint Handoff §4 contracts
+	python3 contracts/check_contracts.py --run $(PROVBIND_RUN)
+
+demo:  ## the Sprint Handoff §1.1 demo, after make up and make demo-app (needs DEMO_REF=<ref@digest>)
+	./scripts/demo.sh
