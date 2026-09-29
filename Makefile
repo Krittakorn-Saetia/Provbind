@@ -124,5 +124,10 @@ verify-log:  ## recompute the violation log's hash chain; exit 1 at the first br
 check-contracts:  ## check the run folder against the Sprint Handoff §4 contracts
 	python3 contracts/check_contracts.py --run $(PROVBIND_RUN)
 
+.PHONY: scored
+
+scored:  ## Role 1's balanced scored run: ROUNDS=3 x (benign, attack, trust, ph4-14), tamper, compare (needs DEMO_REF)
+	./scripts/scored-run.sh
+
 demo:  ## the Sprint Handoff §1.1 demo, after make up and make demo-app (needs DEMO_REF=<ref@digest>)
 	./scripts/demo.sh
