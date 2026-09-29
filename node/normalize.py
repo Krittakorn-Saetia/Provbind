@@ -316,8 +316,12 @@ class Normalizer:
             if not isinstance(c, dict):
                 return self._drop("no_capability")
             name, value = _opt_str(c.get("name")), _int(c.get("value"))
-            if name is None and value is not None and 0 <= value < len(CAPABILITIES):
+            # The number is canonical: Tetragon 1.7 names value 1 "DAC_OVERRIDE", without the CAP_
+            # prefix every other name (and the envelope) has.
+            if value is not None and 0 <= value < len(CAPABILITIES):
                 name = CAPABILITIES[value]
+            elif name is not None and not name.startswith("CAP_"):
+                name = "CAP_" + name
             if name is None:
                 return self._drop("no_capability")
             ev = self._base(obj, body, kind)

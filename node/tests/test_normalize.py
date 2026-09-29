@@ -196,6 +196,15 @@ def test_capability_number_without_a_name(s, app):
     assert one(doc)[0].cap == "CAP_NET_RAW"
 
 
+def test_capability_name_without_prefix_is_normalised(s, app):
+    """Tetragon 1.7 names value 1 "DAC_OVERRIDE" (seen on the demo VM); the envelope says CAP_DAC_OVERRIDE."""
+    doc = s.cap(app, "CAP_DAC_OVERRIDE")
+    doc["process_kprobe"]["args"][1]["capability_arg"]["name"] = "DAC_OVERRIDE"
+    assert one(doc)[0].cap == "CAP_DAC_OVERRIDE"
+    doc["process_kprobe"]["args"][1]["capability_arg"] = {"name": "DAC_OVERRIDE"}      # no number
+    assert one(doc)[0].cap == "CAP_DAC_OVERRIDE"
+
+
 def test_capability_table_matches_the_kernel_numbers():
     assert (CAPABILITIES.index("CAP_CHOWN"), CAPABILITIES.index("CAP_NET_BIND_SERVICE"),
             CAPABILITIES.index("CAP_SYS_ADMIN"), CAPABILITIES.index("CAP_CHECKPOINT_RESTORE")) == (0, 10, 21, 40)
