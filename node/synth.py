@@ -219,7 +219,7 @@ class Library:
     egress: list
 
 
-def library(attack2_files: int = 300) -> Library:
+def library(attack2_files: int = 300, start: str = "2026-09-28T10:00:00Z") -> Library:
     """One synthetic session: the app starts, then each scenario runs in its own window.
 
     Expected outcomes, with the runtime hashes of `hashes` (and path-only in brackets):
@@ -238,7 +238,7 @@ def library(attack2_files: int = 300) -> Library:
     """
     env = demo_envelope()
     declared = {p: f["sha256"] for p, f in env["files"].items()}
-    s = Session(start="2026-09-28T10:00:00Z")
+    s = Session(start=start)          # live-mode tests pass the current time (grace is wall-clock)
     rows, hashes = [], {}
 
     def run(pid_proc: Proc, sha: str | None = None):

@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -110,8 +111,13 @@ def test_live_mode_reads_stdin_until_eof(run, lib):
     assert json.loads(proc.stdout)["events"] == len(lib.lines)
 
 
-def test_live_mode_picks_up_bindings_written_later(run, lib, tmp_path):
-    """The controller writes the binding after the container starts: nothing is lost or misreported."""
+def test_live_mode_picks_up_bindings_written_later(run, tmp_path):
+    """The controller writes the binding after the container starts: nothing is lost or misreported.
+
+    Live mode measures the grace period on the wall clock, so the stream starts now: a fixed date
+    would be more than --grace in the past on any later day, and every held event would become
+    binding / unknown_container."""
+    lib = library(attack2_files=30, start=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     (run / "bindings.json").unlink()
     child = subprocess.Popen([sys.executable, "-m", "node.run", "--run", str(run), "--tick", "0.05",
                               "--grace", "3600"], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
