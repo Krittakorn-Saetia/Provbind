@@ -4,12 +4,13 @@
     pytest -q -m integration
 
 These tests only verify. They never build or sign, since signing publishes to Rekor."""
-import json
 import os
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from compiler.evidence import CYCLONEDX, newest_binding
 
 pytestmark = pytest.mark.integration
 
@@ -42,7 +43,12 @@ def test_attestation_verifies(ref, predicate):
     assert out.returncode == 0, out.stderr
 
 
-def test_debug_sbom_has_dependency_edges(ref):
-    run = Path(os.environ.get("PROVBIND_RUN", ROOT / "run"))
-    sbom = json.loads((run / "attest" / "standin-app" / "sbom.json").read_text())
-    assert len(sbom.get("dependencies") or []) > 0
+def test_attested_sbom_has_dependency_edges(ref):
+    """T8 needs syft's edges. Read from the verified attestation, not the debug copy under
+    $PROVBIND_RUN/attest/: that copy exists only on the machine that built the image, and only
+    if PROVBIND_RUN pointed at the same folder then."""
+    out = cosign("verify-attestation", ref, "--type", "cyclonedx")
+    assert out.returncode == 0, out.stderr
+    stmt = newest_binding(out.stdout, ref.rsplit("@sha256:", 1)[1], CYCLONEDX)
+    assert stmt is not None, "no CycloneDX statement bound to the image digest"
+    assert len(stmt["predicate"].get("dependencies") or []) > 0

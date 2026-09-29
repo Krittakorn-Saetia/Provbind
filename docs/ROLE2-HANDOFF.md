@@ -148,6 +148,9 @@ Record each with the `record_result` fixture from the test kit. Tests use `pytes
   - It prints a **SLSA v1 predicate** (not a full in-toto statement; cosign wraps it).
   - cosign parses `slsaprovenance1` predicates into typed structs, so any field outside the SLSA v1 schema would be silently dropped. The generator uses the exact field names.
   - It records `buildDefinition.internalParameters.uncommittedChanges`, and warns when it is `true`, so a provenance never silently names a commit that differs from what was built. `internalParameters` is free-form, so cosign keeps it.
+  - **Re-tag mode** (`--subject <ref@digest> [--commit SHA] [--source IMAGE]`) is for public images that are re-tagged into the local registry and attested with our key, as Role 1's ML-A corpus profiling does (`testbed/profile_corpus.sh`, Test Plan §4.1).
+    - The image wasn't built here, so its source commit is unknown. The predicate's only resolved dependency is the image itself, with no `gitCommit`, and the envelope's `source_commit` is `null`.
+    - The PROVBIND commit that ran the re-tag goes in `internalParameters.harnessCommit`. A short SHA is expanded to the full one.
 
 **Tests:** its output parses as JSON and has `buildDefinition.buildType`, `buildDefinition.resolvedDependencies[0].digest.gitCommit` and `runDetails.builder.id`.
 
@@ -169,23 +172,29 @@ The integration tests take the reference from `PROVBIND_STANDIN_REF` (the script
 The module fetches the verified evidence and runs the binding checks from the paper (Eqs. 10–18).
 
 - **Signature (v_sig).** Run `cosign verify --key <pub> <ref>` and keep its stdout.
+  - Exit 0 is not enough. cosign v3 also lists the attestation bundles as verified signatures, so an image that was attested but never signed still passes `cosign verify` (seen on Korn-PC, 29 September).
+  - v_sig therefore needs at least one entry whose `critical.type` is an image signature and whose `critical.image["docker-manifest-digest"]` is the image digest. The types are `https://sigstore.dev/cosign/sign/v1` (cosign v3) and `cosign container image signature` (v2's simple signing).
 - **Attestations.** Run `cosign verify-attestation --key <pub> --type cyclonedx <ref>`, and the same with `--type slsaprovenance1`.
   - stdout has one JSON object per line.
   - If an object has a `payload` field, it is a DSSE envelope: base64-decode `payload` to get the in-toto statement.
   - If it already has `predicateType`, it is the statement itself.
   - Support both shapes (fact 2 in Section 5).
-- **Binding (v_B and v_P).** Each statement's `subject[*].digest.sha256` must equal the image digest's hex, and its `predicateType` must be `https://cyclonedx.org/bom` or `https://slsa.dev/provenance/v1` respectively. If several attestations of one type exist, use the newest one that binds.
+- **Binding (v_B and v_P).** A statement needs at least one subject, every `subject[*].digest.sha256` must equal the image digest's hex, and its `predicateType` must be `https://cyclonedx.org/bom` or `https://slsa.dev/provenance/v1` respectively. If several attestations of one type exist, use the newest one that binds.
   - **Newest** means the latest predicate timestamp: `metadata.timestamp` for CycloneDX, `runDetails.metadata.finishedOn` for SLSA. On a tie or a missing timestamp, take the last line of cosign's output. cosign's own output order carries no time.
-- **Rekor log index.** Search the `cosign verify` JSON *recursively* for the first integer under a key named `logIndex` or `log_index`. Accept a string of digits too, since protobuf's JSON encoding writes 64-bit integers as strings. If there is none, use `null`. Never fail on its absence.
-- **Offline.** With `PROVBIND_OFFLINE=1`, every cosign command gets `--insecure-ignore-tlog=true`.
-- **Signing identity.** From the provenance predicate, `builder_id = runDetails.builder.id`, and `source_commit` is the `digest.gitCommit` of the first `resolvedDependencies` entry that has one.
+- **Rekor log index.** Never fail on its absence: if none is found, use `null`. Accept a string of digits too, since protobuf's JSON encoding writes 64-bit integers as strings.
+  - **cosign v2** prints the entry in `cosign verify`'s output. Search the image-signature entries *recursively* for the first integer under a key named `logIndex` or `log_index`.
+  - **cosign v3** no longer does. If the search finds nothing, run `cosign download signature <ref>` and take the bundle whose DSSE statement is `https://sigstore.dev/cosign/sign/v1` with every subject equal to the image digest. Read that bundle's own `verificationMaterial.tlogEntries[0].logIndex`, not the first `logIndex` found: its `inclusionProof` holds a second one. If several bundles match, the latest `integratedTime` wins.
+  - `download signature` verifies nothing itself. The index is recorded for audit, after `cosign verify` has verified the same bundles with our key; Role 4's transparency check can re-verify it against Rekor. The real cosign v3 output these rules were written against is in `compiler/tests/fixtures/`.
+- **Offline.** With `PROVBIND_OFFLINE=1`, every cosign command gets `--insecure-ignore-tlog=true`, and `download signature` is skipped, so the log index is `null`.
+- **Signing identity.** From the provenance predicate, `builder_id = runDetails.builder.id`, and `source_commit` is the `digest.gitCommit` of the first `resolvedDependencies` entry whose commit is a hash (40 or 64 hex digits). Anything else, such as the `"unknown"` that `gen_provenance.py` writes outside a git checkout, gives `null`.
 
 Any failure in v_sig, v_B or v_P raises `EvidenceError`. The CLI exits with **code 2** and a one-line reason, and **writes no envelope**.
 
 **Tests:**
 
 - Unit, with canned cosign output: both shapes decode; a wrong subject digest raises; a missing `logIndex` gives `None`.
-- Integration: running it on the stand-in image returns an SBOM with components and a provenance with a commit.
+- Unit, with real cosign v3 output (`compiler/tests/fixtures/`): the stand-in's log index is 2972903426; verify output with only attestation entries raises v_sig.
+- Integration: running it on the stand-in image returns an SBOM with components and a provenance with a commit, and the envelope records a Rekor log index unless `PROVBIND_OFFLINE=1`.
 
 ### T4. Image fetch: `compiler/oci.py` (Day 1–2)
 
@@ -271,7 +280,10 @@ Implement Section 7.3.
 
 Implement Section 7.4.
 
-- Map each bom-ref to its component, and key packages by the component's `purl` field (use the bom-ref only if `purl` is missing).
+- Map each bom-ref to its component, and key packages by the component's `purl` field.
+  - A component without a purl is left out of `packages` (logged). On the stand-in, these are 14 Windows launcher programs that syft finds inside pip and setuptools (`cli-64.exe`, `gui-32.exe`, "Simple Launcher"): no file can be matched to them, and no reader can name them.
+  - Keyed by their bom-refs, as the first version did, they doubled `unresolved_fraction` (19.7% instead of 9.7%) and added 14 to ML-A's `pkg.count.other`.
+  - Their dependency edges, if any, still carry depth to the packages below them.
 - Add a synthetic application root at depth 0 with an edge to every component that has outgoing edges but no incoming ones. Then run a multi-source BFS, taking the minimum over paths.
 - **A component that appears in no edge at all gets `depth: null` (unresolved).** Never default it to 1.
 - Record `unresolved_fraction` = (components with a null depth) / (all components).
@@ -349,6 +361,8 @@ The full design is in Section 4 of the Capability Test Plan. This task implement
 1. **Algorithm 1 (MLA-01).** Write `ml/alg1.py`: take the probabilities from the model, keep those at or above θ_C, cap the result at 𝒞^K8s, merge the declared set 𝒞^decl, and label each capability AUTHENTICATED or INFERRED. Test it with fixed probabilities before any model exists.
 2. **Features Ω_I (MLA-02).** Write `ml/features.py`, which reads an envelope plus its image config and returns a named, fixed-length vector. List every feature in `ml/features.md`; this becomes the definition of Ω_I that the paper is missing.
 3. **Labels (MLA-03).** Role 1 profiles the corpus with Role 3's `cap_capable` policy. You join their labels to your features by image digest into `ml/data/dataset.jsonl`.
+   - **Features.** Compile each profiled image with `python -m compiler.compile <ref@digest> --run $PROVBIND_RUN --features-out ml/data/features.jsonl`. It appends one line per image: the 46 fixed features for the default pod (NaN as `null`), the purls and the exposed ports. The features need the image's layers, so the compiler writes them while it has the image open.
+   - **Join.** `python -m ml.dataset --labels ml/data/labels.jsonl --features ml/data/features.jsonl --out ml/data/dataset.jsonl` joins by digest. It sets `allowed` to the runtime's default set, because Role 1 profiles in default pods. The last line wins for a digest, digests found in only one file are reported, and the output is written atomically.
 4. **Training and evaluation (MLA-04, MLA-05).** Train with repeated 5-fold cross-validation split by image, and report the standard and PROVBIND-specific metrics. Compare against the four baselines.
 5. **Bounding (MLA-06).** Confirm that nothing outside 𝒞^K8s is ever returned.
 6. **Compiler hook.** `compiler/caps.py` uses the model when `ml/model/` exists and falls back to the allowlist otherwise. It writes each capability with `origin: "INFERRED"` and its probability as an extra field (readers ignore unknown fields).
@@ -490,8 +504,8 @@ def depths(bom):
                 q.append(v)
     out = {}
     for ref, c in comp.items():
-        key = c.get("purl") or ref
-        out[key] = {"depth": depth.get(ref) if ref in touched else None}
+        if c.get("purl"):                             # no purl: not a package (T8)
+            out[c["purl"]] = {"depth": depth.get(ref) if ref in touched else None}
     return out
 ```
 
@@ -577,7 +591,7 @@ pytest.ini                   deselects integration tests unless -m integration i
 - [ ] Ignore purl qualifiers when matching; keep them in the keys.
 - [ ] Write envelopes atomically: a temp file, then rename.
 - [ ] `sh -c "…"` entrypoints: the closure covers only the shell. Say so in the slide notes.
-- [ ] Signing with public Rekor publishes the image reference and signature in a public log. That is fine for test images; never sign anything private this way. Offline, set `PROVBIND_OFFLINE=1`: the build script then signs with `--tlog-upload=false`, and the script and the compiler verify with `--insecure-ignore-tlog=true`. Tell the team, since the demo then skips transparency.
+- [ ] Signing with public Rekor publishes the image reference and signature in a public log. That is fine for test images; never sign anything private this way. Offline, set `PROVBIND_OFFLINE=1`: the build script then signs with `--tlog-upload=false` (plus `--use-signing-config=false` on cosign v2.6+ and v3, which otherwise refuse it), and the script and the compiler verify with `--insecure-ignore-tlog=true`. Tell the team, since the demo then skips transparency.
 
 ---
 
@@ -641,16 +655,16 @@ Decisions D1–D6 in `docs/ROLE2-HANDOFF-NOTES.md` were agreed on 26 September a
 
 | Task | Status | Notes |
 |---|---|---|
-| T1 Keys and provenance | Done | Key pair generated in `pipeline/keys/`; `cosign.pub` committed (`16b52ab`); the private key went to Role 4 outside the repo. Generator test green (`pipeline/tests/`) |
-| T2 Build and attest stand-in | Done | `localhost:5001/standin-app@sha256:0a6bfbb07745da4c50e29e159cf426b05ff4481540a9894c746e1190961944a3`: linux/amd64, signed and attested online (Rekor on) with cosign v3.1.3. T2 integration tests green |
-| T3 Evidence | Done | `compiler/evidence.py`; DSSE, bare and bundle shapes, binding, newest by timestamp (D2), logIndex search (40 tests). Integration green on the stand-in with cosign v3.1.3 |
+| T1 Keys and provenance | Done | Key pair generated in `pipeline/keys/`; `cosign.pub` committed (`16b52ab`); the private key went to Role 4 outside the repo. Generator test green (`pipeline/tests/`). Since 29 September: a re-tag mode (`--subject ref@digest`) for Role 1's profiling corpus, which is re-tagged rather than built (12 tests) |
+| T2 Build and attest stand-in | Done | `localhost:5001/standin-app@sha256:0a6bfbb07745da4c50e29e159cf426b05ff4481540a9894c746e1190961944a3`: linux/amd64, signed and attested online (Rekor on) with cosign v3.1.3. T2 integration tests green. The base image is pinned by digest, and `PROVBIND_OFFLINE=1` now also works with cosign v3, which refuses `--tlog-upload=false` without `--use-signing-config=false` |
+| T3 Evidence | Done | `compiler/evidence.py`; DSSE, bare and bundle shapes, binding, newest by timestamp (D2), logIndex search. Integration green on the stand-in with cosign v3.1.3. Fixed on 29 September for cosign v3 (76 tests): v_sig needs an image signature, since cosign v3 `verify` also passes an image that has only attestations; the Rekor log index is read from the signature bundle (stand-in: 2972903426, where it was null); every subject must be d_I; a commit that is not a hash gives null. PH1-03 passes |
 | T4 Image fetch | Done | `compiler/oci.py`; v_M, v_C, blob cache, index selection skipping attestation manifests, platform check (D6), `--registry-name` (D4) (29 tests). Integration green: at least 4 layers, `Cmd` is `["python", "app.py"]` |
 | T5 Layer union | Done | `compiler/layers.py`; all T5 rows incl. the D1 rows green (36 tests); mutation-checked against single-pass whiteouts |
 | T6 Path resolution | Done | `compiler/paths.py`; T6 table, canonical keys (higher layer wins), symlink targets incl. implicit dirs (20 tests) |
 | T7 Closure | Done | `compiler/closure.py`; shebangs incl. `env -S`, PT_INTERP, DT_NEEDED search order, ld.so.conf includes, `$ORIGIN`, python-slim-shaped closure (31 tests). Integration green: python3.11, libpython3.11, libc and the loader are in; ls and dash are not |
-| T8 SBOM depth | Done | `compiler/sbom.py`; T8 table plus duplicates, OS component, nested and empty SBOMs (15 tests) |
+| T8 SBOM depth | Done | `compiler/sbom.py`; T8 table plus duplicates, OS component, nested and empty SBOMs. Since 29 September (16 tests): components without a purl, the 14 Windows launchers syft finds in pip and setuptools, are left out of `packages`. Stand-in: 113 packages and `unresolved_fraction` 0.097, where they were 127 and 0.197 |
 | T9 Ownership | Done | `compiler/owners.py`; dpkg on merged-/usr, `<name>:<arch>.list`, RECORD `../../../bin/foo`, PEP 503, qualifiers ignored, unmatched → null (D5) (19 tests). Integration green: every `requests` file owned by `pkg:pypi/requests@…`, `/usr/bin/ls` by coreutils |
-| T10 Capabilities | Done | `compiler/caps.py` (+ `compiler/purls.py` helpers); allowlist hit, 80/tcp vs 8080/tcp (12 tests) |
+| T10 Capabilities | Done | `compiler/caps.py` (+ `compiler/purls.py` helpers); allowlist hit, 80/tcp vs 8080/tcp (26 tests in `test_caps.py`, plus 9 in `test_caps_model.py` for the ML-A hook) |
 | T11 Envelope and CLI | Done | `compiler/compile.py`; golden-file test, done-when checks, schema rejects missing fields, CLI exit codes 0/1/2/3 with fake crane and cosign, atomic write that also works on Windows (25 tests). Integration green: the real CLI writes a schema-valid envelope |
-| T12 Integration | In progress | Step 1 done: stand-in compiled, every Section 1 check green (13 integration tests, WSL2, Python 3.11.16). Compile time 6.9 s on Korn-PC under WSL2 (target < 60 s); evidence 3.3 s, fetch 1.5 s, union 1.4 s. Next: step 3, write `run/envelopes/0a6bfbb0….json` with the CLI and give it to Role 3 (the integration test writes only to a pytest temp folder); step 2 when Role 1 delivers `testbed/demo-app/`; time it on the demo PC. PH3 capability tests (PR #7): PH3-01, PH3-02 and PH3-06 pass; PH3-04, PH3-08 and PH3-09 stay not_run until they run with `PROVBIND_ENVELOPE` set to the stand-in's envelope |
-| T13 ML-A | In progress | Everything that needs no profiling data is done in the cloud and tested on synthetic data. Step 1: `ml/alg1.py`, Algorithm 1; MLA-01 pass (PR #2). Step 2: `ml/features.py` and `ml/features.md`, Ω_I with 46 features plus a 100-package vocabulary; MLA-02 pass (PR #3). Step 5: MLA-06 pass, a worst-case predictor over 1,006 pods with nothing outside 𝒞_K8s (PR #4). Step 4: `ml/train.py`, LightGBM with 5×3 cross-validation by image, the §4.5 metrics, the θ_C sweep and the four baselines, with the model saved as JSON; MLA-04 and MLA-05 are recorded not_run on a 40-image synthetic set (PR #5). Step 6: `compiler/caps.py` uses `ml/model/` when it exists, with each capability INFERRED plus its probability, and the allowlist otherwise; `PROVBIND_CAPS_MODEL=none` forces the allowlist; 𝒞_K8s is a parameter the compiler leaves unset (§13 decision 4) (PR #6). Next: step 3, join Role 1's `ml/data/labels.jsonl` (MLA-03) to our features in `ml/data/dataset.jsonl`, then train on the demo PC and rerun MLA-04 and MLA-05 on the real data |
+| T12 Integration | In progress | Step 1 done: stand-in compiled, every Section 1 check green (WSL2, Python 3.11.16). Compile time 6.9 s on Korn-PC under WSL2 (target < 60 s); evidence 3.3 s, fetch 1.5 s, union 1.4 s. Step 3 done on Korn-PC: `run/envelopes/0a6bfbb0….json` written with the CLI; how Role 3 replays it is in `docs/ROLE2-HANDOFF-TO-ROLE3.md`. Step 2 waits for `testbed/demo-app/` (Role 1's PR #16), built and signed on Role 1's computer, then timed on the demo PC. Capability tests on the stand-in: Role 2's P0 tests pass except MLA-04 (not_run until dataset D1 exists); P1 PH1-01 to PH1-04, PH2-06, PH2-07, PH3-03, PH3-05, PH3-12, OH-04 and OH-05 pass |
+| T13 ML-A | In progress | Everything that needs no profiling data is done in the cloud and tested on synthetic data. Step 1: `ml/alg1.py`, Algorithm 1; MLA-01 pass (PR #2). Step 2: `ml/features.py` and `ml/features.md`, Ω_I with 46 features plus a 100-package vocabulary; MLA-02 pass (PR #3). Step 5: MLA-06 pass, a worst-case predictor over 1,006 pods with nothing outside 𝒞_K8s (PR #4). Step 4: `ml/train.py`, LightGBM with 5×3 cross-validation by image, the §4.5 metrics, the θ_C sweep and the four baselines, with the model saved as JSON; MLA-04 and MLA-05 are recorded not_run on a 40-image synthetic set (PR #5). Step 6: `compiler/caps.py` uses `ml/model/` when it exists, with each capability INFERRED plus its probability, and the allowlist otherwise; `PROVBIND_CAPS_MODEL=none` forces the allowlist; 𝒞_K8s is a parameter the compiler leaves unset (§13 decision 4) (PR #6). Step 3's code is done: `compiler.compile --features-out` writes each image's features, and `python -m ml.dataset` joins them to Role 1's `ml/data/labels.jsonl` (MLA-03) by digest into `ml/data/dataset.jsonl` (24 tests; checked on the stand-in). Next, on the demo PC after Role 1's profiling (PR #16): compile the corpus with `--features-out`, join, train, and rerun MLA-04 and MLA-05 on the real data |
