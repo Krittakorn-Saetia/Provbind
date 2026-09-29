@@ -1,0 +1,36 @@
+# D_write and ML-B: every write by a process in a pod of namespace demo (Test Plan §5, §8).
+#
+# security_file_permission runs on every read and write, so the kernel keeps only calls whose
+# mask has MAY_WRITE (0x02). There is deliberately no path filter: ML-B needs every file written,
+# not only the protected prefixes of Sprint Handoff §7. The return value lets node/normalize.py
+# drop writes the LSM refused. Writes to pipes and sockets also pass this hook; the normaliser
+# drops any path that does not start with "/".
+#
+# Adapted from Tetragon's examples/tracingpolicy/filename_monitoring.yaml.
+# VERIFY on the demo PC: the policy loads (kubectl get tracingpoliciesnamespaced -n demo) and a
+# write in a demo pod shows up as a process_kprobe event.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-write
+  namespace: demo
+spec:
+  kprobes:
+  - call: "security_file_permission"
+    syscall: false
+    return: true
+    args:
+    - index: 0
+      type: "file"      # struct file *: gives the path
+    - index: 1
+      type: "int"       # mask: 0x04 MAY_READ, 0x02 MAY_WRITE
+    returnArg:
+      index: 0
+      type: "int"
+    returnArgAction: "Post"
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Mask"
+        values:
+        - "2"           # MAY_WRITE

@@ -9,6 +9,10 @@
 PROVBIND_RUN ?= ./run
 export PROVBIND_RUN
 
+# Role 3's Tetragon values (export filter, enablePolicyFilter for the namespaced write and truncate
+# policies), once node/ is merged. Without them the chart's defaults may drop every write event.
+TETRAGON_VALUES := $(if $(wildcard node/tetragon/values.yaml),-f node/tetragon/values.yaml,)
+
 .PHONY: help up down demo-app benign attack attack2 trust tamper falco-capture \
         profile assemble-labels compare report corpus-check test
 
@@ -23,7 +27,7 @@ up:  ## start kind + registry, Tetragon, Falco, Neo4j, and the demo namespace (S
 	helm repo add cilium https://helm.cilium.io >/dev/null 2>&1 || true
 	helm repo add falcosecurity https://falcosecurity.github.io/charts >/dev/null 2>&1 || true
 	helm repo update >/dev/null
-	helm upgrade --install tetragon cilium/tetragon -n kube-system
+	helm upgrade --install tetragon cilium/tetragon -n kube-system $(TETRAGON_VALUES)
 	kubectl rollout status -n kube-system ds/tetragon
 	helm upgrade --install falco falcosecurity/falco -n falco --create-namespace \
 	  --set driver.kind=modern_ebpf --set falco.json_output=true
@@ -89,3 +93,33 @@ corpus-check:  ## sanity-check ml/corpus.yaml
 
 test:  ## run the unit and capability tests that run anywhere
 	python3 -m pytest -q -m "not integration"
+
+## --- Role 4: controller, alerts, trust loop, demo (Sprint Handoff §3.3, §8) -------------------------
+
+PROVBIND_KEY ?= pipeline/keys/cosign.pub
+
+.PHONY: controller alerts graph trust-loop show verify-log check-contracts demo
+
+controller:  ## watch pods in namespace demo: verify, store the context, bind, compile
+	python3 -m controller.watch --run $(PROVBIND_RUN) --key $(PROVBIND_KEY)
+
+alerts:  ## tail detections.jsonl into alerts.jsonl and the violation log
+	python3 -m alerts.run --run $(PROVBIND_RUN)
+
+graph:  ## load every envelope (and its SBOM edges) into Neo4j; alerts also loads new ones
+	python3 -m alerts.attribute --run $(PROVBIND_RUN)
+
+trust-loop:  ## re-evaluate trust every 300 s and on any change to keystatus.json or advisories/
+	python3 -m alerts.trust --run $(PROVBIND_RUN)
+
+show:  ## print the alerts, one line each
+	python3 -m alerts.show --run $(PROVBIND_RUN)
+
+verify-log:  ## recompute the violation log's hash chain; exit 1 at the first broken record
+	python3 -m alerts.verify_log --run $(PROVBIND_RUN)
+
+check-contracts:  ## check the run folder against the Sprint Handoff §4 contracts
+	python3 contracts/check_contracts.py --run $(PROVBIND_RUN)
+
+demo:  ## the Sprint Handoff §1.1 demo, after make up and make demo-app (needs DEMO_REF=<ref@digest>)
+	./scripts/demo.sh

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PROVBIND detection (detections.jsonl), as Sprint Handoff §4.4 defines it",
+  "description": "A check of Role 3's output against the §4.4 contract, used by PH4-17. It adds no field: it lists the fields of §4.4 and the class and subclass values Role 3 emits. Classes beyond §4.4's table (D_load, D_cap, D_net, D_beh; binding/unverified and binding/no_envelope) come from the Test Plan and are listed in node/ROLE3_STATUS.md for Role 4's scorer.",
+  "type": "object",
+  "required": ["id", "time", "container_id", "namespace", "pod", "container", "image_digest", "pid", "ppid",
+               "exe", "parent_exe", "class", "subclass", "clause", "origin", "context"],
+  "properties": {
+    "id":           { "type": "string", "pattern": "^det-[0-9]{4,}$" },
+    "time":         { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$" },
+    "container_id": { "type": "string", "minLength": 1 },
+    "namespace":    { "type": "string" },
+    "pod":          { "type": "string" },
+    "container":    { "type": "string" },
+    "image_digest": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+    "pid":          { "type": ["integer", "null"] },
+    "ppid":         { "type": ["integer", "null"] },
+    "exe":          { "type": ["string", "null"] },
+    "parent_exe":   { "type": ["string", "null"] },
+    "class":        { "enum": ["D_exec", "D_load", "D_write", "D_hash", "D_cap", "D_net", "D_beh", "binding"] },
+    "subclass":     { "type": "string" },
+    "clause": {
+      "type": "object",
+      "required": ["kind", "path", "detail"],
+      "properties": {
+        "kind":   { "enum": ["file_set", "closure", "file_hash", "capabilities", "egress", "behaviour", "binding"] },
+        "path":   { "type": ["string", "null"] },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    },
+    "origin":  { "enum": ["AUTHENTICATED", "INFERRED", "CONFIGURED"] },
+    "context": {
+      "type": "object",
+      "required": ["declared", "package", "depth", "layer"],
+      "properties": {
+        "declared": { "type": ["boolean", "null"] },
+        "package":  { "type": ["string", "null"] },
+        "depth":    { "type": ["integer", "null"], "minimum": 0 },
+        "layer":    { "type": ["integer", "null"], "minimum": 0 }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "class": { "const": "D_exec" } } },
+      "then": { "properties": { "subclass": { "enum": ["undeclared", "outside_closure"] } } } },
+    { "if": { "properties": { "class": { "const": "D_load" } } },
+      "then": { "properties": { "subclass": { "enum": ["undeclared", "outside_closure"] } } } },
+    { "if": { "properties": { "class": { "const": "D_write" } } },
+      "then": { "properties": { "subclass": { "const": "declared_file" } } } },
+    { "if": { "properties": { "class": { "const": "D_hash" } } },
+      "then": { "properties": { "subclass": { "enum": ["modified", "relocated"] } } } },
+    { "if": { "properties": { "class": { "const": "D_cap" } } },
+      "then": { "properties": { "subclass": { "const": "not_in_envelope" } } } },
+    { "if": { "properties": { "class": { "const": "D_net" } } },
+      "then": { "properties": { "subclass": { "const": "not_allowed" } } } },
+    { "if": { "properties": { "class": { "const": "D_beh" } } },
+      "then": { "properties": { "subclass": { "const": "anomalous_window" } } } },
+    { "if": { "properties": { "class": { "const": "binding" } } },
+      "then": { "properties": { "subclass": { "enum": ["unknown_container", "unverified", "no_envelope"] } } } }
+  ]
+}
