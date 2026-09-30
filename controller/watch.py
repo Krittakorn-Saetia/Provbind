@@ -14,7 +14,8 @@ Watches pods in the namespace. For each started container it:
      proof that hashes to its root (PH2-04). Offline signing has no entry: not applicable.
    - **v_trust**: the key must not be revoked, disabled or compromised in `keystatus.json`, the
      stand-in for KMS key state that Phase 6 reads too (PH2-05). This one is checked on every
-     admission, not cached, so a pod started after a revocation is not verified.
+     admission, not cached, so a pod started after a revocation is not verified. A container already
+     bound is not re-admitted when the watch re-lists it: a later revocation is the trust loop's.
    **Any failure, including a missing cosign, gives `verified: false`**: the controller fails closed.
 2. **Stores the verification context** Γ_I (Eq. 22, PH2-09) in `contexts/<hex>.json`: the key and its
    id, the five checks, the builder, commit and Rekor log index, the signature bundle with its
@@ -256,6 +257,18 @@ class Controller:
 
     def bind(self, container_id: str, namespace: str, pod: str, container: str, ref: str,
              run_as_root: bool = True, privileged: bool = False, mounts: list[str] | None = None) -> dict:
+        existing = (load_json(self.bindings_path, {}) or {}).get(container_id)
+        if isinstance(existing, dict) and existing.get("image_digest") == oci.parse_ref(ref)[1]:
+            # Already admitted. v_trust is an admission check (module docstring): the watch re-lists every
+            # pod every 300 s and on each pod update, and must not re-admit a running container. On the
+            # demo VM a re-list inside trust-2's 30 s revocation flipped the running pod to unverified, which
+            # blinded the node and the trust loop for 5 minutes, since restoring the key re-verified nothing.
+            # Key changes for running pods are the trust loop's (alerts.trust: trust/key).
+            ready = envelope_path(self.run, existing["image_digest"]).exists()
+            if ready != existing.get("envelope_ready"):
+                existing = {**existing, "envelope_ready": ready}
+                self._update_bindings(lambda d: d.__setitem__(container_id, existing) if container_id in d else False)
+            return existing
         ctx = self.verifier.verify(ref)
         digest = ctx["digest"]
         ctx_path = self.run / "contexts" / f"{hex_of(digest)}.json"
