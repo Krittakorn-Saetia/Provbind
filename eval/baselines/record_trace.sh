@@ -31,7 +31,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$OUT" ] || { echo "record_trace: --out FILE is required" >&2; exit 2; }
-command -v bpftrace >/dev/null || { echo "record_trace: bpftrace is not installed (apt install bpftrace)" >&2; exit 3; }
+[ "$DRY_RUN" = 1 ] || command -v bpftrace >/dev/null || { echo "record_trace: bpftrace is not installed (apt install bpftrace)" >&2; exit 3; }
 
 mkdir -p "$(dirname "$OUT")"
 
