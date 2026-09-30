@@ -133,3 +133,50 @@ def test_rare_labels():
     ]
     rare = labels.rare_labels(rows, min_positive=3)
     assert rare == {"CAP_NET_RAW": 1, "CAP_SETUID": 2}     # CAP_CHOWN (3) is not rare
+
+
+# --- the process's own capabilities and the container runtime (demo VM, 30 September) -------
+
+DEFAULT_EFFECTIVE = ["CAP_CHOWN", "DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL", "CAP_SETGID",
+                     "CAP_SETUID", "CAP_SETPCAP", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW", "CAP_SYS_CHROOT",
+                     "CAP_MKNOD", "CAP_AUDIT_WRITE", "CAP_SETFCAP"]
+
+
+def _own(ev, effective, binary=None, args=None, parent=None):
+    p = ev["process_kprobe"]["process"]
+    p["cap"] = {"permitted": effective, "effective": effective}
+    if binary:
+        p["binary"] = binary
+    if args is not None:
+        p["arguments"] = args
+    if parent:
+        ev["process_kprobe"]["parent"] = {"binary": parent}
+    return ev
+
+
+def test_granted_but_not_held_is_denied():
+    [c] = labels.parse_tetragon_cap_events([_own(_kprobe(cap_name="CAP_SYS_ADMIN", ret=0), DEFAULT_EFFECTIVE)])
+    assert c.capability == "CAP_SYS_ADMIN" and c.granted is False
+
+
+def test_granted_and_held_is_a_label():
+    [c] = labels.parse_tetragon_cap_events([_own(_kprobe(cap_name="CAP_DAC_OVERRIDE", ret=0), DEFAULT_EFFECTIVE)])
+    assert c.granted is True
+
+
+def test_runtime_processes_are_left_out():
+    every = list(labels.ALL_CAPS)
+    runc_init = _own(_kprobe(cap_name="CAP_SYS_ADMIN", ret=0), every, binary="/proc/self/fd/6", args="init",
+                     parent="/usr/local/sbin/runc")
+    kind_hook = _own(_kprobe(cap_name="CAP_SYS_ADMIN", ret=0), every, binary="/usr/bin/mount",
+                     parent="/kind/bin/mount-product-files.sh")
+    assert list(labels.parse_tetragon_cap_events([runc_init, kind_hook])) == []
+    # workload_caps=None keeps a process with extra capabilities (a pod that was given them)
+    assert len(list(labels.parse_tetragon_cap_events([kind_hook], workload_caps=None))) == 1
+
+
+def test_runc_init_is_left_out_even_without_process_cap():
+    ev = _kprobe(cap_name="CAP_SYS_ADMIN", ret=0)
+    ev["process_kprobe"]["process"].update(binary="/proc/self/fd/7", arguments="init")
+    ev["process_kprobe"]["parent"] = {"binary": "/usr/local/sbin/runc"}
+    assert list(labels.parse_tetragon_cap_events([ev])) == []

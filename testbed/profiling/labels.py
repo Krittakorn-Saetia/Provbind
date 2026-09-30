@@ -13,6 +13,15 @@ Label rule (§4.2):
   because that is the label noise;
 - a label with fewer than 3 positive images is "too rare" and left out of training.
 
+Measured on the demo VM (30 September; docs/ROLE1-RESULTS-2026-09-30.md §3.2), the return value alone
+over-counts: cap_capable returned 0 for CAP_SYS_ADMIN in processes that do not hold it, and runc's init
+step and kind's container hooks run in the pod with every capability. So, when the event carries the
+process's own capability sets (Tetragon's enableProcessCred, process.cap):
+- a check counts as granted only if the capability is in the process's own effective set;
+- a process holding capabilities a default pod cannot have (outside RUNTIME_DEFAULT_CAPS) is the
+  container runtime, not the workload, and is left out, as is runc's init step itself.
+Without process.cap the return value is used as before.
+
 The event parsing is best-effort against Tetragon's JSON and is verified against Role 3's
 policy output on the demo PC; the label maths below is pure and unit-tested.
 """
@@ -22,7 +31,8 @@ import json
 from dataclasses import dataclass
 from typing import Iterable
 
-from ml.alg1 import ALL_CAPS, normalise
+from ml.alg1 import ALL_CAPS, RUNTIME_DEFAULT_CAPS, normalise
+from node.normalize import is_runtime_init, own_capabilities
 
 # Capability index -> name, from include/uapi/linux/capability.h (ALL_CAPS is in that order).
 CAP_BY_INDEX = {i: name for i, name in enumerate(ALL_CAPS)}
@@ -71,12 +81,15 @@ def _get(d, *path, default=None):
     return d if d is not None else default
 
 
-def parse_tetragon_cap_events(source, namespace=None, pod_prefix=None):
+def parse_tetragon_cap_events(source, namespace=None, pod_prefix=None, workload_caps=RUNTIME_DEFAULT_CAPS):
     """Yield CapCheck for every `cap_capable` kprobe event in a Tetragon JSON stream.
 
     `source` is an iterable of raw JSON lines or already-decoded dicts. `namespace` and
     `pod_prefix`, when given, keep only the workload's own pods (§4.2). A line that is not a
-    cap_capable kprobe, or has no capability or return value, is skipped.
+    cap_capable kprobe, or has no capability or return value, is skipped, and so are the
+    container runtime's processes (see the module docstring): runc's init step, and, when the
+    event carries process.cap, any process whose effective set is not within `workload_caps`
+    (the default pod's set; None keeps them).
     """
     for item in source:
         if isinstance(item, (str, bytes)):
@@ -106,7 +119,14 @@ def parse_tetragon_cap_events(source, namespace=None, pod_prefix=None):
         ret = _get(ev, "return", "int_arg")
         if ret is None:
             continue
-        granted = int(ret) == 0                      # §4.2/§8: 0 granted, -1 denied
+        proc, parent = ev.get("process"), ev.get("parent")
+        if is_runtime_init(proc, parent):
+            continue                                 # runc's init step: the runtime, not the workload
+        own = own_capabilities(proc)
+        if own is not None and workload_caps is not None and not own <= workload_caps:
+            continue                                 # holds what a default pod cannot: a runtime helper
+        # §4.2/§8: 0 granted, -1 denied; and only a capability the process itself holds is its use
+        granted = int(ret) == 0 and (own is None or cap in own)
 
         ns = _get(ev, "process", "pod", "namespace")
         pod = _get(ev, "process", "pod", "name")

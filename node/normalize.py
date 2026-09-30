@@ -327,7 +327,15 @@ class Normalizer:
             ev = self._base(obj, body, kind)
             if ev is None:
                 return None
-            ev.cap, ev.granted = name, (None if ret is None else ret == 0)
+            granted = None if ret is None else ret == 0
+            own = own_capabilities(body.get("process"))
+            if granted and own is not None and name not in own:
+                # A 0 for a capability the process does not hold (enableProcessCred's process.cap):
+                # the check was made with other credentials (on the demo VM, overlayfs acting with
+                # the mounter's), so it is not this process using the capability.
+                granted = False
+                self.stats["cap:not_held"] += 1
+            ev.cap, ev.granted = name, granted
             return self._keep(ev)
         sock = _find(args, "sock_arg")                          # connect
         if not isinstance(sock, dict) or not _opt_str(sock.get("daddr")):
@@ -339,6 +347,26 @@ class Normalizer:
         proto = _opt_str(sock.get("protocol")) or "IPPROTO_TCP"
         ev.protocol = proto.lower().removeprefix("ipproto_")
         return self._keep(ev)
+
+
+def own_capabilities(proc) -> frozenset[str] | None:
+    """The process's own effective capabilities (process.cap.effective, sent with Tetragon's
+    enableProcessCred) as CAP_* names, or None when the event does not carry them."""
+    capset = proc.get("cap") if isinstance(proc, dict) else None
+    eff = capset.get("effective") if isinstance(capset, dict) else None
+    if not isinstance(eff, list):
+        return None
+    out = set()
+    for name in eff:
+        if isinstance(name, str) and name:
+            name = name.strip().upper()
+            out.add(name if name.startswith("CAP_") else "CAP_" + name)   # Tetragon: "DAC_OVERRIDE"
+    return frozenset(out)
+
+
+def is_runtime_init(proc: dict, parent: dict) -> bool:
+    """Public name for the runtime-init test, shared with the profiling labels (testbed/profiling)."""
+    return _is_runtime_init(proc if isinstance(proc, dict) else {}, parent if isinstance(parent, dict) else {})
 
 
 def _is_runtime_init(proc: dict, parent: dict) -> bool:

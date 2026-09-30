@@ -402,3 +402,32 @@ def test_runtime_init_needs_the_exact_shape(s, binary, args, parent):
     p = s.proc(parent, pid=900)
     ev, _ = one(s.exec(s.proc(binary, pid=901, parent=p, arguments=args)))
     assert ev is not None
+
+
+# the process's own capability sets (Tetragon enableProcessCred: process.cap) ------------------------
+
+DEFAULT_EFFECTIVE = ["CAP_CHOWN", "DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL", "CAP_SETGID",
+                     "CAP_SETUID", "CAP_SETPCAP", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW", "CAP_SYS_CHROOT",
+                     "CAP_MKNOD", "CAP_AUDIT_WRITE", "CAP_SETFCAP"]       # CapEff 0xa80425fb, as Tetragon names it
+
+
+def _with_capset(doc, effective):
+    doc["process_kprobe"]["process"]["cap"] = {"permitted": effective, "effective": effective}
+    return doc
+
+
+def test_granted_check_for_a_capability_not_held_is_not_a_use(s, app):
+    """Seen on the demo VM: ret 0 for CAP_SYS_ADMIN in a process whose CapEff lacks it."""
+    n = Normalizer()
+    ev = n(_with_capset(s.cap(app, "CAP_SYS_ADMIN", granted=True), DEFAULT_EFFECTIVE))
+    assert ev.cap == "CAP_SYS_ADMIN" and ev.granted is False and n.stats["cap:not_held"] == 1
+
+
+def test_granted_check_for_a_held_capability_is_a_use(s, app):
+    ev = one(_with_capset(s.cap(app, "CAP_DAC_OVERRIDE", granted=True), DEFAULT_EFFECTIVE))[0]
+    assert ev.granted is True                    # "DAC_OVERRIDE" in process.cap is CAP_DAC_OVERRIDE
+
+
+def test_without_process_cap_the_return_value_decides(s, app):
+    assert one(s.cap(app, "CAP_SYS_ADMIN", granted=True))[0].granted is True
+    assert one(_with_capset(s.cap(app, "CAP_SYS_ADMIN", granted=False), DEFAULT_EFFECTIVE))[0].granted is False
