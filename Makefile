@@ -66,6 +66,11 @@ tamper:  ## run the tamper-1 scenario (edit one character in the violation log)
 trust2:  ## run the trust-2 scenario (our key revoked in keystatus.json); RESTORE=1 undoes it
 	./testbed/scenarios/trust2.sh
 
+.PHONY: benign-traffic
+
+benign-traffic:  ## ordinary app requests and cache writes, no kubectl exec (balances trust-2 in make scored)
+	./testbed/scenarios/benign_traffic.sh
+
 ph4-14:  ## write the new file /tmp/new.txt in the demo pod inside a ph4-14 row (Role 3's PH4-14)
 	./testbed/scenarios/ph4_14.sh
 
@@ -126,7 +131,7 @@ check-contracts:  ## check the run folder against the Sprint Handoff §4 contrac
 
 .PHONY: scored
 
-scored:  ## Role 1's balanced scored run: ROUNDS=3 x (benign, attack, trust, ph4-14), tamper, compare (needs DEMO_REF)
+scored:  ## Role 1's balanced scored run: ROUNDS x (benign, attack, trust, ph4-14, trust2, benign-traffic), tamper, compare (needs DEMO_REF)
 	./scripts/scored-run.sh
 
 demo:  ## the Sprint Handoff §1.1 demo, after make up and make demo-app (needs DEMO_REF=<ref@digest>)

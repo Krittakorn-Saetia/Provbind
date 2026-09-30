@@ -4,8 +4,9 @@
 # `make demo-app`, in a FRESH run folder (move the old one aside first).
 #   DEMO_REF=<registry>/demo-app@sha256:<hex> make scored            # ROUNDS=3 by default
 #
-# Each round: benign-1, attack-1, trust-1 (then its advisory is removed again), ph4-14.
-# 3 rounds give 6 malicious and 6 benign runs, each scenario 3 times (Test Plan §12.2, D4).
+# Each round: benign-1, attack-1, trust-1 (then its advisory is removed again), ph4-14, and with
+# TRUST2=1 (the default) trust-2 (then the key is set active again) and benign-traffic: 3 malicious and
+# 3 benign scenarios. 3 rounds give 9 and 9 runs, each scenario 3 times (Test Plan §12.2, D4).
 # attack-2 is left out: it needs an ML-B model (make demo's MLB=--mlb), which this run has not trained.
 #
 # Like scripts/demo.sh, it starts the controller, the node (fed by Tetragon), the alert engine, the
@@ -23,6 +24,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${TETRAGON_CONTAINER:=export-stdout}"
 : "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml}"
 : "${ROUNDS:=3}"
+: "${TRUST2:=1}"        # also trust-2 (key revoked) and benign-traffic each round; 0 gives the 30 September set
 : "${GAP:=10}"          # seconds between scenarios, so no window catches the previous one's tail
 : "${WAIT_S:=120}"
 
@@ -65,6 +67,11 @@ for round in $(seq 1 "$ROUNDS"); do
   step "round $round/$ROUNDS: trust-1";   make --no-print-directory trust
   RESTORE=1 make --no-print-directory trust; sleep "$GAP"      # trust restored before the next run
   step "round $round/$ROUNDS: ph4-14";    make --no-print-directory ph4-14;  sleep "$GAP"
+  if [ "$TRUST2" = "1" ]; then
+    step "round $round/$ROUNDS: trust-2";   make --no-print-directory trust2
+    RESTORE=1 make --no-print-directory trust2; sleep "$GAP"   # key active again before the next run
+    step "round $round/$ROUNDS: benign-traffic"; make --no-print-directory benign-traffic; sleep "$GAP"
+  fi
 done
 
 step "tamper-1 (once, last: it breaks the log for every later record)"
