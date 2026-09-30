@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A-U2 (comparison test plan section 3.1): install-time execution. /au2 runs /usr/local/bin/helperd, a
+# A-U2 (docs/COMPARISON-RUN.md §3): install-time execution. /au2 runs /usr/local/bin/helperd, a
 # harmless program that a build step wrote into the A-U2 image variant (Dockerfile.au2) without any
 # package declaring it. Expected: PROVBIND raises only the weak outside_closure signal (the documented
 # build-time limit), not an undeclared-exec, because the file is in a layer. Needs the au-2 variant

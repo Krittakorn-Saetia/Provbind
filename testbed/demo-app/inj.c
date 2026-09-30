@@ -1,7 +1,7 @@
 /*
  * inj.c - HARMLESS shared library for the PROVBIND demo (SF9-26, SIIT). NOT malware.
  *
- * Scenario R-K3 (library injection, comparison test plan section 3) LD_PRELOADs this .so into
+ * Scenario R-K3 (library injection, docs/COMPARISON-RUN.md §3) LD_PRELOADs this .so into
  * `python3 -c pass` (see testbed/demo-app/tier2.py, preload_injection). Its only purpose is to make
  * the loader map a shared library that is in no layer of the attested image, so PROVBIND reports
  * D_load undeclared, and to give the syscall trace a library-injection shape for the estimators.

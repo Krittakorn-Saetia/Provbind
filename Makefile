@@ -129,7 +129,7 @@ verify-log:  ## recompute the violation log's hash chain; exit 1 at the first br
 check-contracts:  ## check the run folder against the Sprint Handoff §4 contracts
 	python3 contracts/check_contracts.py --run $(PROVBIND_RUN)
 
-## --- comparison Tier 2 scenarios (demo PC; comparison test plan §3) ------------------------------
+## --- comparison Tier 2 scenarios (demo PC; docs/COMPARISON-RUN.md §3) ------------------------------
 
 .PHONY: rk2 rk3 ru3 ru4 ru5 benign-dns benign-vol au2 ak1 ak2 ak3 au2-deploy comparison
 

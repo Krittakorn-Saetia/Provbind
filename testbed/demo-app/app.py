@@ -20,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CACHE_DIR = "/tmp/.cache"
 
-# Tier 2 comparison endpoints -> the harmless behaviour in tier2.py (comparison test plan section 3).
+# Tier 2 comparison endpoints -> the harmless behaviour in tier2.py (docs/COMPARISON-RUN.md §3).
 TIER2 = {
     "/rk2": "kernel_cve_shape",      # R-K2: known kernel-CVE syscall shape (waitid, splice)
     "/rk3": "preload_injection",     # R-K3: LD_PRELOAD of an embedded harmless .so

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# R-K3 (comparison test plan section 3.2): library injection. /rk3 LD_PRELOADs an embedded harmless
+# R-K3 (docs/COMPARISON-RUN.md §3): library injection. /rk3 LD_PRELOADs an embedded harmless
 # .so (built at image build like x9.c) into `python3 -c pass`; the loader maps a library that is in
 # no image layer. Expected: PROVBIND D_load undeclared. Harmless, throwaway container only.
 # Runs on the demo PC. `make rk3` calls this.

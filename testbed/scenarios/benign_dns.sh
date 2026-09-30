@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# B4 (comparison test plan section 3.3): benign DNS lookups from the app (/b4). Expected: nothing
+# B4 (docs/COMPARISON-RUN.md §3): benign DNS lookups from the app (/b4). Expected: nothing
 # above Low from PROVBIND and no Falco rule; a benign counterpart to R-U3 for the network-behaviour
 # false-alarm check. Runs on the demo PC. `make benign-dns` calls this.
 set -euo pipefail

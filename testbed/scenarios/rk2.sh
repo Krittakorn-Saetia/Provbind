@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# R-K2 (comparison test plan section 3.2): replay a known kernel-CVE syscall SHAPE, no exploit.
+# R-K2 (docs/COMPARISON-RUN.md §3): replay a known kernel-CVE syscall SHAPE, no exploit.
 # /rk2 issues waitid() and splice() harmlessly (the DeSFAM CVEs' calls) on a patched kernel.
 # Expected: PROVBIND does not watch raw syscalls, so no PROVBIND detection; Confine-E blocks a call
 # outside its static list; DeSFAM-E may flag the window. Harmless, throwaway container only.

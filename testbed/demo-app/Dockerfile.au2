@@ -1,4 +1,4 @@
-# PROVBIND demo app, A-U2 variant (comparison test plan section 3.1). Same as ./Dockerfile, plus one
+# PROVBIND demo app, A-U2 variant (docs/COMPARISON-RUN.md §3). Same as ./Dockerfile, plus one
 # build step that writes a HARMLESS program, /usr/local/bin/helperd, INTO the final image. It stands
 # for install-time execution (the second most common Datadog behaviour): a build step adds a program
 # no package declares. When the app runs it (GET /au2 -> tier2.build_time_payload), the file is in a

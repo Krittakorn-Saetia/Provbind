@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# R-U5 (comparison test plan section 3.2): credential theft by mimicry, PROVBIND's documented blind
+# R-U5 (docs/COMPARISON-RUN.md §3): credential theft by mimicry, PROVBIND's documented blind
 # spot. /ru5 reads the pod's service-account token but sends only its SHA-256 DIGEST (never the token)
 # to an ALLOWED in-cluster address. Expected: nothing fires (a conforming read to an allowed sink) --
 # the case the comparison uses to show the limit honestly. The secret is never transmitted or logged.

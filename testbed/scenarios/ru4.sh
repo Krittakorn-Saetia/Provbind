@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# R-U4 (comparison test plan section 3.2): binary tampering. /ru4 overwrites the declared /usr/bin/ls
+# R-U4 (docs/COMPARISON-RUN.md §3): binary tampering. /ru4 overwrites the declared /usr/bin/ls
 # with /bin/cat's bytes, runs it, then restores the original bytes (so the pod stays usable). Expected:
 # PROVBIND D_write on a declared file (no D_hash without runtime hashing). Harmless, throwaway
 # container only. Runs on the demo PC. `make ru4` calls this.

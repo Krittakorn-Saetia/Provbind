@@ -1,4 +1,4 @@
-"""Estimated baselines for the comparison study (Test Plan §3.11; docs/reports/COMPARISON-TEST-PLAN-2026-09-30.md).
+"""Estimated baselines for the comparison study (Test Plan §3.11; docs/COMPARISON-RUN.md).
 
 Confine [14] and DeSFAM [24] are represented by *estimated functions*: their published decision rules
 applied to system-call traces recorded from our scenarios. No code from either project is used. Every

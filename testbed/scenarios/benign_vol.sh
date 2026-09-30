@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# B5 (comparison test plan section 3.3): benign writes under a mounted volume (/b5 writes and reads a
+# B5 (docs/COMPARISON-RUN.md §3): benign writes under a mounted volume (/b5 writes and reads a
 # file under /data, an emptyDir in no image layer). Expected: nothing above Low from PROVBIND and no
 # Falco rule; a benign counterpart to the write scenarios. Needs the deployment to mount a volume at
 # /data (testbed/demo-app/deploy.yaml). Runs on the demo PC. `make benign-vol` calls this.

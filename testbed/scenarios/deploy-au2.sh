@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A-U2 (comparison test plan section 3.1): build and SIGN the A-U2 image variant (Dockerfile.au2 adds
+# A-U2 (docs/COMPARISON-RUN.md §3): build and SIGN the A-U2 image variant (Dockerfile.au2 adds
 # a harmless /usr/local/bin/helperd that no package declares), deploy it, then run it (/au2). The
 # variant is validly signed and attested, so it passes admission; the build-time program shows up only
 # as the weak outside_closure signal when the app runs it -- the documented build-time limit. Harmless.

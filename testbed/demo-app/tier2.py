@@ -1,10 +1,10 @@
-"""PROVBIND demo app, Tier 2 scenario behaviours (comparison test plan section 3). HARMLESS test code.
+"""PROVBIND demo app, Tier 2 scenario behaviours (docs/COMPARISON-RUN.md §3). HARMLESS test code.
 
 Each function re-creates the *shape* of one Datadog malicious-package behaviour so that PROVBIND's
 runtime verifier, Falco, and the trace-based estimators (Confine-E, DeSFAM-E) each have something to
 act on. Nothing here is an exploit, downloads or reads a real malicious sample, changes privilege,
 or touches a real host: every effect happens only inside the throwaway demo container, which is torn
-down after the run. app.py routes one endpoint to each function; see the comparison test plan for the
+down after the run. app.py routes one endpoint to each function; see docs/COMPARISON-RUN.md for the
 scenario id, the behaviour it stands for and the expected result per system.
 """
 from __future__ import annotations
