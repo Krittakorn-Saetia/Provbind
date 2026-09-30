@@ -9,5 +9,9 @@
 # VERIFY on the demo PC: the value names against `helm show values cilium/tetragon`.
 tetragon:
   enablePolicyFilter: true
+  # Each event carries the process's own capability sets (process.cap). cap_capable's return value is not
+  # enough: on the demo VM it was 0 for capabilities the process does not hold (overlayfs checks with the
+  # mounter's credentials), so a check counts as granted only if the capability is in process.cap.effective.
+  enableProcessCred: true
   exportAllowList: |-
     {"namespace":["demo"],"event_set":["PROCESS_EXEC","PROCESS_EXIT","PROCESS_KPROBE"]}
