@@ -215,6 +215,7 @@ class Normalizer:
     def __init__(self, namespaces: Iterable[str] | None = ("demo",)):
         self.namespaces = None if namespaces is None else frozenset(namespaces)
         self.stats: Counter = Counter()
+        self._capsets_seen = False          # a process.cap was seen: a missing one means "holds nothing"
 
     def __call__(self, line) -> Event | None:
         if isinstance(line, (str, bytes)):
@@ -328,7 +329,10 @@ class Normalizer:
             if ev is None:
                 return None
             granted = None if ret is None else ret == 0
-            own = own_capabilities(body.get("process"))
+            proc = body.get("process")
+            if isinstance(proc, dict) and isinstance(proc.get("cap"), dict):
+                self._capsets_seen = True                   # enableProcessCred is on in this stream
+            own = own_capabilities(proc, assume_empty=self._capsets_seen)
             if granted and own is not None and name not in own:
                 # A 0 for a capability the process does not hold (enableProcessCred's process.cap):
                 # the check was made with other credentials (on the demo VM, overlayfs acting with
@@ -349,13 +353,20 @@ class Normalizer:
         return self._keep(ev)
 
 
-def own_capabilities(proc) -> frozenset[str] | None:
+def own_capabilities(proc, assume_empty: bool = False) -> frozenset[str] | None:
     """The process's own effective capabilities (process.cap.effective, sent with Tetragon's
-    enableProcessCred) as CAP_* names, or None when the event does not carry them."""
+    enableProcessCred) as CAP_* names, or None when the event does not carry them.
+
+    Tetragon's JSON leaves out empty lists, so a process holding nothing (a workload that switched
+    to a non-root user: postgres, mysql, grafana... on the demo VM) has no `effective`, or no `cap`
+    at all. A `cap` without `effective` is therefore the empty set; a missing `cap` is the empty set
+    when `assume_empty` (the caller has seen capability sets in the same stream), else unknown."""
     capset = proc.get("cap") if isinstance(proc, dict) else None
-    eff = capset.get("effective") if isinstance(capset, dict) else None
+    if not isinstance(capset, dict):
+        return frozenset() if assume_empty and isinstance(proc, dict) else None
+    eff = capset.get("effective")
     if not isinstance(eff, list):
-        return None
+        return frozenset()
     out = set()
     for name in eff:
         if isinstance(name, str) and name:

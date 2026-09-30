@@ -431,3 +431,18 @@ def test_granted_check_for_a_held_capability_is_a_use(s, app):
 def test_without_process_cap_the_return_value_decides(s, app):
     assert one(s.cap(app, "CAP_SYS_ADMIN", granted=True))[0].granted is True
     assert one(_with_capset(s.cap(app, "CAP_SYS_ADMIN", granted=False), DEFAULT_EFFECTIVE))[0].granted is False
+
+
+def test_non_root_process_without_a_capability_list_holds_nothing(s, app):
+    """Tetragon omits empty lists: a non-root workload's events have no cap.effective, or no cap."""
+    n = Normalizer()
+    assert n(_with_capset(s.cap(app, "CAP_DAC_OVERRIDE", granted=True), DEFAULT_EFFECTIVE)).granted is True
+    empty = s.cap(app, "CAP_SYS_ADMIN", granted=True)
+    empty["process_kprobe"]["process"]["cap"] = {}
+    assert n(empty).granted is False
+    absent = s.cap(app, "CAP_SYS_ADMIN", granted=True)                  # after a cap was seen: empty
+    assert n(absent).granted is False
+
+
+def test_missing_capability_list_is_unknown_until_one_is_seen(s, app):
+    assert Normalizer()(s.cap(app, "CAP_SYS_ADMIN", granted=True)).granted is True

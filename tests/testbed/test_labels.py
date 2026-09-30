@@ -180,3 +180,19 @@ def test_runc_init_is_left_out_even_without_process_cap():
     ev["process_kprobe"]["process"].update(binary="/proc/self/fd/7", arguments="init")
     ev["process_kprobe"]["parent"] = {"binary": "/usr/local/sbin/runc"}
     assert list(labels.parse_tetragon_cap_events([ev])) == []
+
+
+def test_non_root_workload_without_capability_list_gets_no_label():
+    """Seen on the demo VM (postgres, mysql, grafana...): events of a non-root process carry no cap."""
+    root = _own(_kprobe(cap_name="CAP_DAC_OVERRIDE", ret=0), DEFAULT_EFFECTIVE)
+    nonroot = _kprobe(cap_name="CAP_SYS_ADMIN", ret=0)                   # no process.cap at all
+    empty = _kprobe(cap_name="CAP_DAC_READ_SEARCH", ret=0)
+    empty["process_kprobe"]["process"]["cap"] = {}
+    got = labels.labels_for_run(labels.parse_tetragon_cap_events([nonroot, root, empty]))
+    assert got["granted"] == {"CAP_DAC_OVERRIDE"}
+    assert got["denied"] == {"CAP_SYS_ADMIN", "CAP_DAC_READ_SEARCH"}
+
+
+def test_capture_without_any_capability_lists_falls_back_to_the_return_value():
+    [c] = labels.parse_tetragon_cap_events([_kprobe(cap_name="CAP_NET_BIND_SERVICE", ret=0)])
+    assert c.granted is True

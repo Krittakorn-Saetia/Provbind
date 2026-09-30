@@ -17,7 +17,8 @@ Measured on the demo VM (30 September; docs/ROLE1-RESULTS-2026-09-30.md §3.2), 
 over-counts: cap_capable returned 0 for CAP_SYS_ADMIN in processes that do not hold it, and runc's init
 step and kind's container hooks run in the pod with every capability. So, when the event carries the
 process's own capability sets (Tetragon's enableProcessCred, process.cap):
-- a check counts as granted only if the capability is in the process's own effective set;
+- a check counts as granted only if the capability is in the process's own effective set (a missing
+  set, once the capture carries sets at all, is empty: Tetragon omits empty lists);
 - a process holding capabilities a default pod cannot have (outside RUNTIME_DEFAULT_CAPS) is the
   container runtime, not the workload, and is left out, as is runc's init step itself.
 Without process.cap the return value is used as before.
@@ -91,17 +92,21 @@ def parse_tetragon_cap_events(source, namespace=None, pod_prefix=None, workload_
     event carries process.cap, any process whose effective set is not within `workload_caps`
     (the default pod's set; None keeps them).
     """
+    objs = []
     for item in source:
         if isinstance(item, (str, bytes)):
             item = item.strip()
             if not item:
                 continue
             try:
-                obj = json.loads(item)
+                item = json.loads(item)
             except ValueError:
                 continue
-        else:
-            obj = item
+        objs.append(item)
+    # Tetragon leaves out empty lists: once any event carries process.cap, an event without one is a
+    # process holding no capabilities (a workload running as a non-root user), not an unknown.
+    capsets_seen = any(isinstance(_get(o, "process_kprobe", "process", "cap"), dict) for o in objs)
+    for obj in objs:
         ev = _get(obj, "process_kprobe")
         if not ev or ev.get("function_name") != "cap_capable":
             continue
@@ -122,7 +127,7 @@ def parse_tetragon_cap_events(source, namespace=None, pod_prefix=None, workload_
         proc, parent = ev.get("process"), ev.get("parent")
         if is_runtime_init(proc, parent):
             continue                                 # runc's init step: the runtime, not the workload
-        own = own_capabilities(proc)
+        own = own_capabilities(proc, assume_empty=capsets_seen)
         if own is not None and workload_caps is not None and not own <= workload_caps:
             continue                                 # holds what a default pod cannot: a runtime helper
         # §4.2/§8: 0 granted, -1 denied; and only a capability the process itself holds is its use
