@@ -1,0 +1,30 @@
+# PROVBIND demo app, A-U2 variant (comparison test plan section 3.1). Same as ./Dockerfile, plus one
+# build step that writes a HARMLESS program, /usr/local/bin/helperd, INTO the final image. It stands
+# for install-time execution (the second most common Datadog behaviour): a build step adds a program
+# no package declares. When the app runs it (GET /au2 -> tier2.build_time_payload), the file is in a
+# layer but outside the attested package closure, so PROVBIND raises only the weak outside_closure
+# signal -- the documented build-time limit -- not an undeclared-exec.
+#
+# Keep the two base-image digests identical to ./Dockerfile (change all lines together): the envelope
+# stays stable and gen_provenance.py records the first FROM as the base image.
+
+# --- builder: compile x9.c and inj.c and embed them as base64 into requestz_helper/_payload.py ---
+FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY x9.c inj.c gen_payload.sh ./
+COPY requestz-helper ./requestz-helper
+RUN bash gen_payload.sh
+
+# --- final image ---
+FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e
+WORKDIR /app
+COPY --from=builder /build/requestz-helper ./requestz-helper
+RUN pip install --no-cache-dir --no-index --no-build-isolation ./requestz-helper
+COPY app.py tier2.py ./
+# A-U2: a build step adds a harmless program that no package declares (install-time execution shape).
+RUN printf '#!/bin/sh\necho "provbind build-time helper"\nexit 0\n' > /usr/local/bin/helperd \
+    && chmod 0755 /usr/local/bin/helperd
+EXPOSE 8080
+CMD ["python", "app.py"]

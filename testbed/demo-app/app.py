@@ -8,7 +8,9 @@ demo container:
   GET /update   -> attack-1: requestz_helper.check_update() drops and runs the test payload
   GET /update2  -> attack-2: an in-envelope burst of new files under /tmp/.cache (declared binaries
                    only), which no deterministic rule flags but ML-B should (D_beh)
-The attack-3..8 endpoints (P1 scenarios) are not implemented in this prototype and return 501.
+The Tier 2 comparison endpoints (TIER2 below) each drive one harmless behaviour in tier2.py, one per
+comparison-plan scenario (R-K2, R-K3, R-U3, R-U4, R-U5, B4, B5, A-U2). Any other /update* path is a
+P1 scenario not implemented in this prototype and returns 501.
 """
 from __future__ import annotations
 
@@ -17,6 +19,18 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CACHE_DIR = "/tmp/.cache"
+
+# Tier 2 comparison endpoints -> the harmless behaviour in tier2.py (comparison test plan section 3).
+TIER2 = {
+    "/rk2": "kernel_cve_shape",      # R-K2: known kernel-CVE syscall shape (waitid, splice)
+    "/rk3": "preload_injection",     # R-K3: LD_PRELOAD of an embedded harmless .so
+    "/ru3": "exfil_connect",         # R-U3: connect to a never-routed test address (no data sent)
+    "/ru4": "overwrite_binary",      # R-U4: overwrite the declared /usr/bin/ls, then run it
+    "/ru5": "credential_read",       # R-U5: read the SA token; send only its digest to an allowed sink
+    "/b4": "dns_lookups",            # B4: benign DNS lookups
+    "/b5": "volume_write",           # B5: benign write under a mounted volume
+    "/au2": "build_time_payload",    # A-U2: run a build-time program (Dockerfile.au2 variant only)
+}
 
 
 def cache_burst(base_dir: str = CACHE_DIR, n: int = 300, duration: float = 20.0) -> int:
@@ -77,6 +91,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, f"update triggered (payload started: {started})")
         elif self.path == "/update2":
             self._send(200, f"burst done ({cache_burst()} files)")
+        elif self.path in TIER2:
+            import tier2
+            result = getattr(tier2, TIER2[self.path])()
+            self._send(200, f"{self.path}: {result}")
         elif self.path.startswith("/update"):
             self._send(501, "scenario endpoint not implemented in this prototype")
         else:
