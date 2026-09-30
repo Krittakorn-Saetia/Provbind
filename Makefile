@@ -129,6 +129,49 @@ verify-log:  ## recompute the violation log's hash chain; exit 1 at the first br
 check-contracts:  ## check the run folder against the Sprint Handoff §4 contracts
 	python3 contracts/check_contracts.py --run $(PROVBIND_RUN)
 
+## --- comparison Tier 2 scenarios (demo PC; comparison test plan §3) ------------------------------
+
+.PHONY: rk2 rk3 ru3 ru4 ru5 benign-dns benign-vol au2 ak1 ak2 ak3 au2-deploy comparison
+
+rk2:  ## R-K2: replay a known kernel-CVE syscall shape (waitid, splice), no exploit
+	./testbed/scenarios/rk2.sh
+
+rk3:  ## R-K3: LD_PRELOAD an embedded harmless .so (library injection); expects D_load
+	./testbed/scenarios/rk3.sh
+
+ru3:  ## R-U3: connect to a never-routed test address, no data sent; expects D_net
+	./testbed/scenarios/ru3.sh
+
+ru4:  ## R-U4: overwrite the declared /usr/bin/ls then restore it; expects D_write
+	./testbed/scenarios/ru4.sh
+
+ru5:  ## R-U5: read the SA token, send only its digest to an allowed sink (PROVBIND blind spot)
+	./testbed/scenarios/ru5.sh
+
+benign-dns:  ## B4: benign DNS lookups; expects nothing above Low
+	./testbed/scenarios/benign_dns.sh
+
+benign-vol:  ## B5: benign writes under a mounted volume; expects nothing above Low
+	./testbed/scenarios/benign_vol.sh
+
+au2:  ## A-U2 trigger only: run the build-time program (needs the au-2 variant pod; see au2-deploy)
+	./testbed/scenarios/au2.sh
+
+ak1:  ## A-K1: a MAL- advisory exists before deploy; expects a trust alert at admission (needs DEMO_REF)
+	./testbed/scenarios/deploy-advisory-first.sh
+
+ak2:  ## A-K2: deploy an unsigned image copy; expects a binding failure
+	./testbed/scenarios/deploy-unsigned.sh
+
+ak3:  ## A-K3: key revoked before deploy; expects rejection at admission (needs DEMO_REF)
+	./testbed/scenarios/deploy-revoked-key.sh
+
+au2-deploy:  ## A-U2: build+sign the au-2 variant, deploy it, run the build-time program
+	./testbed/scenarios/deploy-au2.sh
+
+comparison:  ## the full four-system comparison run: traces every scenario, runs the estimators + aggregator (needs DEMO_REF)
+	./scripts/comparison-run.sh
+
 .PHONY: scored
 
 scored:  ## Role 1's balanced scored run: ROUNDS x (benign, attack, trust, ph4-14, trust2, benign-traffic), tamper, compare (needs DEMO_REF)

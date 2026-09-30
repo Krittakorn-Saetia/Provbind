@@ -1,0 +1,17 @@
+# Strategic-merge patch that adds an emptyDir volume at /data to the demo-app deployment, for the B5
+# scenario (benign writes under a mounted volume). The orchestration applies it after creating the
+# deployment:
+#   kubectl -n demo patch deployment demo-app --patch-file testbed/demo-app/volume-patch.yaml
+# The container name "demo-app" matches `kubectl create deployment demo-app ...` (the strategic-merge
+# key for containers). emptyDir needs no cluster storage and is discarded with the pod.
+spec:
+  template:
+    spec:
+      volumes:
+        - name: data
+          emptyDir: {}
+      containers:
+        - name: demo-app
+          volumeMounts:
+            - name: data
+              mountPath: /data

