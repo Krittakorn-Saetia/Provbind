@@ -1,5 +1,5 @@
-"""Build the four-system comparison tables (plan §6): PROVBIND and Falco (measured) beside Confine-E and
-DeSFAM-E (estimated), from one run folder.
+"""Build the comparison tables (plan §6): PROVBIND and Falco (measured), Confine-E and DeSFAM-E
+(estimated), and a signature-only admission baseline (Sig-only, derived), from one run folder.
 
     python -m eval.baselines.aggregate --run "$PROVBIND_RUN" \
         --confine run/results/confine.json --desfam run/results/desfam.json [--write]
@@ -9,11 +9,21 @@ Inputs:
   eval.compare (the same "detected" rule as the scoring matrix);
 - the two estimators' JSON reports. Their results are keyed by trace file name, which must be
   `<scenario>-<k>.txt`: the k-th trace of a scenario is matched to the k-th ground-truth row of that
-  scenario (record_trace.sh output named that way by the orchestration script).
+  scenario (record_trace.sh output named that way by the orchestration script);
+- bindings.json, for the Sig-only baseline (below).
 
 Per row and system it records detected / not, and the stage (admission, runtime or trust); then the
 confusion matrix and metrics per system (eval.compare.confusion/metrics), the per-scenario counts and
 each system's attribution level. Estimated systems are labelled as such everywhere.
+
+Sig-only is the draft's fifth baseline: a plain admission signature/attestation check (the draft's
+"signature check at admission only"). A run counts as detected iff a binding for that row's pod was
+NOT verified for a signature or attestation reason (an unsigned or tampered artifact). A revoked key
+(reason "key: ...") or a missing transparency entry ("v_trans: ...") is a MISS, because a signature
+check alone does not see key state -- that is exactly what separates it from PROVBIND's trust loop.
+It never sees runtime behaviour or advisories. It is read from bindings.json by namespace + pod
+prefix, so run the aggregator while the admission pods still exist (a torn-down pod whose binding the
+controller has forgotten reads as no-detection).
 """
 from __future__ import annotations
 
@@ -25,8 +35,9 @@ import sys
 
 from eval.compare import compare, confusion, load_ground_truth, load_jsonl, metrics
 
-SYSTEMS = (("PROVBIND", "measured"), ("Falco", "measured"), ("Confine-E", "estimated"), ("DeSFAM-E", "estimated"))
-ATTRIBUTION = {"PROVBIND": 3, "Falco": 1, "Confine-E": 0, "DeSFAM-E": 1}
+SYSTEMS = (("PROVBIND", "measured"), ("Falco", "measured"), ("Confine-E", "estimated"),
+           ("DeSFAM-E", "estimated"), ("Sig-only", "derived"))
+ATTRIBUTION = {"PROVBIND": 3, "Falco": 1, "Confine-E": 0, "DeSFAM-E": 1, "Sig-only": 0}
 TRACE_NAME = re.compile(r"^(?P<scenario>.+)-(?P<k>\d+)\.txt$")
 
 
@@ -51,21 +62,52 @@ def _provbind_stage(row):
     return "runtime" if row.get("provbind_detected") else None
 
 
+def _load_bindings(run):
+    """bindings.json as a list of binding records, or [] when absent/unreadable."""
+    try:
+        b = json.load(open(os.path.join(run, "bindings.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return list(b.values()) if isinstance(b, dict) else (b if isinstance(b, list) else [])
+
+
+def _sig_only_detects(gt_row, bindings):
+    """A signature-only admission check detects this row iff a matching binding failed verification for
+    a signature/attestation reason. Key-revocation ("key: ...") and missing-transparency ("v_trans:
+    ...") failures are misses: a signature check does not see them."""
+    ns, prefix = gt_row.get("namespace", ""), gt_row.get("pod_prefix", "")
+    if not prefix:
+        return False
+    for b in bindings:
+        if b.get("namespace") != ns or not str(b.get("pod", "")).startswith(prefix):
+            continue
+        if b.get("verified"):
+            continue
+        reason = (b.get("reason") or "").strip().lower()
+        if reason.startswith("key:") or reason.startswith("v_trans:"):
+            continue        # revoked key / no transparency entry: a signature check passes here
+        return True         # unsigned or tampered artifact: the signature/attestation check fails
+    return False
+
+
 def rows_for(run, confine_json=None, desfam_json=None):
     gt = load_ground_truth(os.path.join(run, "ground_truth.csv"))
     base = compare(gt, load_jsonl(os.path.join(run, "alerts.jsonl")), load_jsonl(os.path.join(run, "falco.jsonl")))
     confine, desfam = _estimates(confine_json), _estimates(desfam_json)
+    bindings = _load_bindings(run)
     seen: dict[str, int] = {}
     rows = []
-    for r in base:
+    for gt_row, r in zip(gt, base):
         k = seen[r["scenario"]] = seen.get(r["scenario"], 0) + 1
         c, d = confine.get((r["scenario"], k)), desfam.get((r["scenario"], k))
+        sig = _sig_only_detects(gt_row, bindings)
         rows.append({
             "scenario": r["scenario"], "label": r["label"], "run": k,
             "PROVBIND": bool(r["provbind_detected"]), "PROVBIND_stage": _provbind_stage(r),
             "Falco": bool(r["falco_detected"]), "Falco_stage": "runtime" if r["falco_detected"] else None,
             "Confine-E": bool(c and c.get("blocked")), "Confine-E_stage": "runtime" if c and c.get("blocked") else None,
             "DeSFAM-E": bool(d and d.get("detected")), "DeSFAM-E_stage": "runtime" if d and d.get("detected") else None,
+            "Sig-only": sig, "Sig-only_stage": "admission" if sig else None,
             "estimated_input": {"Confine-E": c is not None, "DeSFAM-E": d is not None},
         })
     return rows
@@ -98,7 +140,9 @@ def render(t):
         f = lambda v: "—" if v is None else (f"{v:.2f}" if isinstance(v, float) else str(v))  # noqa: E731
         lines.append(f"| {n} | {m['kind']} | {m['TP']} | {m['FP']} | {m['FN']} | {m['TN']} | {f(m['precision'])} | "
                      f"{f(m['recall'])} | {f(m['f1'])} | {f(m['fpr'])} | {m['attribution_level']} |")
-    lines += ["", "Confine-E and DeSFAM-E are estimated from published designs applied to recorded traces, not measured."]
+    lines += ["", "Confine-E and DeSFAM-E are estimated from published designs applied to recorded traces, not "
+              "measured. Sig-only is a signature/attestation check at admission (derived from bindings.json): it "
+              "catches unsigned or tampered artifacts but not revoked keys, advisories or runtime behaviour."]
     return "\n".join(lines)
 
 
@@ -120,7 +164,7 @@ def main(argv=None) -> int:
     if args.write:
         d = os.path.join(args.run, "results")
         os.makedirs(d, exist_ok=True)
-        open(os.path.join(d, "COMPARISON.md"), "w", encoding="utf-8").write("# Four-system comparison\n\n" + text + "\n")
+        open(os.path.join(d, "COMPARISON.md"), "w", encoding="utf-8").write("# System comparison\n\n" + text + "\n")
         json.dump({"rows": rows, "tables": t}, open(os.path.join(d, "COMPARISON.json"), "w", encoding="utf-8"), indent=2)
     return 0
 

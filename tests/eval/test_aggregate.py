@@ -30,3 +30,29 @@ def test_rows_and_tables(tmp_path):
     assert t["systems"]["PROVBIND"]["TP"] == 1 and t["systems"]["Falco"]["FP"] == 1
     assert t["systems"]["Confine-E"]["kind"] == "estimated"
     assert "estimated" in aggregate.render(t)
+
+
+def test_sig_only_from_bindings(tmp_path):
+    """Sig-only catches an unsigned artifact (ak-2) but not a revoked key (ak-3)."""
+    run = tmp_path
+    (run / "ground_truth.csv").write_text(
+        "scenario,label,namespace,pod_prefix,start,end,expected\n"
+        "ak-2,malicious,demo,demo-app-unsigned,2026-09-30T10:00:00Z,2026-09-30T10:01:00Z,binding failure\n"
+        "ak-3,malicious,demo,demo-app-akrev,2026-09-30T10:02:00Z,2026-09-30T10:03:00Z,v_trust\n")
+    (run / "alerts.jsonl").write_text("")
+    (run / "falco.jsonl").write_text("")
+    # Both pods failed admission, but for different reasons.
+    (run / "bindings.json").write_text(json.dumps({
+        "c1": {"namespace": "demo", "pod": "demo-app-unsigned-abc", "verified": False,
+               "reason": "v_sig: no matching signatures found"},
+        "c2": {"namespace": "demo", "pod": "demo-app-akrev-xyz", "verified": False,
+               "reason": "key: cosign key is revoked"},
+    }))
+
+    rows = aggregate.rows_for(run)
+    by = {r["scenario"]: r for r in rows}
+    assert by["ak-2"]["Sig-only"] and by["ak-2"]["Sig-only_stage"] == "admission"
+    assert not by["ak-3"]["Sig-only"]        # revoked key: a signature check misses it
+    t = aggregate.tables(rows)
+    assert t["systems"]["Sig-only"]["kind"] == "derived"
+    assert t["systems"]["Sig-only"]["TP"] == 1 and t["systems"]["Sig-only"]["FN"] == 1
