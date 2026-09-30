@@ -196,6 +196,15 @@ def test_capability_number_without_a_name(s, app):
     assert one(doc)[0].cap == "CAP_NET_RAW"
 
 
+def test_capability_name_without_prefix_is_normalised(s, app):
+    """Tetragon 1.7 names value 1 "DAC_OVERRIDE" (seen on the demo VM); the envelope says CAP_DAC_OVERRIDE."""
+    doc = s.cap(app, "CAP_DAC_OVERRIDE")
+    doc["process_kprobe"]["args"][1]["capability_arg"]["name"] = "DAC_OVERRIDE"
+    assert one(doc)[0].cap == "CAP_DAC_OVERRIDE"
+    doc["process_kprobe"]["args"][1]["capability_arg"] = {"name": "DAC_OVERRIDE"}      # no number
+    assert one(doc)[0].cap == "CAP_DAC_OVERRIDE"
+
+
 def test_capability_table_matches_the_kernel_numbers():
     assert (CAPABILITIES.index("CAP_CHOWN"), CAPABILITIES.index("CAP_NET_BIND_SERVICE"),
             CAPABILITIES.index("CAP_SYS_ADMIN"), CAPABILITIES.index("CAP_CHECKPOINT_RESTORE")) == (0, 10, 21, 40)
@@ -365,3 +374,75 @@ def test_session_does_not_mutate_emitted_events(s, app):
     before = copy.deepcopy(doc)
     Normalizer()(doc)
     assert doc == before
+
+
+# the container runtime's init step (runc re-executing from a memfd for `kubectl exec`) ----------
+
+def test_runc_init_from_memfd_is_dropped(s):
+    runc = s.proc("/usr/local/sbin/runc", pid=900, arguments="--root /run/containerd/runc/k8s.io exec")
+    init = s.proc("/proc/self/fd/7", pid=901, parent=runc, arguments="init")
+    ev, stats = one(s.exec(init))
+    assert ev is None and stats == {"drop:runtime_init": 1}
+
+
+def test_memfd_exec_from_a_container_process_is_kept(s, app):
+    """Fileless malware runs a memfd too: with a container parent it must still reach the verifier."""
+    ev, _ = one(s.exec(s.proc("/proc/self/fd/7", pid=4471, parent=app, arguments="init")))
+    assert ev is not None and ev.exe == "/proc/self/fd/7"
+
+
+@pytest.mark.parametrize("binary,args,parent", [
+    ("/proc/self/fd/7", "", "/usr/local/sbin/runc"),             # not the init step
+    ("/proc/self/fd/7", "init --evil", "/usr/local/sbin/runc"),
+    ("/tmp/.x9", "init", "/usr/local/sbin/runc"),                # not a memfd path
+    ("/proc/self/fd/x", "init", "/usr/local/sbin/runc"),
+    ("/proc/self/fd/7", "init", "/usr/local/sbin/runc-helper"),  # parent is not the runtime
+])
+def test_runtime_init_needs_the_exact_shape(s, binary, args, parent):
+    p = s.proc(parent, pid=900)
+    ev, _ = one(s.exec(s.proc(binary, pid=901, parent=p, arguments=args)))
+    assert ev is not None
+
+
+# the process's own capability sets (Tetragon enableProcessCred: process.cap) ------------------------
+
+DEFAULT_EFFECTIVE = ["CAP_CHOWN", "DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL", "CAP_SETGID",
+                     "CAP_SETUID", "CAP_SETPCAP", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW", "CAP_SYS_CHROOT",
+                     "CAP_MKNOD", "CAP_AUDIT_WRITE", "CAP_SETFCAP"]       # CapEff 0xa80425fb, as Tetragon names it
+
+
+def _with_capset(doc, effective):
+    doc["process_kprobe"]["process"]["cap"] = {"permitted": effective, "effective": effective}
+    return doc
+
+
+def test_granted_check_for_a_capability_not_held_is_not_a_use(s, app):
+    """Seen on the demo VM: ret 0 for CAP_SYS_ADMIN in a process whose CapEff lacks it."""
+    n = Normalizer()
+    ev = n(_with_capset(s.cap(app, "CAP_SYS_ADMIN", granted=True), DEFAULT_EFFECTIVE))
+    assert ev.cap == "CAP_SYS_ADMIN" and ev.granted is False and n.stats["cap:not_held"] == 1
+
+
+def test_granted_check_for_a_held_capability_is_a_use(s, app):
+    ev = one(_with_capset(s.cap(app, "CAP_DAC_OVERRIDE", granted=True), DEFAULT_EFFECTIVE))[0]
+    assert ev.granted is True                    # "DAC_OVERRIDE" in process.cap is CAP_DAC_OVERRIDE
+
+
+def test_without_process_cap_the_return_value_decides(s, app):
+    assert one(s.cap(app, "CAP_SYS_ADMIN", granted=True))[0].granted is True
+    assert one(_with_capset(s.cap(app, "CAP_SYS_ADMIN", granted=False), DEFAULT_EFFECTIVE))[0].granted is False
+
+
+def test_non_root_process_without_a_capability_list_holds_nothing(s, app):
+    """Tetragon omits empty lists: a non-root workload's events have no cap.effective, or no cap."""
+    n = Normalizer()
+    assert n(_with_capset(s.cap(app, "CAP_DAC_OVERRIDE", granted=True), DEFAULT_EFFECTIVE)).granted is True
+    empty = s.cap(app, "CAP_SYS_ADMIN", granted=True)
+    empty["process_kprobe"]["process"]["cap"] = {}
+    assert n(empty).granted is False
+    absent = s.cap(app, "CAP_SYS_ADMIN", granted=True)                  # after a cap was seen: empty
+    assert n(absent).granted is False
+
+
+def test_missing_capability_list_is_unknown_until_one_is_seen(s, app):
+    assert Normalizer()(s.cap(app, "CAP_SYS_ADMIN", granted=True)).granted is True

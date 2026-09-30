@@ -52,6 +52,14 @@ CAPABILITIES = (
 
 # The kernel functions the policies hook, and the kind each becomes. test_policies.py checks
 # that every `call` in node/tetragon/*.yaml is listed here.
+# The container runtime's own setup step. runc (1.2+) and crun re-execute themselves from a sealed
+# memfd, so `kubectl exec` shows up in the pod as an exec of /proc/self/fd/N with the argument
+# "init", started by the host's runc. Seen on the demo VM (containerd, kind): it scored as a
+# CRITICAL D_exec/undeclared inside benign-1. Only that exact shape is dropped; a process in the
+# container that runs a memfd (fileless malware) has a container parent and is still verified.
+RUNTIME_INIT_EXE = re.compile(r"^/proc/self/fd/[0-9]+$")
+RUNTIME_PARENTS = frozenset({"runc", "crun"})
+
 KPROBE_KINDS = {
     "security_file_permission": "write",
     "security_path_truncate": "write",
@@ -207,6 +215,7 @@ class Normalizer:
     def __init__(self, namespaces: Iterable[str] | None = ("demo",)):
         self.namespaces = None if namespaces is None else frozenset(namespaces)
         self.stats: Counter = Counter()
+        self._capsets_seen = False          # a process.cap was seen: a missing one means "holds nothing"
 
     def __call__(self, line) -> Event | None:
         if isinstance(line, (str, bytes)):
@@ -263,6 +272,8 @@ class Normalizer:
             if t is None:
                 return self._drop("no_time")
         parent = parent if isinstance(parent, dict) else {}
+        if _is_runtime_init(proc, parent):
+            return self._drop("runtime_init")
         return Event(time=time, t=t, kind=kind, container_id=cid, namespace=pod["namespace"],
                      pod=_str(pod.get("name")), container=_str(container.get("name")),
                      pid=_int(proc.get("pid")), ppid=_int(parent.get("pid")),
@@ -306,14 +317,29 @@ class Normalizer:
             if not isinstance(c, dict):
                 return self._drop("no_capability")
             name, value = _opt_str(c.get("name")), _int(c.get("value"))
-            if name is None and value is not None and 0 <= value < len(CAPABILITIES):
+            # The number is canonical: Tetragon 1.7 names value 1 "DAC_OVERRIDE", without the CAP_
+            # prefix every other name (and the envelope) has.
+            if value is not None and 0 <= value < len(CAPABILITIES):
                 name = CAPABILITIES[value]
+            elif name is not None and not name.startswith("CAP_"):
+                name = "CAP_" + name
             if name is None:
                 return self._drop("no_capability")
             ev = self._base(obj, body, kind)
             if ev is None:
                 return None
-            ev.cap, ev.granted = name, (None if ret is None else ret == 0)
+            granted = None if ret is None else ret == 0
+            proc = body.get("process")
+            if isinstance(proc, dict) and isinstance(proc.get("cap"), dict):
+                self._capsets_seen = True                   # enableProcessCred is on in this stream
+            own = own_capabilities(proc, assume_empty=self._capsets_seen)
+            if granted and own is not None and name not in own:
+                # A 0 for a capability the process does not hold (enableProcessCred's process.cap):
+                # the check was made with other credentials (on the demo VM, overlayfs acting with
+                # the mounter's), so it is not this process using the capability.
+                granted = False
+                self.stats["cap:not_held"] += 1
+            ev.cap, ev.granted = name, granted
             return self._keep(ev)
         sock = _find(args, "sock_arg")                          # connect
         if not isinstance(sock, dict) or not _opt_str(sock.get("daddr")):
@@ -325,6 +351,41 @@ class Normalizer:
         proto = _opt_str(sock.get("protocol")) or "IPPROTO_TCP"
         ev.protocol = proto.lower().removeprefix("ipproto_")
         return self._keep(ev)
+
+
+def own_capabilities(proc, assume_empty: bool = False) -> frozenset[str] | None:
+    """The process's own effective capabilities (process.cap.effective, sent with Tetragon's
+    enableProcessCred) as CAP_* names, or None when the event does not carry them.
+
+    Tetragon's JSON leaves out empty lists, so a process holding nothing (a workload that switched
+    to a non-root user: postgres, mysql, grafana... on the demo VM) has no `effective`, or no `cap`
+    at all. A `cap` without `effective` is therefore the empty set; a missing `cap` is the empty set
+    when `assume_empty` (the caller has seen capability sets in the same stream), else unknown."""
+    capset = proc.get("cap") if isinstance(proc, dict) else None
+    if not isinstance(capset, dict):
+        return frozenset() if assume_empty and isinstance(proc, dict) else None
+    eff = capset.get("effective")
+    if not isinstance(eff, list):
+        return frozenset()
+    out = set()
+    for name in eff:
+        if isinstance(name, str) and name:
+            name = name.strip().upper()
+            out.add(name if name.startswith("CAP_") else "CAP_" + name)   # Tetragon: "DAC_OVERRIDE"
+    return frozenset(out)
+
+
+def is_runtime_init(proc: dict, parent: dict) -> bool:
+    """Public name for the runtime-init test, shared with the profiling labels (testbed/profiling)."""
+    return _is_runtime_init(proc if isinstance(proc, dict) else {}, parent if isinstance(parent, dict) else {})
+
+
+def _is_runtime_init(proc: dict, parent: dict) -> bool:
+    """runc's or crun's init step (see RUNTIME_INIT_EXE): memfd path, argument "init", runtime parent."""
+    binary, parent_bin = _opt_str(proc.get("binary")), _opt_str(parent.get("binary"))
+    return (binary is not None and RUNTIME_INIT_EXE.match(binary) is not None
+            and (_opt_str(proc.get("arguments")) or "").strip() == "init"
+            and parent_bin is not None and posixpath.basename(parent_bin) in RUNTIME_PARENTS)
 
 
 def _exe(proc: dict) -> str | None:

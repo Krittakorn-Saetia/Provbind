@@ -20,26 +20,30 @@ def test_ev_01(record_result):
         return
 
     rows = compare.compare(data["gt"], data["alerts"], data["falco"])
-    table = compare.render_table(rows)
+    matrix = compare.scoring_matrix(rows) if rows else None
 
     run = os.environ.get("PROVBIND_RUN", "./run")
     art_dir = os.path.join(run, "results", "EV-01")
     os.makedirs(art_dir, exist_ok=True)
     art = os.path.join(art_dir, "table.md")
     with open(art, "w", encoding="utf-8") as f:
-        f.write(table + "\n")
+        f.write(compare.render_table(rows) + "\n\n" + (compare.render_matrix(matrix) if matrix else "") + "\n")
 
-    malicious = [r for r in rows if r["label"] == "malicious"]
-    benign = [r for r in rows if r["label"] == "benign"]
-    metrics = {
-        "scenarios": len(rows),
-        "provbind_detected_malicious": sum(r["provbind_detected"] for r in malicious),
-        "falco_detected_malicious": sum(r["falco_detected"] for r in malicious),
-        "provbind_alerts_on_benign": sum(r["provbind_detected"] for r in benign),
-        "falco_alerts_on_benign": sum(r["falco_detected"] for r in benign),
-    }
+    metrics = {"scenarios": len(rows)}
+    if matrix:
+        # REPORT.md shows the first four metrics, so the headline numbers come first.
+        pb, fa = (matrix["scopes"]["all"]["systems"][s] for s in ("PROVBIND", "Falco"))
+        rt_pb, rt_fa = (matrix["scopes"]["runtime"]["systems"][s] for s in ("PROVBIND", "Falco"))
+        metrics = {"provbind_f1": pb["f1"], "falco_f1": fa["f1"], "provbind_fpr": pb["fpr"], "falco_fpr": fa["fpr"],
+                   "scenarios": len(rows),
+                   **{f"provbind_{k}": pb[k] for k in ("TP", "FP", "FN", "TN", "precision", "recall", "accuracy")},
+                   **{f"falco_{k}": fa[k] for k in ("TP", "FP", "FN", "TN", "precision", "recall", "accuracy")},
+                   "runtime_provbind_f1": rt_pb["f1"], "runtime_falco_f1": rt_fa["f1"],
+                   "provbind_no_dcap_f1": matrix["scopes"]["all"]["systems"]["PROVBIND w/o D_cap"]["f1"],
+                   "provbind_no_dcap_fpr": matrix["scopes"]["all"]["systems"]["PROVBIND w/o D_cap"]["fpr"],
+                   "too_few_runs": matrix["too_few_runs"]}
     # The pass criterion is that the per-system table is produced across the scenarios.
     record_result("EV-01", "pass" if rows else "fail", metrics=metrics, artifacts=[art],
-                  notes="PROVBIND vs Falco per scenario; see table.md" if rows
+                  notes="PROVBIND vs Falco per scenario, with the scoring matrix; see table.md" if rows
                         else "no ground-truth rows matched")
     assert rows

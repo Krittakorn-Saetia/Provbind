@@ -69,7 +69,9 @@ def test_hooks_that_can_be_refused_report_their_return_value(name, call):
     kp = kprobes(name)[call]
     assert kp["return"] is True
     assert kp["returnArg"] == {"index": 0, "type": "int"}
-    assert kp["returnArgAction"] == "Post"
+    # Tetragon 1.7 rejects returnArgAction "Post" (only TrackSock/UntrackSock), failing the whole policy;
+    # without it the return event is still posted, with the value in return.int_arg.
+    assert "returnArgAction" not in kp
 
 
 def test_load_hook_keeps_executable_mappings_only():

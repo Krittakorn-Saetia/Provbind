@@ -29,4 +29,3 @@ spec:
     returnArg:
       index: 0
       type: "int"
-    returnArgAction: "Post"

@@ -215,3 +215,14 @@ def test_a_moved_tag_keeps_the_running_digest(tmp_path):                   # PH2
     ctl.handle_pod("ADDED", p)
     b = bindings(tmp_path)["containerd://c1"]
     assert b["image_digest"] == DIGEST and b["ref"] == REF and b["verified"] is True
+
+
+def test_a_running_container_is_not_re_admitted_on_a_re_list(tmp_path):
+    """Demo VM, 30 September: a watch re-list during trust-2's revocation flipped the running pod to
+    unverified and blinded detection for 5 minutes. A revocation for a running pod is the trust loop's."""
+    ctl, _ = controller(tmp_path)
+    assert ctl.bind("containerd://c1", "demo", "p", "app", REF)["verified"] is True
+    set_key(tmp_path / "run", KEY, "revoked", None)
+    again = ctl.bind("containerd://c1", "demo", "p", "app", REF)              # the same container, re-listed
+    assert again["verified"] is True and bindings(tmp_path)["containerd://c1"]["verified"] is True
+    assert ctl.bind("containerd://c2", "demo", "p2", "app", REF)["verified"] is False   # a new admission still fails

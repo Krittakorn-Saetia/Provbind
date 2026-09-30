@@ -29,6 +29,9 @@ up:  ## start kind + registry, Tetragon, Falco, Neo4j, and the demo namespace (S
 	helm repo update >/dev/null
 	helm upgrade --install tetragon cilium/tetragon -n kube-system $(TETRAGON_VALUES)
 	kubectl rollout status -n kube-system ds/tetragon
+	kubectl rollout status -n kube-system deploy/tetragon-operator --timeout=300s
+	until kubectl get crd tracingpoliciesnamespaced.cilium.io >/dev/null 2>&1; do sleep 2; done
+	kubectl wait --for condition=established --timeout=120s crd/tracingpoliciesnamespaced.cilium.io
 	helm upgrade --install falco falcosecurity/falco -n falco --create-namespace \
 	  --set driver.kind=modern_ebpf --set falco.json_output=true
 	docker rm -f neo4j >/dev/null 2>&1 || true
@@ -63,6 +66,11 @@ tamper:  ## run the tamper-1 scenario (edit one character in the violation log)
 trust2:  ## run the trust-2 scenario (our key revoked in keystatus.json); RESTORE=1 undoes it
 	./testbed/scenarios/trust2.sh
 
+.PHONY: benign-traffic
+
+benign-traffic:  ## ordinary app requests and cache writes, no kubectl exec (balances trust-2 in make scored)
+	./testbed/scenarios/benign_traffic.sh
+
 ph4-14:  ## write the new file /tmp/new.txt in the demo pod inside a ph4-14 row (Role 3's PH4-14)
 	./testbed/scenarios/ph4_14.sh
 
@@ -82,8 +90,8 @@ profile:  ## profile the ML-A corpus for capability labels (MLA-03); writes ml/d
 assemble-labels:  ## rebuild ml/data/labels.jsonl from captured events under ml/data/raw
 	python3 -m testbed.profiling.run --raw ml/data/raw --out ml/data/labels.jsonl
 
-compare:  ## print the PROVBIND vs Falco vs ground-truth table (EV-01)
-	python3 -m eval.compare --run $(PROVBIND_RUN)
+compare:  ## the PROVBIND vs Falco table and scoring matrix (EV-01); writes results/SCORING.md
+	python3 -m eval.compare --run $(PROVBIND_RUN) --write
 
 report:  ## write $(PROVBIND_RUN)/results/REPORT.md from the recorded results
 	python3 -m eval.report --run $(PROVBIND_RUN)
@@ -120,6 +128,11 @@ verify-log:  ## recompute the violation log's hash chain; exit 1 at the first br
 
 check-contracts:  ## check the run folder against the Sprint Handoff §4 contracts
 	python3 contracts/check_contracts.py --run $(PROVBIND_RUN)
+
+.PHONY: scored
+
+scored:  ## Role 1's balanced scored run: ROUNDS x (benign, attack, trust, ph4-14, trust2, benign-traffic), tamper, compare (needs DEMO_REF)
+	./scripts/scored-run.sh
 
 demo:  ## the Sprint Handoff §1.1 demo, after make up and make demo-app (needs DEMO_REF=<ref@digest>)
 	./scripts/demo.sh
