@@ -1,10 +1,26 @@
-# PROVBIND first scored run: Role 1 results, 30 September 2026
+# PROVBIND scored runs: Role 1 results, 30 September 2026
 
 **From:** Role 1 (testbed and evaluation) · **For:** the team and the supervisor
-**Run:** `make scored` with `ROUNDS=5`, on the demo VM (see Setup). The raw run folders are kept off git
-(CLAUDE.md); they are in the results bundle `provbind-results-20260930-1003.tar.gz`.
+Two scored runs on the demo VM (see Setup): **Test 1** without ML-A (Sections 1-6) and **Test 2** with ML-A
+trained on the profiled corpus (Section 7). The raw run folders are kept off git (CLAUDE.md); they are in the
+results bundles `provbind-results-20260930-1003.tar.gz` (Test 1) and `provbind-results-mla-*.tar.gz` (Test 2).
 
-## 1. Headline
+## 0. Summary of both tests
+
+| | Test 1 (no ML-A) | Test 2 (ML-A) |
+|---|---|---|
+| Runs | 20: 10 malicious / 10 benign, 4 scenarios × 5 | 60: 30 malicious / 30 benign, 6 scenarios × 10 |
+| Scenarios | benign-1, attack-1, trust-1, ph4-14 | the same, plus trust-2 (key revoked) and benign-traffic |
+| Envelope capabilities | none (no model) | ML-A: `CAP_DAC_OVERRIDE` (p = 0.9998) |
+| **PROVBIND** P / R / **F1** / FPR | 0.83 / 1.00 / **0.91** / 0.20 | 1.00 / 1.00 / **1.00** / 0.00 |
+| **Falco** P / R / **F1** / FPR | 0.50 / 0.50 / **0.50** / 0.50 | 0.50 / 0.33 / **0.40** / 0.33 |
+| PROVBIND false positives | 2, both D_cap | 0 (the D_cap ablation row is identical) |
+| tamper-1 | `verify_log` failed at the edited record | the same (record k = 44 of 86) |
+
+Both tests are small, controlled and designed by us: the scores show that each mechanism works end to end on
+real infrastructure, not how PROVBIND fares on unseen attacks (Section 4).
+
+## 1. Test 1 headline
 
 20 scored runs, balanced: 10 malicious (attack-1 ×5, trust-1 ×5) and 10 benign (benign-1 ×5, ph4-14 ×5).
 "Detected" means a PROVBIND alert above Low, or any Falco rule (Sprint Handoff §5).
@@ -108,3 +124,60 @@ sudo systemctl stop vboxadd-service systemd-timesyncd      # VM only: stop clock
 kubectl rollout restart ds/falco -n falco                  # and restart Falco after any VM pause
 DEMO_REF=<ref@digest> ROUNDS=5 make scored  # in a fresh run folder; writes results/SCORING.md
 ```
+
+## 7. Test 2: ML-A and 60 runs
+
+### 7.1 ML-A (dataset D1)
+
+- **Profiling** (`make profile`, about 7 h on the VM): 22 of the 24 corpus images, each run twice in a default
+  pod. `standin-app` was never built on the VM; `memcached` (a non-root workload) recorded no capability check.
+- **Labels, after two fixes** (`3296fed`, `ac2da3f`): a check counts only if the capability is in the process's
+  own effective set (Tetragon `enableProcessCred`, `process.cap`); a missing set, once a capture carries sets,
+  means the process holds none (Tetragon omits empty lists); runc's init step and processes holding more than a
+  default pod can are the runtime, not the workload. Before the fixes, 9 of 22 images were labelled
+  `CAP_SYS_ADMIN` (all nine run as a non-root user) and 5 `CAP_DAC_READ_SEARCH`; after, 0 and 0.
+- **Label counts:** `CAP_DAC_OVERRIDE` 8, `CAP_SETGID` 7, `CAP_SETUID` 7, `CAP_FOWNER` 3; too rare to train (< 3
+  images): `CAP_CHOWN` 2, `CAP_FSETID` 2, `CAP_SETPCAP` 1. Two-run disagreement: 3 of 22 images.
+- **Training** (`ml.train`, 46 static features, 5 folds × 3 repeats, split by image; the saved model uses all 22):
+
+| Method | Micro-F1 | Under-prediction | Over-prediction |
+|---|---|---|---|
+| **ML-A (LightGBM)** | **0.516 ± 0.090** | 0.522 | 0.436 |
+| Pod's full default set | 0.178 | 0.000 | 0.903 |
+| Curated allowlist + port rule | 0.000 | 1.000 | 1.000 |
+| Empty set (Test 1's envelope) | 0.000 | 1.000 | 0.000 |
+
+  The demo app's envelope gets `CAP_DAC_OVERRIDE` (p = 0.9998), the capability it was seen using. The demo app
+  is one of the 22 training images, so that one prediction is not a held-out test; the cross-validated figure is.
+
+### 7.2 The scored run (`ROUNDS=10 make scored`)
+
+| Scenario | Truth | Runs | PROVBIND | w/o D_cap | Falco |
+|---|---|---|---|---|---|
+| benign-1 | benign | 10 | 0/10 | 0/10 | 10/10 ("Terminal shell in container") |
+| attack-1 | malicious | 10 | 10/10 | 10/10 | 10/10 ("Drop and execute new binary") |
+| trust-1 | malicious | 10 | 10/10 | 10/10 | 0/10 |
+| ph4-14 | benign | 10 | 0/10 | 0/10 | 0/10 |
+| trust-2 | malicious | 10 | 10/10 | 10/10 | 0/10 |
+| benign-traffic | benign | 10 | 0/10 | 0/10 | 0/10 |
+
+All scenarios: PROVBIND TP 30, FP 0, FN 0, TN 30 (F1 1.00, FPR 0.00); Falco TP 10, FP 10, FN 20, TN 20
+(F1 0.40, FPR 0.33). Runtime scenarios only: PROVBIND F1 1.00; Falco F1 0.67 (recall 1.00, FPR 0.33).
+benign-1 still raises PROVBIND's Low `D_exec/outside_closure` (the shell), below the detection threshold.
+
+### 7.3 A controller bug found by the first 60-run attempt
+
+The first attempt (kept as `run-scored3-controller-bug`) scored PROVBIND F1 0.89: 5 misses and 1 false positive,
+all inside one 5-minute window (12:25:45-12:30:39). The controller re-verified every pod on each watch re-list
+(every 300 s); one re-list fell inside trust-2's 30 s key revocation, rewrote the running demo pod's binding as
+unverified, and the node and trust loop then skipped it until the next re-list. Fixed in `8c1f7bd` (a running
+container is not re-admitted; key changes for running pods are the trust loop's), then the run above was repeated.
+
+### 7.4 Limitations of Test 2
+
+1. Perfect scores on six scenarios we designed: evidence that the mechanisms work, not a detection rate on unseen
+   attacks. Of the five behaviour categories documented for the Datadog dataset (D6), one (run-time
+   drop-and-execute) is tested; exfiltration and install-time execution, the two most common, are not
+   (`testbed/behaviours.md`). No D6 sample or name was used as data.
+2. ML-A: 22 images, 4 learnable capabilities; it under-predicts about half of the capabilities an image uses.
+3. ML-B and attack-2 (dataset D2) not tested.
