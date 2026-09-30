@@ -5,12 +5,12 @@
 # envelope is stable between runs. gen_provenance.py records the FIRST FROM as the base image, which
 # is only right because both lines name the same digest: change them together.
 
-# --- builder: compile x9.c and embed it as base64 into requestz_helper/_payload.py ---
+# --- builder: compile x9.c and inj.c and embed them as base64 into requestz_helper/_payload.py ---
 FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY x9.c gen_payload.sh ./
+COPY x9.c inj.c gen_payload.sh ./
 COPY requestz-helper ./requestz-helper
 RUN bash gen_payload.sh
 
@@ -22,6 +22,6 @@ WORKDIR /app
 # Install the test package from local source only (never from PyPI); it carries the embedded payload.
 COPY --from=builder /build/requestz-helper ./requestz-helper
 RUN pip install --no-cache-dir --no-index --no-build-isolation ./requestz-helper
-COPY app.py .
+COPY app.py tier2.py ./
 EXPOSE 8080
 CMD ["python", "app.py"]
