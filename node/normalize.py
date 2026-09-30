@@ -60,6 +60,16 @@ CAPABILITIES = (
 RUNTIME_INIT_EXE = re.compile(r"^/proc/self/fd/[0-9]+$")
 RUNTIME_PARENTS = frozenset({"runc", "crun"})
 
+# kind's OCI hook. runc runs /kind/bin/mount-product-files.sh in every new container; it and its
+# children (mount, jq, cp) hold every capability and are not in the image. Seen on the demo VM: 182
+# detections (D_cap CAP_SYS_ADMIN, D_exec) at one demo-app start. The hook is recognised by all
+# three of: a script in /kind/bin, a runtime parent, and a working directory in containerd's task
+# folder on the host, which no process inside the container has. Its descendants are dropped by
+# exec_id (RUNTIME_HOOK_MEMORY bounds how many are remembered).
+RUNTIME_HOOK_EXE = re.compile(r"^/kind/bin/[^/]+$")
+RUNTIME_HOOK_CWD = "/run/containerd/io.containerd.runtime.v2.task/"
+RUNTIME_HOOK_MEMORY = 4096
+
 KPROBE_KINDS = {
     "security_file_permission": "write",
     "security_path_truncate": "write",
@@ -216,6 +226,7 @@ class Normalizer:
         self.namespaces = None if namespaces is None else frozenset(namespaces)
         self.stats: Counter = Counter()
         self._capsets_seen = False          # a process.cap was seen: a missing one means "holds nothing"
+        self._hook_ids: dict[str, None] = {}   # exec_ids of the runtime hook and its descendants, oldest first
 
     def __call__(self, line) -> Event | None:
         if isinstance(line, (str, bytes)):
@@ -274,10 +285,27 @@ class Normalizer:
         parent = parent if isinstance(parent, dict) else {}
         if _is_runtime_init(proc, parent):
             return self._drop("runtime_init")
+        if self._in_runtime_hook(proc, parent, kind):
+            return self._drop("runtime_hook")
         return Event(time=time, t=t, kind=kind, container_id=cid, namespace=pod["namespace"],
                      pod=_str(pod.get("name")), container=_str(container.get("name")),
                      pid=_int(proc.get("pid")), ppid=_int(parent.get("pid")),
                      exe=_exe(proc), parent_exe=_exe(parent))
+
+    def _in_runtime_hook(self, proc: dict, parent: dict, kind: str) -> bool:
+        """The runtime hook (see RUNTIME_HOOK_EXE), or a process it started, directly or not."""
+        exec_id, parent_id = _opt_str(proc.get("exec_id")), _opt_str(parent.get("exec_id"))
+        if exec_id is None:
+            return False
+        if exec_id not in self._hook_ids:
+            if not (parent_id in self._hook_ids or _is_runtime_hook(proc, parent)):
+                return False
+            self._hook_ids[exec_id] = None
+            if len(self._hook_ids) > RUNTIME_HOOK_MEMORY:
+                del self._hook_ids[next(iter(self._hook_ids))]
+        if kind == "exit":
+            del self._hook_ids[exec_id]
+        return True
 
     def _exec(self, obj: dict, body: dict) -> Event | None:
         ev = self._base(obj, body, "exec")
@@ -386,6 +414,14 @@ def _is_runtime_init(proc: dict, parent: dict) -> bool:
     return (binary is not None and RUNTIME_INIT_EXE.match(binary) is not None
             and (_opt_str(proc.get("arguments")) or "").strip() == "init"
             and parent_bin is not None and posixpath.basename(parent_bin) in RUNTIME_PARENTS)
+
+
+def _is_runtime_hook(proc: dict, parent: dict) -> bool:
+    """kind's OCI hook (see RUNTIME_HOOK_EXE): a /kind/bin script, a runtime parent, a host task cwd."""
+    binary, parent_bin = _opt_str(proc.get("binary")), _opt_str(parent.get("binary"))
+    return (binary is not None and RUNTIME_HOOK_EXE.match(binary) is not None
+            and parent_bin is not None and posixpath.basename(parent_bin) in RUNTIME_PARENTS
+            and _str(proc.get("cwd")).startswith(RUNTIME_HOOK_CWD))
 
 
 def _exe(proc: dict) -> str | None:

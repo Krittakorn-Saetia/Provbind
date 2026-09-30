@@ -115,6 +115,11 @@ With synthetic D2 written to a D2 folder as well, MLB-01 to 05 passed, the model
 - **Q9. D2 length (Role 1's load generator).** A window starts at a process's first event, so 3 hours of the synthetic load gave about 290 windows, fewer than 100 for validation, and θ_A fell back to the 95th percentile. The plan expected 360. 4 hours gave the 99th percentile. Record at least 4 hours; `ml/data/mlb/README.md` has the steps.
 - **Q10. Per-image or global (C5).** MLB-06 compares them once D2 exists for 3 images. Until then the demo uses the per-image model, as the draft says.
 
+## Demo-VM findings (30 September)
+
+- **kind's OCI hook scored as the app.** At every pod start runc runs `/kind/bin/mount-product-files.sh` inside the new container; it and its children (`mount`, `jq`, `cp`) use `CAP_SYS_ADMIN`. One demo-app start gave 182 detections (176 D_cap, 6 D_exec), none from the app. The normaliser now drops the hook and its descendants (`drop:runtime_hook`), matched by a `/kind/bin` script, a runtime parent and a host task cwd. The profiling labels (`testbed/profiling`, Role 1) may need the same rule: they use `is_runtime_init` only.
+- **Namespaced policies loaded but never fired** (NPOST 0) on a VirtualBox VM with kernel 6.14, cgroup v2 and the systemd driver: Tetragon's policy filter logged `failed to find cgroup id`. `cgidmap` (CRI) made it worse: no pod on any event. Workaround used: the same policies as cluster-wide `TracingPolicy`; the export allow list and the normaliser still keep only `demo`. Role 1's VM (kernel 7.0) did not need it.
+
 ## Blockers
 
 - **No Tetragon or cluster in the cloud.** Every live test (marked `integration`) and every scenario result needs the demo PC. That was expected.
