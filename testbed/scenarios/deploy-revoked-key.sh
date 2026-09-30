@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A-K3 (comparison test plan section 3.1): our signing key is marked revoked, THEN the signed image is
+# A-K3 (docs/COMPARISON-RUN.md §3): our signing key is marked revoked, THEN the signed image is
 # deployed. Expected: rejected at admission (v_trust sees the revoked key), so the binding is not
 # verified even though the signature itself is valid. Uses Role 4's `alerts.trust set-key`. Harmless.
 # Runs on the demo PC with the controller and trust loop running; needs DEMO_REF (the signed image).
@@ -21,6 +21,7 @@ python3 -m alerts.trust set-key --run "$PROVBIND_RUN" --state revoked
 deploy_temp "$NAME" "$DEMO_REF"
 wait_binding "$NAME" || true
 sleep 15
+snapshot_binding "$NAME"
 END="$(now)"
 
 POD_PREFIX="$NAME" record_gt ak-3 malicious "$START" "$END" "rejected at admission (v_trust: key revoked)"

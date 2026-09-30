@@ -1,4 +1,4 @@
-"""Build the comparison tables (plan §6): PROVBIND and Falco (measured), Confine-E and DeSFAM-E
+"""Build the comparison tables (docs/COMPARISON-RUN.md): PROVBIND and Falco (measured), Confine-E and DeSFAM-E
 (estimated), and a signature-only admission baseline (Sig-only, derived), from one run folder.
 
     python -m eval.baselines.aggregate --run "$PROVBIND_RUN" \
@@ -10,7 +10,7 @@ Inputs:
 - the two estimators' JSON reports. Their results are keyed by trace file name, which must be
   `<scenario>-<k>.txt`: the k-th trace of a scenario is matched to the k-th ground-truth row of that
   scenario (record_trace.sh output named that way by the orchestration script);
-- bindings.json, for the Sig-only baseline (below).
+- bindings.json and results/admission-bindings.jsonl, for the Sig-only baseline (below).
 
 Per row and system it records detected / not, and the stage (admission, runtime or trust); then the
 confusion matrix and metrics per system (eval.compare.confusion/metrics), the per-scenario counts and
@@ -21,9 +21,11 @@ Sig-only is the draft's fifth baseline: a plain admission signature/attestation 
 NOT verified for a signature or attestation reason (an unsigned or tampered artifact). A revoked key
 (reason "key: ...") or a missing transparency entry ("v_trans: ...") is a MISS, because a signature
 check alone does not see key state -- that is exactly what separates it from PROVBIND's trust loop.
-It never sees runtime behaviour or advisories. It is read from bindings.json by namespace + pod
-prefix, so run the aggregator while the admission pods still exist (a torn-down pod whose binding the
-controller has forgotten reads as no-detection).
+It never sees runtime behaviour or advisories. The controller forgets a deleted pod's binding, so
+the admission scripts save each short-lived pod's binding, stamped `snapshot_at`, to
+results/admission-bindings.jsonl before tearing it down (deploy_lib.sh snapshot_binding). A saved
+binding counts only for the ground-truth row whose window contains its `snapshot_at`; a live
+bindings.json record (no stamp) counts for any row with a matching namespace and pod prefix.
 """
 from __future__ import annotations
 
@@ -33,7 +35,7 @@ import os
 import re
 import sys
 
-from eval.compare import compare, confusion, load_ground_truth, load_jsonl, metrics
+from eval.compare import compare, confusion, load_ground_truth, load_jsonl, metrics, parse_time
 
 SYSTEMS = (("PROVBIND", "measured"), ("Falco", "measured"), ("Confine-E", "estimated"),
            ("DeSFAM-E", "estimated"), ("Sig-only", "derived"))
@@ -63,12 +65,16 @@ def _provbind_stage(row):
 
 
 def _load_bindings(run):
-    """bindings.json as a list of binding records, or [] when absent/unreadable."""
+    """Binding records: the live bindings.json plus the saved copies in results/admission-bindings.jsonl
+    (each stamped `snapshot_at`). Missing or unreadable files give no records."""
+    out = []
     try:
         b = json.load(open(os.path.join(run, "bindings.json"), encoding="utf-8"))
+        out += list(b.values()) if isinstance(b, dict) else (b if isinstance(b, list) else [])
     except (OSError, ValueError):
-        return []
-    return list(b.values()) if isinstance(b, dict) else (b if isinstance(b, list) else [])
+        pass
+    return out + [r for r in load_jsonl(os.path.join(run, "results", "admission-bindings.jsonl"))
+                  if isinstance(r, dict)]
 
 
 def _sig_only_detects(gt_row, bindings):
@@ -78,9 +84,14 @@ def _sig_only_detects(gt_row, bindings):
     ns, prefix = gt_row.get("namespace", ""), gt_row.get("pod_prefix", "")
     if not prefix:
         return False
+    start, end = parse_time(gt_row.get("start")), parse_time(gt_row.get("end"))
     for b in bindings:
         if b.get("namespace") != ns or not str(b.get("pod", "")).startswith(prefix):
             continue
+        if "snapshot_at" in b:          # a saved copy belongs to the run whose window it was taken in
+            t = parse_time(b["snapshot_at"])
+            if t is None or start is None or end is None or not start <= t <= end:
+                continue
         if b.get("verified"):
             continue
         reason = (b.get("reason") or "").strip().lower()

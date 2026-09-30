@@ -56,3 +56,23 @@ def test_sig_only_from_bindings(tmp_path):
     t = aggregate.tables(rows)
     assert t["systems"]["Sig-only"]["kind"] == "derived"
     assert t["systems"]["Sig-only"]["TP"] == 1 and t["systems"]["Sig-only"]["FN"] == 1
+
+
+def test_sig_only_from_saved_bindings_after_teardown(tmp_path):
+    """The pods are gone from bindings.json; the saved copies count only inside their own run's window."""
+    run = tmp_path
+    (run / "ground_truth.csv").write_text(
+        "scenario,label,namespace,pod_prefix,start,end,expected\n"
+        "ak-2,malicious,demo,demo-app-unsigned,2026-09-30T10:00:00Z,2026-09-30T10:01:00Z,binding failure\n"
+        "ak-2,malicious,demo,demo-app-unsigned,2026-09-30T10:05:00Z,2026-09-30T10:06:00Z,binding failure\n")
+    (run / "alerts.jsonl").write_text("")
+    (run / "falco.jsonl").write_text("")
+    (run / "bindings.json").write_text("{}")                       # the controller forgot both pods
+    (run / "results").mkdir()
+    (run / "results" / "admission-bindings.jsonl").write_text(json.dumps(
+        {"namespace": "demo", "pod": "demo-app-unsigned-abc", "verified": False,
+         "reason": "v_sig: no matching signatures found", "snapshot_at": "2026-09-30T10:00:40Z"}) + "\n")
+
+    first, second = aggregate.rows_for(run)
+    assert first["Sig-only"]            # its window holds the saved copy
+    assert not second["Sig-only"]       # no copy saved during the second run

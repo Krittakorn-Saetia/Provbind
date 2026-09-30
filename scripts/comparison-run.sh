@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The four-system comparison run (comparison test plan sections 3-6). Runs on the demo VM after
+# The four-system comparison run (docs/COMPARISON-RUN.md). Runs on the demo VM after
 # `make up` and `make demo-app`, in a FRESH run folder. It:
 #   1. starts PROVBIND (controller, node, alerts, trust loop) and the Falco capture, as `make scored`;
 #   2. deploys the signed demo app with an emptyDir at /data (for B5), and waits for its envelope;
@@ -9,12 +9,15 @@
 #   5. applies Confine-E and DeSFAM-E to the traces and builds the four-system tables (aggregate),
 #      plus the PROVBIND-vs-Falco scoring matrix and the time-to-alert summary.
 #
-#   DEMO_REF=<registry>/demo-app@sha256:<hex> sudo -E scripts/comparison-run.sh
+#   DEMO_REF=<registry>/demo-app@sha256:<hex> scripts/comparison-run.sh      # or: make comparison
 #
-# bpftrace needs root, so run the whole script under `sudo -E` (or set TRACE=0 to skip all syscall
-# tracing and compare PROVBIND vs Falco only). Every scenario is our own harmless test code; no real
-# malicious sample is downloaded or run (comparison test plan section 8). Do not type in the terminal
-# or take a VM snapshot while it runs (a snapshot shifts Falco's clock).
+# Run it as your normal user, with the project's Python environment active (as for `make scored`).
+# Only bpftrace needs root: with TRACE=1 the script asks for the sudo password ONCE at the start and
+# uses `sudo -n` for the recorder alone. Do not run the whole script under sudo: sudo resets PATH, so
+# python3 would lose the venv's packages. TRACE=0 skips all syscall tracing (PROVBIND vs Falco only).
+# Every scenario is our own harmless test code; no real malicious sample is downloaded or run
+# (docs/COMPARISON-RUN.md). Do not type in the terminal or take a VM snapshot while it runs (a
+# snapshot shifts Falco's clock).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -25,7 +28,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${PROVBIND_KEY:=pipeline/keys/cosign.pub}"
 : "${TETRAGON_CONTAINER:=export-stdout}"
 : "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml}"
-: "${ROUNDS:=5}"              # comparison plan: every scenario at least 5 times
+: "${ROUNDS:=5}"              # docs/COMPARISON-RUN.md: every scenario at least 5 times
 : "${GAP:=10}"
 : "${WAIT_S:=120}"
 : "${TRACE:=1}"              # 0 = no bpftrace; PROVBIND vs Falco only, estimators skipped
@@ -50,6 +53,11 @@ if [ "$TRACE" = 1 ] && ! command -v bpftrace >/dev/null; then
   exit 1
 fi
 
+if [ "$(id -u)" = 0 ]; then
+  echo "comparison-run: run as your normal user, not under sudo (see the header)" >&2
+  exit 1
+fi
+
 mkdir -p "$PROVBIND_RUN/logs" "$TRACES" "$BASE" "$RESULTS"
 LOGS="$PROVBIND_RUN/logs"
 PIDS=()
@@ -58,21 +66,26 @@ trap cleanup EXIT
 step() { echo; echo "=== $(date -u +%H:%M:%S) $*"; }
 
 # --- syscall tracing helpers (only when TRACE=1) --------------------------------------------------
+if [ "$TRACE" = 1 ]; then
+  echo "comparison-run: bpftrace needs root; sudo asks for your password once"
+  sudo -v
+  ( while true; do sudo -n true 2>/dev/null; sleep 50; done ) & PIDS+=($!)   # keep sudo's ticket fresh
+fi
 APP_PID=""
 TRACE_BG=""
-find_app_pid() {   # the host pid of the demo pod's `python app.py` process, for the bpftrace ns filter
-  APP_PID="${APP_PID:-$(pgrep -f 'python app.py' | head -1 || true)}"
+find_app_pid() {   # host pid of the NEWEST `python app.py` (the demo pod's app), for the bpftrace filter
+  APP_PID="${APP_PID:-$(pgrep -n -f 'python app.py' || true)}"
   [ -n "$APP_PID" ] || { echo "comparison-run: could not find the demo app pid (set APP_PID=...)" >&2; return 1; }
 }
 trace_start() {   # OUTFILE : start recording into OUTFILE, then wait for bpftrace to attach
   [ "$TRACE" = 1 ] || return 0
-  eval/baselines/record_trace.sh --pid "$APP_PID" --out "$1" >/dev/null 2>&1 &
+  sudo -n eval/baselines/record_trace.sh --pid "$APP_PID" --out "$1" >/dev/null 2>&1 &
   TRACE_BG=$!
   sleep 2
 }
 trace_stop() {    # stop the current recording and flush the file
   [ "$TRACE" = 1 ] || return 0
-  pkill -INT -x bpftrace 2>/dev/null || true
+  sudo -n pkill -INT -x bpftrace 2>/dev/null || true
   wait "$TRACE_BG" 2>/dev/null || true
   sleep 1
 }
@@ -106,15 +119,23 @@ kubectl -n "$NAMESPACE" create deployment "$DEPLOY" --image="$DEMO_REF" --port=8
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "$NAMESPACE" patch deployment "$DEPLOY" --patch-file testbed/demo-app/volume-patch.yaml >/dev/null
 kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout="${WAIT_S}s"
+STARTUP_BG=""
+if [ "$TRACE" = 1 ]; then
+  # Confine watches a container's first 30 s: start the start-up trace as soon as the patched pod is
+  # ready (within a second or two of its start), in the background while the envelope is compiled.
+  find_app_pid
+  sudo -n eval/baselines/record_trace.sh --pid "$APP_PID" --out "$BASE/startup.txt" \
+    --seconds "$STARTUP_SECONDS" >/dev/null 2>&1 &
+  STARTUP_BG=$!
+fi
 ( source testbed/scenarios/lib.sh; ENVELOPE_TIMEOUT="$WAIT_S" wait_for_envelope )
 python3 -m alerts.attribute --run "$PROVBIND_RUN" >/dev/null \
   || echo "Neo4j is not reachable: attribution uses the envelope's layer field"
 sleep 30
 
 if [ "$TRACE" = 1 ]; then
-  find_app_pid
-  step "2. start-up trace + export the image's binaries for the estimators"
-  eval/baselines/record_trace.sh --pid "$APP_PID" --out "$BASE/startup.txt" --seconds "$STARTUP_SECONDS" || true
+  step "2. start-up trace (started at pod ready) + export the image's binaries for the estimators"
+  wait "$STARTUP_BG" 2>/dev/null || true
   eval/baselines/export_binaries.sh --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --deploy "$DEPLOY" \
     --digest "${DEMO_REF##*@}" --out "$BIN" --startup-trace "$BASE/startup.txt" \
     || echo "comparison-run: export_binaries failed; the estimators need $BIN"
@@ -156,18 +177,23 @@ if [ "$ADMISSION" = 1 ]; then
 fi
 
 step "5. estimated baselines: Confine-E and DeSFAM-E over the scenario traces"
+CONF=""
 if [ "$TRACE" = 1 ]; then
+  sudo -n chown -R "$(id -u):$(id -g)" "$TRACES" 2>/dev/null || true    # the recorder wrote as root
   mapfile -t SCEN_TRACES < <(find "$TRACES" -maxdepth 1 -name '*.txt' | sort)
   CONFINE_ARGS=(); for t in "${SCEN_TRACES[@]}"; do CONFINE_ARGS+=(--trace "$t"); done
+  # A failed estimator is reported, not fatal: the tables are still built for the systems that ran.
   python3 -m eval.baselines.confine_estimate --binaries "$BIN" "${CONFINE_ARGS[@]}" \
-    --out "$RESULTS/confine.json" >/dev/null
+    --out "$RESULTS/confine.json" >/dev/null \
+    && CONF="$CONF --confine $RESULTS/confine.json" \
+    || echo "comparison-run: Confine-E failed (is $BIN there?); its column will be empty"
   DES_SECCOMP=(); [ -f "$DOCKER_SECCOMP" ] && DES_SECCOMP=(--docker-seccomp "$DOCKER_SECCOMP")
   python3 -m eval.baselines.desfam_estimate --binaries "$BIN" "${DES_SECCOMP[@]}" \
-    --benign "$BASE/benign-*.txt" "${CONFINE_ARGS[@]}" --out "$RESULTS/desfam.json" >/dev/null
-  CONF="--confine $RESULTS/confine.json --desfam $RESULTS/desfam.json"
+    --benign "$BASE/benign-*.txt" "${CONFINE_ARGS[@]}" --out "$RESULTS/desfam.json" >/dev/null \
+    && CONF="$CONF --desfam $RESULTS/desfam.json" \
+    || echo "comparison-run: DeSFAM-E failed; its column will be empty"
 else
   echo "TRACE=0: skipping the estimators; the tables will show PROVBIND and Falco only"
-  CONF=""
 fi
 
 step "6. build the tables"
@@ -177,6 +203,6 @@ python3 -m eval.baselines.alert_latency --run "$PROVBIND_RUN" --offline --out "$
 
 echo
 echo "comparison run done:"
-echo "  $RESULTS/COMPARISON.md   four-system tables"
+echo "  $RESULTS/COMPARISON.md   comparison tables (COMPARISON.json holds the same data for your own plots)"
 echo "  $RESULTS/SCORING.md      PROVBIND vs Falco scoring matrix"
 echo "  $RESULTS/confine.json $RESULTS/desfam.json $RESULTS/latency.json"

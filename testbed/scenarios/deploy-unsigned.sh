@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A-K2 (comparison test plan section 3.1): deploy an UNSIGNED copy of the demo image. We build a
+# A-K2 (docs/COMPARISON-RUN.md §3): deploy an UNSIGNED copy of the demo image. We build a
 # variant with a new digest (an extra label) and push it WITHOUT cosign sign/attest, then deploy it.
 # Expected: the controller cannot verify it -> binding failure (verified:false), no envelope. Harmless:
 # the image is our own demo app; only its signature is missing. Runs on the demo PC. `make ak2` calls
@@ -23,6 +23,7 @@ trap 'teardown_temp "$NAME"' EXIT
 deploy_temp "$NAME" "$REF"
 wait_binding "$NAME" || true
 sleep 15
+snapshot_binding "$NAME"
 END="$(now)"
 
 POD_PREFIX="$NAME" record_gt ak-2 malicious "$START" "$END" "not verified: binding failure (unsigned image)"

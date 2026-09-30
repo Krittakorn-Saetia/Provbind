@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A-K1 (comparison test plan section 3.1): a MAL- advisory for requestz-helper already exists BEFORE
+# A-K1 (docs/COMPARISON-RUN.md §3): a MAL- advisory for requestz-helper already exists BEFORE
 # the signed image is deployed. Expected: the trust loop raises a trust alert naming the component
 # within seconds of admission (Phase 6's first evaluation), while the pod itself is conforming. The
 # advisory is reports only, no code (Test Plan section 12.5). Harmless. Runs on the demo PC with the
@@ -35,6 +35,7 @@ START="$(now)"
 deploy_temp "$NAME" "$DEMO_REF"
 wait_binding "$NAME" || true
 sleep "$TRUST_SETTLE"
+snapshot_binding "$NAME"
 END="$(now)"
 
 POD_PREFIX="$NAME" record_gt ak-1 malicious "$START" "$END" "trust alert within seconds of admission"
