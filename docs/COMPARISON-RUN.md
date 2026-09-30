@@ -1,9 +1,10 @@
 # Comparison run: PROVBIND vs Falco, Confine and DeSFAM
 
-**Branch:** `local/comparison-baselines` (Role 2, Korn) · **Date:** 1 October 2026 · **Status:** code and
-unit tests done; **no VM run yet, so no numbers.** Every result comes from Role 1's run on the demo VM.
+**On `main`** (merged from `local/comparison-baselines`, Role 2, Korn) · **Date:** 1 October 2026 ·
+**Status:** code and unit tests done; **no VM run yet, so no numbers.** Every result comes from Role 1's
+run on the demo VM.
 
-This note says why the comparison exists, what this branch adds, how to run it, and what its limits are.
+This note says why the comparison exists, what the code adds, how to run it, and what its limits are.
 
 ---
 
@@ -121,14 +122,33 @@ line up with its k-th ground-truth row. `comparison-run.sh` names them this way.
    Korn) saved as `eval/baselines/docker-seccomp.json`. Without it DeSFAM-E uses a built-in fallback.
 4. A-U2 builds and **signs** its image variant each round: the key holder exports `COSIGN_PASSWORD`
    in that terminal (typed by hand, never stored), as for `make demo-app`.
-5. **Check A-K1 once by hand** (see §8, item 1): `DEMO_REF=... make ak1`, then `make show` must list a trust
-   alert for a `demo-app-akadv-…` pod.
-6. Start from a fresh run folder (`mv run run-old`).
+5. Fix Falco's clock (Role 1's finding): stop VirtualBox guest time sync and restart Falco.
 
-### The run
+Keep extra run folders **outside the repository** (for example `~/provbind-runs/`): only `run/` is in
+`.gitignore`, so a `run-dry/` or `run-old/` inside the repo could be committed by accident.
+
+### Dry run first (about 30 minutes)
+One round, no bpftrace (no sudo), into a scratch run folder. It checks the whole flow before the long
+run, and in particular A-K1 (§8, item 1). `make ak1` alone is not a check: it needs the controller and
+trust loop that `make comparison` starts.
+```bash
+kubectl -n demo delete deployment demo-app --ignore-not-found
+PROVBIND_RUN=$HOME/provbind-runs/dry ROUNDS=1 TRACE=0 DEMO_REF=localhost:5001/demo-app@sha256:<hex> make comparison
+```
+Then open `~/provbind-runs/dry/results/COMPARISON.md`:
+- every scenario has a row;
+- the **`ak-1` row shows PROVBIND `1/1`**. If it shows `0/1`, stop and tell Korn before the real run.
+
+### The real run
+**Before every run, delete the leftover demo deployment.** If it is still there, `make comparison` reuses
+the old pod: the "start-up" trace then records a pod that has been running for hours, and Confine-E
+builds its allow list from that trace, so its result can change.
+
 Run it as your normal user, with the project's venv active. It asks for the sudo password once (bpftrace
 only). Do not run it under `sudo`: sudo resets `PATH` and Python loses the venv's packages.
 ```bash
+kubectl -n demo delete deployment demo-app --ignore-not-found
+mkdir -p ~/provbind-runs && [ ! -e run ] || mv run ~/provbind-runs/run-old-$(date +%Y%m%d-%H%M)   # fresh run/
 DEMO_REF=localhost:5001/demo-app@sha256:<hex> make comparison
 ```
 Options (environment variables): `ROUNDS=5`, `TRACE=0` (no bpftrace: PROVBIND vs Falco only),
@@ -142,6 +162,19 @@ What it does, in order: starts the controller, node, alerts, trust loop and Falc
 `make scored`) → deploys the signed demo app with `/data` → start-up trace from the moment the pod is
 ready → exports the image's binaries → benign baseline traces → every runtime and benign scenario,
 `ROUNDS` times, each with its own trace → the admission scenarios → Confine-E and DeSFAM-E → the tables.
+
+### If something goes wrong
+- **bpftrace rejects its filter** (kernel 7.0): see the note at the top of `eval/baselines/record_trace.sh`
+  (`--pids` fallback) and tell Korn.
+- **"could not find the demo app pid":** rerun with `APP_PID=$(pgrep -n -f 'python app.py')` in front of
+  the command.
+- **"Confine-E failed" / "DeSFAM-E failed":** the tables are still built, without that column. Check that
+  `run/traces/binaries/` has files (the binaries export), and send the results anyway.
+
+### What to send back
+Zip these from `run/` and send them to Korn: `results/`, `ground_truth.csv`, `alerts.jsonl`,
+`falco.jsonl` and `logs/`. Keep `traces/` (it is large) until asked. Never send `pipeline/keys/cosign.key`
+or the key's password.
 
 ### Only the analysis (any PC, after the run)
 ```bash
@@ -195,15 +228,16 @@ per_system = pd.DataFrame.from_dict(doc["tables"]["systems"], orient="index")
 ## 8. Open items
 
 1. **A-K1 may be scored wrongly.** The trust loop alerts once per *image*, and A-K1 deploys the same
-   image as the running demo pod, so the short-lived pod may get no alert of its own. Check it once
-   by hand before the full run (§5 step 5). If it fails, the fix is a decision for the team: stop the
-   main demo pod during the admission phase, or give A-K1 its own signed image.
-2. **Names versus the Test Plan.** Test Plan §7 already numbers some of these behaviours (`attack-4`,
-   `attack-5`, `attack-7`, `attack-8`, `attack-9`) and reserves `/update4`–`/update9` for them. This branch
-   uses the comparison-grid names (`ru-4`, `rk-3`, `ru-3`, `au-2`, `ak-2`) and endpoints `/rk2`…`/au2`.
-   Decide whether to rename before the run, then update `testbed/behaviours.md`.
-3. **R-U5 has no sink service.** No in-cluster sink is deployed, so its send never connects; the
-   credential read itself still happens. Deploy a small sink if the connection should be in the trace.
+   image as the running demo pod, so the short-lived pod may get no alert of its own. The dry run
+   (§5) shows it: the `ak-1` row must read PROVBIND `1/1`. If it does not, the fix is a decision for the
+   team: stop the main demo pod during the admission phase, or give A-K1 its own signed image.
+2. **Names versus the Test Plan (decided: keep).** Test Plan §7 already numbers some of these behaviours
+   (`attack-4`, `attack-5`, `attack-7`, `attack-8`, `attack-9`) and reserves `/update4`–`/update9` for
+   them; this code uses the comparison-grid names (`ru-4`, `rk-3`, `ru-3`, `au-2`, `ak-2`) and endpoints
+   `/rk2`…`/au2`. Korn, 1 October: names do not change any result, so they stay as they are.
+3. **R-U5 has no sink service (decided: keep).** No in-cluster sink is deployed, so its send never
+   connects; the credential read itself still happens. PROVBIND, Falco and Confine-E score it the same
+   either way (only DeSFAM-E's trace would gain one connection), so no sink is added.
 4. **`docs/EVAL-COMPARISON-PLAN.md`** (branch `cloud/eval-comparison-plan`) calls the estimator outputs
    `confine_e.json` / `desfam_e.json`; this branch writes `confine.json` / `desfam.json`. Align them when
    both are merged.
