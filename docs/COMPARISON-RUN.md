@@ -227,7 +227,12 @@ per_system = pd.DataFrame.from_dict(doc["tables"]["systems"], orient="index")
 
 ## 8. Open items
 
-1. **A-K1 may be scored wrongly.** The trust loop alerts once per *image*, and A-K1 deploys the same
+1. **A-K1 (decided: option C, 1 October).** The dry run confirmed the problem: PROVBIND raised the trust
+   alert at ak-1's start, but named the long-lived demo pod, which shares the image, so the row scored 0/1.
+   `deploy-advisory-first.sh` now builds and signs its own variant each round (a per-round marker file,
+   so a fresh digest and trust state), and the alert can only name ak-1's pod. It needs `COSIGN_PASSWORD`,
+   like A-U2, and adds a build per round. The original note:
+   **A-K1 may be scored wrongly.** The trust loop alerts once per *image*, and A-K1 deploys the same
    image as the running demo pod, so the short-lived pod may get no alert of its own. The dry run
    (§5) shows it: the `ak-1` row must read PROVBIND `1/1`. If it does not, the fix is a decision for the
    team: stop the main demo pod during the admission phase, or give A-K1 its own signed image.
