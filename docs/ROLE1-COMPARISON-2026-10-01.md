@@ -134,7 +134,9 @@ and DeSFAM **complementary**: they guard the kernel boundary, PROVBIND guards th
 - Confine-E and DeSFAM-E are estimates: published rules applied to our traces, not the original systems.
   Their admission-row results are "not detected" by design (no admission check), and they were not
   traced there.
-- attack-2 (R-U2, needs ML-B) was not run.
+- attack-2 (R-U2) was not in this run. ML-B is trained, but by Role 3 on Role 3's VM, for the image
+  `sha256:4ce21957…`; a model is tied to its image digest, and this run's image (`sha256:fcca765f…`,
+  rebuilt with the Tier 2 routes) has none. Role 3's run is the R-U2 evidence (Section 7).
 - One VM; VirtualBox time sync was stopped for the run, and Falco was restarted beforehand.
 
 ## 6. Time to alert
@@ -150,11 +152,14 @@ The comparison grid ran in full except R-U2. Against the wider plan (`tests/capa
 |---|---|
 | Covered by this run | EV-01, EV-02, E2E-01, E2E-02, E2E-05 (ru-4), E2E-06 (rk-3), E2E-08 (ru-3), E2E-10 (ak-2), E2E-11 (trust-1, trust-2), EV-06 in part (stage per scenario) |
 | Covered on 30 September | E2E-07 (ML-A Test 2), E2E-12 (tamper-1), MLA-03, EV-03 in part (D_cap ablation) |
-| Not run | E2E-03 in-envelope burst (needs ML-B), E2E-04 relocated binary, E2E-09 install-time payload, the rest of EV-03, EV-07 ML-C baseline |
+| Covered on Role 3's VM (1 October) | E2E-03 in-envelope burst (attack-2): ML-B raised 3, 5 and 5 `D_beh` in its 3 runs, 0 in benign rows; held-out FPR 0.0071 (MLB-03 to 05 pass, `node/ROLE3_STATUS.md`). Falco was not captured there, so it is not part of this comparison |
+| Not run | E2E-04 relocated binary, E2E-09 install-time payload, the rest of EV-03, EV-07 ML-C baseline |
 | P2, not run | EV-04 SynthChain, EV-05 low-and-slow mimicry |
 | To confirm | CF-02, CF-03, CF-04, CF-06 (filter measurements) |
 
-Every P0 test is covered except E2E-03, which waits on ML-B (Role 2).
+Every P0 test is covered: E2E-03 by Role 3's run, the rest here or on 30 September. Putting attack-2 into
+this five-system comparison would need an ML-B model for this run's image: our own D2 (about 9.5 h of
+benign load at the app's rate, `ml/data/mlb/README.md`) and then the runtime rounds again with `--mlb`.
 
 ## 8. Open items
 
