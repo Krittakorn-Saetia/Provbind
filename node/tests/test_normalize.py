@@ -391,6 +391,60 @@ def test_memfd_exec_from_a_container_process_is_kept(s, app):
     assert ev is not None and ev.exe == "/proc/self/fd/7"
 
 
+HOOK_CWD = ("/run/containerd/io.containerd.runtime.v2.task/k8s.io/"
+            "8593a0c665f0214e2364ce463e62f00d362e9e37ef8ef2ecbed2edb41797e9e5/rootfs")
+
+
+def _hook(s):
+    """kind's hook as the demo VM's Tetragon reported it: runc parent, host task cwd, in the pod."""
+    runc = s.proc("/usr/local/sbin/runc", pid=900)
+    return s.proc("/kind/bin/mount-product-files.sh", pid=84276, parent=runc, cwd=HOOK_CWD,
+                  arguments="/kind/bin/mount-product-files.sh")
+
+
+def test_kind_hook_and_its_children_are_dropped(s):
+    """Seen on the demo VM: 182 detections at one demo-app start, all from this hook's tree."""
+    n = Normalizer()
+    hook = _hook(s)
+    mount = s.proc("/usr/bin/mount", pid=84280, parent=hook)
+    child = s.proc("/usr/bin/jq", pid=84281, parent=mount)          # a grandchild, too
+    lines = [s.exec(hook), s.cap(hook, "CAP_SYS_ADMIN"), s.exec(mount), s.cap(mount, "CAP_SYS_ADMIN"),
+             s.write(mount, "/etc/hostname"), s.exec(child), s.exit(child), s.exit(mount), s.exit(hook)]
+    assert [n(line) for line in lines] == [None] * len(lines)
+    assert n.stats == {"drop:runtime_hook": len(lines)} and n._hook_ids == {}
+
+
+def test_the_app_is_still_verified_around_the_hook(s, app):
+    n = Normalizer()
+    hook = _hook(s)
+    assert n(s.exec(hook)) is None
+    assert n(s.cap(app, "CAP_SYS_ADMIN")).cap == "CAP_SYS_ADMIN"
+    assert n(s.exec(s.proc("/usr/bin/mount", pid=4480, parent=app))).exe == "/usr/bin/mount"
+
+
+@pytest.mark.parametrize("binary,parent,cwd", [
+    ("/kind/bin/mount-product-files.sh", "/usr/local/sbin/runc", "/"),         # cwd inside the container
+    ("/kind/bin/mount-product-files.sh", "/usr/bin/sh", HOOK_CWD),            # parent is not the runtime
+    ("/tmp/mount-product-files.sh", "/usr/local/sbin/runc", HOOK_CWD),        # not in /kind/bin
+    ("/kind/bin/sub/x.sh", "/usr/local/sbin/runc", HOOK_CWD),
+])
+def test_runtime_hook_needs_the_exact_shape(s, binary, parent, cwd):
+    """An attacker's /kind/bin script run from inside the container has a container cwd and parent."""
+    p = s.proc(parent, pid=900)
+    ev, _ = one(s.exec(s.proc(binary, pid=901, parent=p, cwd=cwd)))
+    assert ev is not None and ev.exe == binary
+
+
+def test_runtime_hook_memory_is_bounded(s, monkeypatch):
+    import node.normalize as nm
+    monkeypatch.setattr(nm, "RUNTIME_HOOK_MEMORY", 3)
+    n = Normalizer()
+    runc = s.proc("/usr/local/sbin/runc", pid=900)
+    for pid in range(5):                                   # hooks that never report an exit
+        n(s.exec(s.proc("/kind/bin/mount-product-files.sh", pid=2000 + pid, parent=runc, cwd=HOOK_CWD)))
+    assert len(n._hook_ids) == 3
+
+
 @pytest.mark.parametrize("binary,args,parent", [
     ("/proc/self/fd/7", "", "/usr/local/sbin/runc"),             # not the init step
     ("/proc/self/fd/7", "init --evil", "/usr/local/sbin/runc"),

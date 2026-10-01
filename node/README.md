@@ -142,6 +142,7 @@ kubectl get tracingpoliciesnamespaced -n demo
 - **Cap and connect events are not written to `events.jsonl`.** Their payload (capability; destination) has no contract field, so they are verified in memory only. A replay of `events.jsonl` therefore has no D_cap or D_net. Replay Tetragon's own JSON (the `tee` above) instead. Adding the fields needs the team: `ROLE3_STATUS.md`, Q1.
 - **Paths are kept exactly as Tetragon reports them.** A suffix like ` (deleted)` is never stripped, because an attacker can name a file that way.
 - **Dropped lines are counted by reason** (other namespace, host process, read-only access, refused by the LSM, not a file). Nothing is dropped silently.
+- **The container runtime's own processes are dropped** (`runtime_init`, `runtime_hook`): runc's memfd re-exec for `kubectl exec`, and kind's OCI hook `/kind/bin/mount-product-files.sh` with every process it starts. Each is matched by its exact shape (runtime parent; for the hook, also a working directory in containerd's task folder on the host), so the same binary run from inside the container is still verified.
 
 ## Tests and evidence
 
