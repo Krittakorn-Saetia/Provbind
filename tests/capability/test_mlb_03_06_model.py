@@ -167,6 +167,11 @@ def test_mlb_05_in_envelope_attack_is_flagged(record_result):
     if doc is None:
         return no_model(record_result, "MLB-05")
     lines, store, rows, source, real = attack_evidence()
+    if ev["real"] and not real:
+        # The synthetic library's image is not the demo PC's, so the model would never be applied to it.
+        record_result("MLB-05", "not_run", notes=f"{ev['source']}: D2 is real but there is no recording; "
+                                                 "set PROVBIND_RECORDING to one with an attack-2 row")
+        return
     attack = rows_of(rows, "attack-2")
     if not attack:
         record_result("MLB-05", "not_run", notes=f"{source}: no attack-2 row in the ground truth")
