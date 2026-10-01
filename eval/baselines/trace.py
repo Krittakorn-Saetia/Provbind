@@ -10,6 +10,10 @@ that is not a system call.
 The kernel's tracepoint names for a few old calls carry a `new` prefix (`sys_enter_newfstat`); they are
 renamed to the syscall-table names (`fstat`) so they match the allow lists.
 
+Events of the container runtime itself (`runc`, whose comm reads `runc:[1:CHILD]` while it enters the
+pod's namespaces for a `kubectl exec`) are dropped by default: runc installs the container's seccomp
+filter only just before it executes the command, so its own calls are never subject to an allow list.
+
 ELF imports: `imported_functions` returns the undefined dynamic symbols of one ELF file (the libc
 wrappers it calls); `imports_under` unions them over every ELF file in a directory. Confine-E and
 DeSFAM-E turn those into a system-call set with `syscalls.syscalls_for`.
@@ -30,8 +34,9 @@ class Event:
     syscall: str       # the system-call name, without the sys_ prefix
 
 
-def read_trace(path: str | os.PathLike) -> list[Event]:
-    """Every system-call event in a trace file, in order."""
+def read_trace(path: str | os.PathLike, keep_runtime: bool = False) -> list[Event]:
+    """Every system-call event in a trace file, in order (without the container runtime's own calls
+    unless `keep_runtime`)."""
     events: list[Event] = []
     with open(path, encoding="utf-8", errors="replace") as f:
         for n, line in enumerate(f, 1):
@@ -41,7 +46,7 @@ def read_trace(path: str | os.PathLike) -> list[Event]:
             parts = line.split("\t")
             if len(parts) >= 4:
                 t, pid, comm, call = parts[0], parts[1], parts[2], _clean(parts[3].strip())
-                if _SYSCALL_NAME.match(call):
+                if _SYSCALL_NAME.match(call) and (keep_runtime or not is_runtime(comm)):
                     events.append(Event(_int(t, n), _int(pid, 0), comm, call))
             else:                                          # a bare syscall name per line
                 call = _clean(line.strip())
@@ -53,7 +58,14 @@ def read_trace(path: str | os.PathLike) -> list[Event]:
 _SYSCALL_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 # Tracepoint names that differ from the x86-64 syscall-table names.
-_ALIASES = {"newfstat": "fstat", "newstat": "stat", "newlstat": "lstat", "newuname": "uname"}
+_ALIASES = {"newfstat": "fstat", "newstat": "stat", "newlstat": "lstat", "newuname": "uname",
+            "sendfile64": "sendfile", "umount": "umount2"}
+
+RUNTIME_COMMS = ("runc",)          # runc, runc:[0:PARENT], runc:[1:CHILD], runc:[2:INIT]
+
+
+def is_runtime(comm: str) -> bool:
+    return comm.startswith(RUNTIME_COMMS)
 
 
 def _int(value: str, default: int) -> int:

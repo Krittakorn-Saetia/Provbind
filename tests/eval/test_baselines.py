@@ -172,6 +172,41 @@ def test_desfam_detector_flags_an_unusual_window():
     assert not r_norm["phase1_unlisted_call"]
 
 
+def test_desfam_trace_rule_tolerates_baseline_level_noise(tmp_path):
+    pytest.importorskip("sklearn")
+    import random
+    rng = random.Random(1)
+    calls = ["openat", "read", "write", "close", "futex", "epoll_wait", "accept4", "recvfrom", "sendto"]
+    paths = []
+    for k in range(3):
+        p = tmp_path / f"benign-{k}.txt"
+        t, lines = 0, []
+        for _ in range(3000):
+            t += rng.randint(50, 5000)
+            lines.append(f"{t}\t1\tapp\t{rng.choice(calls)}\n")
+        p.write_text("".join(lines))
+        paths.append(p)
+    det = desfam.Detector.train(paths)
+    assert 0.0 <= det.trace_threshold < 0.2
+    allow = set(calls)
+    same = desfam.evaluate(trace.read_trace(paths[0]), allow, det)
+    assert not same["phase2_detected"] and not same["detected"]       # baseline-level noise passes
+    raw = desfam.evaluate(trace.read_trace(paths[0]), allow, det, trace_rule="window")
+    assert raw["phase2_detected"] == (raw["phase2_anomalous_windows"] > 0)
+
+
+def test_runc_events_are_dropped_unless_asked(tmp_path):
+    t = tmp_path / "t.txt"
+    t.write_text("1\t9\trunc:[1:CHILD]\tsetns\n2\t9\tsh\tread\n3\t9\tpython\tsendfile64\n")
+    assert [e.syscall for e in trace.read_trace(t)] == ["read", "sendfile"]
+    assert [e.syscall for e in trace.read_trace(t, keep_runtime=True)][0] == "setns"
+
+
+def test_wrappers_with_unlisted_or_64_names_map():
+    got = syscalls.syscalls_for(["close_range", "fcntl64", "lseek64", "fstatat64", "posix_fadvise"])
+    assert {"close_range", "fcntl", "lseek", "newfstatat", "fadvise64"} <= got
+
+
 def test_desfam_evaluate_phase1_only():
     r = desfam.evaluate(events_of(["read", "ptrace"]), {"read"}, None)
     assert r["detected"] and r["phase1_unlisted_call"] == "ptrace" and r["phase2_anomalous_windows"] == 0
