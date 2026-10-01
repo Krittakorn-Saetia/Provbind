@@ -143,7 +143,7 @@ check-contracts:  ## check the run folder against the Sprint Handoff §4 contrac
 
 ## --- comparison Tier 2 scenarios (demo PC; docs/COMPARISON-RUN.md §3) ------------------------------
 
-.PHONY: rk2 rk3 ru3 ru4 ru5 benign-dns benign-vol au2 ak1 ak2 ak3 au2-deploy comparison
+.PHONY: rk2 rk3 ru3 ru4 ru5 benign-dns benign-vol au2 ak1 ak2 ak3 ab1 au2-deploy comparison
 
 rk2:  ## R-K2: replay a known kernel-CVE syscall shape (waitid, splice), no exploit
 	./testbed/scenarios/rk2.sh
@@ -168,6 +168,9 @@ benign-vol:  ## B5: benign writes under a mounted volume; expects nothing above 
 
 au2:  ## A-U2 trigger only: run the build-time program (needs the au-2 variant pod; see au2-deploy)
 	./testbed/scenarios/au2.sh
+
+ab1:  ## A-B1: benign admission control: deploy a clean signed variant; expects nothing above Low
+	./testbed/scenarios/deploy-benign.sh
 
 ak1:  ## A-K1: a MAL- advisory exists before deploy; expects a trust alert at admission (needs DEMO_REF)
 	./testbed/scenarios/deploy-advisory-first.sh

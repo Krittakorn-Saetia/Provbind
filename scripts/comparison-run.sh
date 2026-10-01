@@ -5,7 +5,8 @@
 #   2. deploys the signed demo app with an emptyDir at /data (for B5), and waits for its envelope;
 #   3. records the pod's system calls for the estimated baselines: a start-up trace, a benign baseline,
 #      and one trace per scenario run, named run/traces/<scenario>-<k>.txt (what the aggregator wants);
-#   4. runs every Tier 1 + Tier 2 runtime/benign scenario ROUNDS times, then the admission scenarios;
+#   4. runs every Tier 1 + Tier 2 runtime/benign scenario ROUNDS times, then the admission scenarios
+#      (A-B1, a clean signed deploy, is the admission cell's benign control);
 #   5. applies Confine-E and DeSFAM-E to the traces and builds the four-system tables (aggregate),
 #      plus the PROVBIND-vs-Falco scoring matrix and the time-to-alert summary.
 #
@@ -172,6 +173,7 @@ done
 if [ "$ADMISSION" = 1 ]; then
   step "4. admission scenarios (own short-lived deployments; not syscall-traced)"
   for k in $(seq 1 "$ROUNDS"); do
+    step "round $k: A-B1 benign deploy";  make --no-print-directory ab1 || true; sleep "$GAP"
     step "round $k: A-K1 advisory-first"; make --no-print-directory ak1 || true; sleep "$GAP"
     step "round $k: A-K2 unsigned";       make --no-print-directory ak2 || true; sleep "$GAP"
     step "round $k: A-K3 revoked key";    make --no-print-directory ak3 || true; sleep "$GAP"

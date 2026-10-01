@@ -67,6 +67,7 @@ trace file names and the tables.
 
 | Grid ID | Cell | Ground-truth name | `make` target | Re-creates (harmless) | PROVBIND expected |
 |---|---|---|---|---|---|
+| A-B1 | Admission, benign | `ab-1` | `ab1` | a clean, signed image deployed normally (added 1 October: the admission cell's benign control) | nothing above Low |
 | A-K1 | Admission, known | `ak-1` | `ak1` | advisory for our test package exists before deploy | trust alert |
 | A-K2 | Admission, known | `ak-2` | `ak2` | unsigned image | binding failure |
 | A-K3 | Admission, known | `ak-3` | `ak3` | signing key revoked before deploy | not verified (v_trust) |
