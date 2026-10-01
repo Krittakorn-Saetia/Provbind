@@ -99,7 +99,7 @@ benign) and whether the system flagged that run.
 | PROVBIND | measured | `alerts.jsonl` | an alert above Low in the row's pod and time window |
 | Falco | measured | `falco.jsonl` | any Falco rule in the row's pod and time window |
 | Confine-E | estimated | `traces/<scenario>-<k>.txt` → `results/confine.json` | the trace uses a system call outside the static allow list |
-| DeSFAM-E | estimated | the same trace → `results/desfam.json` | a 15-call window scores above the benign threshold (or a call outside its allow list) |
+| DeSFAM-E | estimated | the same trace → `results/desfam.json` | a call outside its allow list, or a share of anomalous 15-call windows above the benign baseline's (§5, "Only the analysis") |
 | Sig-only | derived | `bindings.json` + `results/admission-bindings.jsonl` | the pod's binding failed for a signature or attestation reason; a revoked key is a miss |
 
 **The trace naming is a contract:** `traces/<scenario>-<k>.txt` is the k-th run of that scenario and must
