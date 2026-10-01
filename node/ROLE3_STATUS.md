@@ -55,7 +55,7 @@ They are stacked: **merge them in this order.** Each targets `main`, and each di
 
 **Setup.**
 - VirtualBox VM: kernel 6.14, cgroup v2 with the systemd driver; kind v1.37 with Tetragon 1.7.1.
-- Image: the demo app `sha256:4ce219578835…`, signed with the team key. Capability list: ML-A or the curated allowlist, not yet confirmed (see `node/handoff/ROLE3-VM-TO-ROLE2.md` §2).
+- Image: the demo app `sha256:4ce219578835…`, signed with the team key. Capabilities from **ML-A**: `CAP_DAC_OVERRIDE`, INFERRED, p = 0.9998 (checked in the envelope, 1 October).
 - Node code: #20. Policies: `write`, `truncate` and `cap`, as cluster-wide copies.
 - Scenarios: 3 rounds of benign-1, attack-1, attack-2, ph4-14 and trust-1 (restored after each), 40 s apart, then tamper-1 (16 ground-truth rows).
 - Recording: one session of 21 minutes, 2,967 events, with `node.run --mlb`.
@@ -80,6 +80,7 @@ They are stacked: **merge them in this order.** Each targets `main`, and each di
 
 **Other numbers.**
 - **No false alarms on 9.5 h of benign load (D2):** 2,742 events, all conforming, 0 detections.
+- **ML-A at runtime:** 0 D_cap over 567 capability checks (59 in D2, 508 in the scenario session), with the ML-A envelope. attack-6 (a real D_cap) is not scripted yet, so this shows no false D_cap, not detection.
 - **ML-B in the scenario run:** 13 of the 14 D_beh fall in attack-2 rows. The 14th is attack-1's payload (see findings). **0 D_beh in any benign row.**
 - **D2's rate:** about 53 windows per hour. The app makes kernel events only on `/cache` requests (about 15% of `make loadgen`), so reaching 360 windows took 7 h, in two parts on one pod (#22).
 
