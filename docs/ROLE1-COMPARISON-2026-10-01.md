@@ -137,9 +137,30 @@ and DeSFAM **complementary**: they guard the kernel boundary, PROVBIND guards th
 - attack-2 (R-U2, needs ML-B) was not run.
 - One VM; VirtualBox time sync was stopped for the run, and Falco was restarted beforehand.
 
-## 6. Open items
+## 6. Time to alert
+
+PROVBIND trust alerts (30 alerts, from `results/latency.json`): median **1.2 s**, mean 3.2 s from the
+trust event (advisory written or key revoked) to the alert.
+
+## 7. Coverage of the capability test plan (Role 1 tests)
+
+The comparison grid ran in full except R-U2. Against the wider plan (`tests/capability/registry.json`):
+
+| Status | Tests |
+|---|---|
+| Covered by this run | EV-01, EV-02, E2E-01, E2E-02, E2E-05 (ru-4), E2E-06 (rk-3), E2E-08 (ru-3), E2E-10 (ak-2), E2E-11 (trust-1, trust-2), EV-06 in part (stage per scenario) |
+| Covered on 30 September | E2E-07 (ML-A Test 2), E2E-12 (tamper-1), MLA-03, EV-03 in part (D_cap ablation) |
+| Not run | E2E-03 in-envelope burst (needs ML-B), E2E-04 relocated binary, E2E-09 install-time payload, the rest of EV-03, EV-07 ML-C baseline |
+| P2, not run | EV-04 SynthChain, EV-05 low-and-slow mimicry |
+| To confirm | CF-02, CF-03, CF-04, CF-06 (filter measurements) |
+
+Every P0 test is covered except E2E-03, which waits on ML-B (Role 2).
+
+## 8. Open items
 
 - Korn: review the seven estimator fixes; decide whether DeSFAM-E should get a second benign baseline
   of benign-scenario activity (separate runs, not scored; about 20 minutes on the VM).
-- Time-to-alert: `results/latency.json` is in the bundle; not summarised here yet.
+- The raw result files (the bundle above) are in the team share; whether to commit them to the repo is
+  open.
+- The P1 tests above that were not run, if the team wants them before the deadline.
 - Tool versions for `testbed/VERSIONS.md`.
