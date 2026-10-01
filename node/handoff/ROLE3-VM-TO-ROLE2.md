@@ -10,7 +10,7 @@ This follows `ROLE3-TO-ROLE2.md` (28 September), which still describes how the n
   - `make demo-app` built and signed the image, attached the SBOM, SLSA provenance and Rekor entry.
   - `compiler.compile` wrote an envelope that the node loaded straight away.
   - The controller verified everything ("the Rekor inclusion proof verifies").
-- **No capability false positives in this run:** **0 D_cap over 567 capability checks**, 508 in the scenario session and 59 in the benign runs (§3). **Still to confirm:** whether the envelope's list came from ML-A or the curated allowlist (§2).
+- **ML-A removed every capability false positive in this run.** The ML-A envelope (`CAP_DAC_OVERRIDE`, INFERRED, p = 0.9998) gave **0 D_cap over 567 capability checks**: 508 in the scenario session and 59 in the benign runs (§3).
 - **A finding about paths (PH4-01):** Tetragon reports the path a program was *started with*, not the real file. Your envelope's `symlinks` are what keeps the verdicts right; one gap is left (§4).
 - MLA-07 can now be run on real data, with one more compile (§5).
 
@@ -23,16 +23,16 @@ The demo image is `localhost:5001/demo-app@sha256:4ce219578835e2432dbfa180b096bf
 - 14 SBOM components without a purl (Simple Launcher, the `cli`/`gui` launchers);
 - 9.9 s in total.
 
-**Capabilities: to confirm.** The first compile, without `ml/model`, printed "caps: curated allowlist". The steps then given were `python -m ml.train --data ml/data/dataset.jsonl --out ml/model` and a recompile. The recompile's output wasn't checked, so **which source the envelope's `capabilities` came from is not yet known.** §5.2 shows how to read it from the envelope (`origin` says INFERRED for ML-A). `ml/model/` is not committed; anyone can rebuild it from `ml/data/dataset.jsonl` (Role 1's D1) in a minute.
+**Capabilities: from ML-A (confirmed).** The first compile, without `ml/model`, printed "caps: curated allowlist". After `python -m ml.train --data ml/data/dataset.jsonl --out ml/model` and a recompile, the envelope holds `[{"cap": "CAP_DAC_OVERRIDE", "origin": "INFERRED", "probability": 0.9998}]`: the same prediction as Role 1's result. `ml/model/` is not committed; anyone can rebuild it from `ml/data/dataset.jsonl` (Role 1's D1) in a minute.
 
 **Files on Role 3's VM** (`~/Provbind/run/`, shared privately, not through git):
-- `envelopes/4ce21957….json`: the envelope the node used;
+- `envelopes/4ce21957….json`: the ML-A envelope the node used;
 - `rec.jsonl` and `ground_truth.csv`: the scenario session, with `cap.yaml` applied;
 - `d2/benign-*.jsonl`: 9.5 h of benign load.
 
 Ask Role 3 for the archive. The command is in `ROLE3-VM-TO-ROLE1.md` §2.
 
-## 3. Capabilities at runtime: 0 D_cap
+## 3. ML-A at runtime: 0 D_cap
 
 | Recording | Capability checks (`cap_capable`) | D_cap |
 |---|---|---|
@@ -41,7 +41,7 @@ Ask Role 3 for the archive. The command is in `ROLE3-VM-TO-ROLE1.md` §2.
 
 - **Why "granted" holds up:** the node treats a check as granted only when the capability is in the process's own effective set (Tetragon `enableProcessCred`, `process.cap`). That's Role 1's fix of 30 September, now in `node/normalize.py`.
 - **Before #20,** one pod start alone gave 176 D_cap (`CAP_SYS_ADMIN`). That came from kind's start-up hook, not from the app; [#20](https://github.com/Krittakorn-Saetia/Provbind/pull/20) removes it.
-- **What this does and doesn't show:** the envelope's list covered every capability the app really used. Which method produced it (§2) decides whether this counts for ML-A or for the allowlist. **attack-6 (chown to uid 4242) was not run**: Role 1 has no script yet. So we've shown "no false D_cap", not "D_cap catches an attack". That's PH4-15's job, once the scenario exists.
+- **What this does and doesn't show:** with ML-A, the envelope's list covered every capability the app really used. **attack-6 (chown to uid 4242) was not run**: Role 1 has no script yet. So we've shown "no false D_cap", not "D_cap catches an attack". That's PH4-15's job, once the scenario exists.
 
 ## 4. Paths: the PH4-01 finding
 
@@ -54,7 +54,7 @@ Ask Role 3 for the archive. The command is in `ROLE3-VM-TO-ROLE1.md` §2.
 
 ## 5. What to do next, in order
 
-1. **Run MLA-07 on the real data.** It compares D_cap per benign scenario between an ML-A envelope and an allowlist envelope. Compile the same image twice, each in its own run folder. If the envelope on the VM turns out to be the allowlist one (§2), compile the ML-A one as well, with `ml/model` present:
+1. **Run MLA-07 on the real data.** It compares D_cap per benign scenario between the ML-A envelope (the one on the VM) and an allowlist envelope, which needs a second compile of the same image in a separate run folder:
    ```bash
    PROVBIND_CAPS_MODEL=none python -m compiler.compile "$DEMO_REF" --run ~/mla07-allowlist
    PROVBIND_RUN=~/Provbind/run PROVBIND_RECORDING=~/Provbind/run/rec.jsonl \
@@ -62,11 +62,11 @@ Ask Role 3 for the archive. The command is in `ROLE3-VM-TO-ROLE1.md` §2.
      pytest -q tests/capability/test_mla_07_dcap_per_method.py
    ```
    Run it on Role 3's VM, or on a copy of the run folder: it needs `bindings.json` and `ground_truth.csv` from there.
-2. **Check the envelope** on the archive copy: its capability list and their `origin` (INFERRED means ML-A), and the counts:
+2. **Record the envelope's counts** from the archive copy:
    ```bash
    python -c "import json; e=json.load(open('envelopes/<hex>.json')); print(e['capabilities']); print(len(e['files']), 'files', len(e['symlinks']), 'symlinks', len(e['packages']), 'packages')"
    ```
-   With ML-A, expect `CAP_DAC_OVERRIDE` (INFERRED), as in Role 1's result.
+   The capability list is `CAP_DAC_OVERRIDE` (INFERRED, 0.9998).
 3. **Unresolved packages.** 11% of packages have no depth, and 14 components have no purl. Detections in those files get `context.depth: null`, so Role 4 scores ρ = 0.5. Nothing in this run hit one, but it's worth a look if it's cheap.
 4. **Decisions still open with you** (unchanged from 28 September):
    - `allowed_caps` (decision 4);
@@ -76,6 +76,6 @@ Ask Role 3 for the archive. The command is in `ROLE3-VM-TO-ROLE1.md` §2.
 ## 6. Checklist
 
 - [ ] MLA-07 run with the ML-A and allowlist envelopes on the real recording (§5.1)
-- [ ] Envelope capability list and its source (ML-A or allowlist) recorded (§5.2)
+- [ ] Envelope counts recorded (§5.2); the capability source is confirmed: ML-A
 - [ ] `symlinks`, `files[].sha256` and `compiler.paths.realpath` kept as they are (§4)
 - [ ] Decisions: `allowed_caps`, egress (§5.4)
