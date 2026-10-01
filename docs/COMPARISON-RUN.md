@@ -178,6 +178,9 @@ Zip these from `run/` and send them to Korn: `results/`, `ground_truth.csv`, `al
 or the key's password.
 
 ### Only the analysis (any PC, after the run)
+`scripts/rerun-estimators.sh` does the three commands below over every saved trace; with
+`EXPORT=1 DEMO_REF=<ref@digest>` it first re-exports the binaries from the running demo pod (closure plus
+every file mapped into the pod's processes, so Python's extension modules are included).
 ```bash
 python -m eval.baselines.confine_estimate --binaries run/traces/binaries --trace run/traces/rk-2-1.txt ... --out run/results/confine.json
 python -m eval.baselines.desfam_estimate  --binaries run/traces/binaries --benign 'run/traces/baseline/benign-*.txt' \

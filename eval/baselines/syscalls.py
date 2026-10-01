@@ -160,6 +160,25 @@ for _name in CATEGORY:                                    # a wrapper named exac
     LIBC_SYSCALLS.setdefault(_name, frozenset({_name}))
 
 
+# --- calls libc and the dynamic loader make on their own ---------------------------------------------
+# Every dynamically linked program makes these whatever it imports: the loader maps libraries
+# (mmap, mprotect, openat, read, fstat...), libc's start-up code sets up threads and signals
+# (arch_prctl, set_tid_address, set_robust_list, rseq, prlimit64, rt_sigaction...), malloc grows the
+# heap (brk), and exit() ends with exit_group. They never appear as imported symbols, because libc
+# calls them internally, so an import-only analysis misses them. Confine's glibc call-graph analysis
+# reaches them; Confine-E and DeSFAM-E add this set whenever there is at least one ELF file.
+
+LIBC_RUNTIME: frozenset[str] = frozenset({
+    "execve", "brk", "arch_prctl", "set_tid_address", "set_robust_list", "rseq", "prlimit64",
+    "mmap", "munmap", "mprotect", "mremap", "madvise", "openat", "open", "read", "pread64",
+    "close", "fstat", "newfstatat", "statx", "access", "faccessat", "faccessat2", "readlink",
+    "readlinkat", "lseek", "getrandom", "futex", "rt_sigaction", "rt_sigprocmask",
+    "rt_sigreturn", "sigaltstack", "getpid", "gettid", "getuid", "geteuid", "getgid",
+    "getegid", "uname", "sysinfo", "clock_gettime", "gettimeofday", "sched_getaffinity",
+    "exit", "exit_group", "tgkill", "write", "writev", "ioctl", "fcntl", "getcwd",
+})
+
+
 def syscalls_for(functions) -> set[str]:
     """The system calls the given libc function names may reach (best-effort; unknown names ignored)."""
     out: set[str] = set()

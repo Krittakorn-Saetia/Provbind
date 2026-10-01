@@ -51,6 +51,13 @@ def test_prefixes_are_stripped(tmp_path):
     assert [e.syscall for e in trace.read_trace(p)] == ["openat", "read"]
 
 
+def test_bpftrace_status_line_and_new_aliases(tmp_path):
+    t = tmp_path / "t.txt"
+    t.write_text("Attaching 367 probes...\n1\t7\tpython3\tnewfstat\n2\t7\tpython3\tsys_enter_newuname\n"
+                 "3\t7\tpython3\tnot a call\nnewlstat\n")
+    assert [e.syscall for e in trace.read_trace(t)] == ["fstat", "uname", "lstat"]
+
+
 def test_windows_and_executed():
     events = [trace.Event(i, 1, "c", n) for i, n in enumerate(["execve"] + ["read"] * 20)]
     wins = list(trace.windows(events, size=15, stride=3))
@@ -93,6 +100,18 @@ def test_confine_static_set_from_binaries(tmp_path):
     allow, how = confine.static_set(bindir, extra_calls=["exit_group"])
     assert how["elf_files"] == 1 and how["allow_size"] == len(allow)
     assert "exit_group" in allow
+
+
+def test_confine_static_set_includes_libc_runtime_calls(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    shutil.copy(os.path.realpath(__import__("sys").executable), bindir / "python3")
+    allow, _ = confine.static_set(bindir)
+    assert syscalls.LIBC_RUNTIME <= allow
+    assert "ptrace" not in allow
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert confine.static_set(empty)[0] == set()        # no ELF files: nothing is assumed
 
 
 def test_confine_capabilities_match_the_design():

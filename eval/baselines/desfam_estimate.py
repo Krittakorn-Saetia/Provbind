@@ -38,7 +38,7 @@ import os
 import statistics
 import sys
 
-from .syscalls import CATEGORIES, HIGH_RISK, categorize, syscalls_for
+from .syscalls import CATEGORIES, HIGH_RISK, LIBC_RUNTIME, categorize, syscalls_for
 from .trace import Event, imports_under, read_trace, syscalls_in
 
 CAPABILITIES = {
@@ -69,7 +69,7 @@ def docker_allowed(path: str | os.PathLike | None) -> set[str]:
 
 def final_set(binaries_dir, benign_traces, docker_seccomp=None, blocked=HIGH_RISK) -> tuple[set[str], dict]:
     functions, n_elf = imports_under(binaries_dir)
-    s_static = syscalls_for(functions)
+    s_static = syscalls_for(functions) | (LIBC_RUNTIME if n_elf else set())
     s_dynamic: set[str] = set()
     for path in benign_traces:
         s_dynamic |= syscalls_in(read_trace(path))

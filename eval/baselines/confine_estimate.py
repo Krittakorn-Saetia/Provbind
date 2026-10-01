@@ -29,7 +29,7 @@ import json
 import os
 import sys
 
-from .syscalls import syscalls_for
+from .syscalls import LIBC_RUNTIME, syscalls_for
 from .trace import imports_under, read_trace, syscalls_in
 
 CAPABILITIES = {
@@ -47,6 +47,8 @@ def static_set(binaries_dir: str | os.PathLike, extra_calls=()) -> tuple[set[str
     imported by the ELF files under `binaries_dir`, plus any `extra_calls` given."""
     functions, n_elf = imports_under(binaries_dir)
     allow = syscalls_for(functions) | set(extra_calls)
+    if n_elf:
+        allow |= LIBC_RUNTIME                              # libc's internal calls (see syscalls.py)
     return allow, {"elf_files": n_elf, "imported_functions": len(functions), "allow_size": len(allow)}
 
 
