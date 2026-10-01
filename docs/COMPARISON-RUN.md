@@ -177,6 +177,15 @@ Zip these from `run/` and send them to Korn: `results/`, `ground_truth.csv`, `al
 `falco.jsonl` and `logs/`. Keep `traces/` (it is large) until asked. Never send `pipeline/keys/cosign.key`
 or the key's password.
 
+### Again, with attack-2 (R-U2): `scripts/redo-comparison.sh`
+ML-B's model is tied to the image digest, so attack-2 needs a model for *this* image first.
+`scripts/redo-comparison.sh` runs, unattended (about 12.5 h, overnight), in a fresh run folder:
+`scripts/record-d2.sh` (D2 for the demo image, recorded with the same policies, volume and egress list as
+the comparison: 7 h of `make loadgen`, a 1 h gap, a 1 h held-out run; then `node.mlb split`, `train`,
+`evaluate`; then it deletes the deployment), and then `ATTACK2=1 scripts/comparison-run.sh`, whose node
+runs with `--mlb` (`MLB` follows `ATTACK2`; the script stops if the model is missing). The sudo password
+is asked once at the start and kept fresh. Export `COSIGN_PASSWORD` in your own terminal first.
+
 ### Only the analysis (any PC, after the run)
 `scripts/rerun-estimators.sh` does the three commands below over every saved trace; with
 `EXPORT=1 DEMO_REF=<ref@digest>` it first re-exports the binaries from the running demo pod (closure plus

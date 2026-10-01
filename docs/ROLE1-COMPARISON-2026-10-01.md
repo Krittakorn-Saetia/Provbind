@@ -24,7 +24,16 @@ PROVBIND has the highest F1 and no false positives. Its 15 misses are exactly th
 design said it would miss: rk-2 (kernel-CVE shape, the complementary case), ru-5 (credential read, its
 documented gap) and au-2 (a build step adds an undeclared program; only a weak signal).
 
+![Five systems: F1, false-positive rate, known and unknown recall](figures/comparison-metrics.png)
+
+PROVBIND against Falco across all three scored runs (30 September Test 1 and Test 2, this run):
+
+![PROVBIND vs Falco across all scored runs](figures/scored-runs-history.png)
+
 ## 1. Per scenario (flagged runs / 5)
+
+![Per scenario, per system](figures/comparison-per-scenario.png)
+
 
 | Scenario | Grid | Truth | PROVBIND | Falco | Confine-E | DeSFAM-E | Sig-only |
 |---|---|---|---|---|---|---|---|
@@ -120,6 +129,8 @@ traffic):
 | attacks (attack-1, rk-3, ru-3, ru-4) | 0.02 – 0.08 |
 | rk-2, ru-5 | 0.06 – 0.24 |
 
+![DeSFAM-E anomalous-window fractions per trace](figures/desfam-anomaly-fractions.png)
+
 No threshold separates benign from malicious here. The baseline contains only the load generator, so
 DNS lookups, volume writes and `kubectl exec` look new. With a representative baseline DeSFAM reports
 FPR 0.016 (its paper; shown beside the estimate in `COMPARISON.md`). Our number shows how sensitive the
@@ -161,7 +172,18 @@ Every P0 test is covered: E2E-03 by Role 3's run, the rest here or on 30 Septemb
 this five-system comparison would need an ML-B model for this run's image: our own D2 (about 9.5 h of
 benign load at the app's rate, `ml/data/mlb/README.md`) and then the runtime rounds again with `--mlb`.
 
-## 8. Open items
+## 8. Figures
+
+`docs/figures/` (PNG and SVG), made by `python -m eval.plots` (needs `matplotlib`):
+`comparison-metrics`, `comparison-per-scenario`, `desfam-anomaly-fractions`, `scored-runs-history`
+(all three scored runs) and `mla-capabilities` (ML-A, 30 September). The comparison figures are drawn
+from `docs/figures/data/comparison-2026-10-01.json`, this run's tables; after a new run, draw them from
+the run's own files: `python -m eval.plots --comparison run/results/COMPARISON.json --desfam
+run/results/desfam.json --out docs/figures`.
+
+![ML-A against simple baselines](figures/mla-capabilities.png)
+
+## 9. Open items
 
 - Korn: review the seven estimator fixes; decide whether DeSFAM-E should get a second benign baseline
   of benign-scenario activity (separate runs, not scored; about 20 minutes on the VM).
