@@ -1,6 +1,6 @@
 # Role 3 status: node runtime (Phase 4)
 
-**Updated 28 September 2026** by Claude Code (cloud). Scope: `node/`, `ml/data/mlb/`, and `tests/capability/test_ph4_*.py`, `test_cf_05_*.py` and `test_mlb_*.py`.
+**Updated 1 October 2026** by Claude Code (cloud), with the first results from the demo VM (see "Results on the demo VM"). Scope: `node/`, `ml/data/mlb/`, and `tests/capability/test_ph4_*.py`, `test_cf_05_*.py` and `test_mlb_*.py`.
 
 ## How this file started
 
@@ -22,6 +22,15 @@ They are stacked: **merge them in this order.** Each targets `main`, and each di
 | [#14](https://github.com/Krittakorn-Saetia/Provbind/pull/14) | `role3/cf05` | R3-T8: Cuckoo filter on the event path; CF-05; this final status |
 | [#15](https://github.com/Krittakorn-Saetia/Provbind/pull/15) | `role3/handoffs` | Handoffs to Roles 1, 2 and 4 (`node/handoff/`). Documentation only, not stacked: merge any time |
 
+#11 to #15 are merged. Open, from the demo-VM work (1 October):
+
+| PR | Branch | What |
+|---|---|---|
+| [#20](https://github.com/Krittakorn-Saetia/Provbind/pull/20) | `role3/kind-hook` | The normaliser drops kind's OCI hook and its children (182 false detections per pod start) |
+| [#21](https://github.com/Krittakorn-Saetia/Provbind/pull/21) | `role3/mlb05-mixed` | MLB-05 records not_run, not fail, with real D2 and no recording. **Merge before #22** |
+| [#22](https://github.com/Krittakorn-Saetia/Provbind/pull/22) | `role3/d2-demo-app` | Dataset D2 for the demo app (261 / 113 / 140 windows) |
+| this PR | `role3/vm-results` | This status update. Stacked on #20 |
+
 **Numbers**, with all four merged:
 - `pytest -m "not integration"`: 417 passed, 17 deselected (`main` alone: 392 and 13). That includes 25 new capability tests; 4 more are integration.
 - `pytest node/tests`: 319 unit tests, run inside PH4-17 until `testpaths` includes them (Q2).
@@ -31,18 +40,50 @@ They are stacked: **merge them in this order.** Each targets `main`, and each di
 
 | Task | What | Tests | Status | PR |
 |---|---|---|---|---|
-| R3-T1 | Normaliser: Tetragon JSON → §4.3 events (Eq. 50), namespace filter, drop counts | PH4-01, PH4-02a, PH4-02b | Done in the cloud; field shapes from the Tetragon docs, to verify against a real recording | [#11](https://github.com/Krittakorn-Saetia/Provbind/pull/11) |
-| R3-T2 | TracingPolicies: write on all paths, truncate, `cap_capable`, executable mmap, `tcp_connect`; Helm export filter | PH4-02a, PH4-02b; MLA-03 (Role 1) | Written and statically tested; not yet loaded into Tetragon | [#11](https://github.com/Krittakorn-Saetia/Provbind/pull/11) |
+| R3-T1 | Normaliser: Tetragon JSON → §4.3 events (Eq. 50), namespace filter, drop counts | PH4-01, PH4-02a, PH4-02b | Done, and checked on real Tetragon 1.7.1 output (no unexplained drops). Runtime steps dropped: runc init, kind's hook (#20) | [#11](https://github.com/Krittakorn-Saetia/Provbind/pull/11) |
+| R3-T2 | TracingPolicies: write on all paths, truncate, `cap_capable`, executable mmap, `tcp_connect`; Helm export filter | PH4-02a, PH4-02b; MLA-03 (Role 1) | Write, truncate and cap load and fire on the demo VM (as cluster-wide copies, see findings). Load and connect not yet applied | [#11](https://github.com/Krittakorn-Saetia/Provbind/pull/11) |
 | R3-T3 | Envelope and bindings store: reload on change, J_I, one cached envelope per digest (Eq. 52) | PH4-04 | Done in the cloud; the live scale test is written (integration) | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
 | R3-T4 | Verifier: decision order, mount exclusion, binding failures, detection records (§4.4) | PH4-03, PH4-05 to 18 | Done in the cloud | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
 | R3-T5 | `python -m node.run`: live and replay, `events.jsonl` and `detections.jsonl`, cold-start holding | PH2-10 | Done in the cloud; windows appear in the summary. PH2-10's test file was added by Role 2 (Q2) | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
 | R3-T6 | Replay harness: a recording plus `ground_truth.csv` → results per scenario; the synthetic §7 library | PH4-* | Done | [#12](https://github.com/Krittakorn-Saetia/Provbind/pull/12) |
-| R3-T7 | ML-B: gate, windows, Ψ_I, per-image Isolation Forest (as JSON, no pickle), g_I, θ_A, D_beh; range guard; D2 tooling (`python -m node.mlb`, `ml/data/mlb/`) | MLB-01 to 06 | Done in the cloud. MLB-01 and 02 pass (code properties). MLB-03 to 06 need real D2 | [#13](https://github.com/Krittakorn-Saetia/Provbind/pull/13) |
+| R3-T7 | ML-B: gate, windows, Ψ_I, per-image Isolation Forest (as JSON, no pickle), g_I, θ_A, D_beh; range guard; D2 tooling (`python -m node.mlb`, `ml/data/mlb/`) | MLB-01 to 06 | Done. Trained on real D2 (#22); MLB-01 to 05 pass on the demo VM | [#13](https://github.com/Krittakorn-Saetia/Provbind/pull/13) |
 | R3-T8 | Cuckoo filter on the event path, on and off (`--cuckoo`); a full filter is dropped loudly (CF-06's concern) | CF-05; CF-01 (the node's filter holds every declared path: unit test) | Done in the cloud. Synthetic: the filter doubles the per-event latency, so the §6.3 rule says drop | [#14](https://github.com/Krittakorn-Saetia/Provbind/pull/14) |
-| R3-T9 | Runtime hashing of executed files (stretch). The pipeline already takes a `hasher` | PH4-07, 08, 18 | To do | |
-| Demo PC | Load the policies, record `node/testdata/raw.jsonl` and a scenario session, run the live tests | All PH4 on real evidence; OH-02, OH-03 | Needs the demo PC | |
+| R3-T9 | Runtime hashing of executed files. The pipeline already takes a `hasher` | PH4-07, 08, 18; the symlink gap (findings) | To do. **No longer only a stretch:** it is the only way to close the symlink gap found on the VM | |
+| Demo PC | Load the policies, record `node/testdata/raw.jsonl` and a scenario session, run the live tests | All PH4 on real evidence; OH-02, OH-03 | Done on the demo VM, 1 October: see "Results on the demo VM". `raw.jsonl` recorded (not committed: host details) | |
 
-## Tests
+## Results on the demo VM (1 October)
+
+**Setup.**
+- VirtualBox VM: kernel 6.14, cgroup v2 with the systemd driver; kind v1.37 with Tetragon 1.7.1.
+- Image: the demo app `sha256:4ce219578835…`, signed with the team key. Envelope with ML-A capabilities.
+- Node code: #20. Policies: `write`, `truncate` and `cap`, as cluster-wide copies.
+- Scenarios: 3 rounds of benign-1, attack-1, attack-2, ph4-14 and trust-1 (restored after each), 40 s apart, then tamper-1 (16 ground-truth rows).
+- Recording: one session of 21 minutes, 2,967 events, with `node.run --mlb`.
+
+| ID | Result | Evidence |
+|---|---|---|
+| PH4-01 | **fail (a finding)** | 15 exec events, 6 with a path that is not real: Tetragon reports `/usr/bin/sh`, a symlink to `dash`. See findings |
+| PH4-02a | **pass** | exec 15, write 2,430, cap 508 in namespace `demo` |
+| PH4-02b | **fail** | load 0, connect 0: `load.yaml` and `connect.yaml` were not applied (left off for the demo, as the handoff says) |
+| PH4-05 | **pass** | D_exec / undeclared for `/tmp/.x9` in runs [1, 1, 1] |
+| PH4-06 | **pass** | 6 benign runs: only the weak class (D_exec / outside_closure, Low) |
+| PH4-12 | **pass** | D_write on `/etc/passwd` in runs [1, 1, 1] |
+| PH4-14 | **pass** | 8 writes to `/tmp/new.txt`, 0 detections for it |
+| PH4-17 | **pass** | 36 detections, 0 incomplete |
+| PH4-03, 07 to 11, 13, 15, 16, 18 | not_run | No row in the ground truth: attack-3 to attack-9, benign-3 and benign-4 have no scenario scripts yet (Role 1) |
+| MLB-01, 02 | **pass** | 30 contradicting events fed, none reached a window; windows identical over replays |
+| MLB-03 | **pass** | IF_I on 261 windows; θ_A = 0.657 at the 99th percentile of 113 validation windows |
+| MLB-04 | **pass** | Held-out FPR **0.0071** (1 of 140); the range guard added 0 |
+| MLB-05 | **pass** | D_beh in every attack-2 run: **[3, 5, 5]**; 0 deterministic detections in attack-2 |
+| MLB-06 | not_run | D2 for one image |
+| CF-05 | **pass** | 2,967 real events, 5 replays per mode; detections identical with and without the filter |
+
+**Other numbers.**
+- **No false alarms on 9.5 h of benign load (D2):** 2,742 events, all conforming, 0 detections.
+- **ML-B in the scenario run:** 13 of the 14 D_beh fall in attack-2 rows. The 14th is attack-1's payload (see findings). **0 D_beh in any benign row.**
+- **D2's rate:** about 53 windows per hour. The app makes kernel events only on `/cache` requests (about 15% of `make loadgen`), so reaching 360 windows took 7 h, in two parts on one pod (#22).
+
+## Tests (cloud results, before the demo VM)
 
 "Cloud" is what `pytest -m "not integration"` records here. "Demo PC" is what turns a result into pass or fail. How to record the evidence: `node/README.md`, "Recipe on the demo PC".
 
@@ -115,27 +156,30 @@ With synthetic D2 written to a D2 folder as well, MLB-01 to 05 passed, the model
 - **Q9. D2 length (Role 1's load generator).** A window starts at a process's first event, so 3 hours of the synthetic load gave about 290 windows, fewer than 100 for validation, and θ_A fell back to the 95th percentile. The plan expected 360. 4 hours gave the 99th percentile. Record at least 4 hours; `ml/data/mlb/README.md` has the steps.
 - **Q10. Per-image or global (C5).** MLB-06 compares them once D2 exists for 3 images. Until then the demo uses the per-image model, as the draft says.
 
-## Demo-VM findings (30 September)
+## Demo-VM findings (30 September and 1 October)
 
 - **kind's OCI hook scored as the app.** At every pod start runc runs `/kind/bin/mount-product-files.sh` inside the new container; it and its children (`mount`, `jq`, `cp`) use `CAP_SYS_ADMIN`. One demo-app start gave 182 detections (176 D_cap, 6 D_exec), none from the app. The normaliser now drops the hook and its descendants (`drop:runtime_hook`), matched by a `/kind/bin` script, a runtime parent and a host task cwd. The profiling labels (`testbed/profiling`, Role 1) may need the same rule: they use `is_runtime_init` only.
 - **Namespaced policies loaded but never fired** (NPOST 0) on a VirtualBox VM with kernel 6.14, cgroup v2 and the systemd driver: Tetragon's policy filter logged `failed to find cgroup id`. `cgidmap` (CRI) made it worse: no pod on any event. Workaround used: the same policies as cluster-wide `TracingPolicy`; the export allow list and the normaliser still keep only `demo`. Role 1's VM (kernel 7.0) did not need it.
 
+- **Tetragon reports the path a program was started with, not the real file (PH4-01).** In the demo image `/usr/bin/sh` is a symlink to `dash`; every `sh` exec arrives as `/usr/bin/sh`. Tetragon 1.7.1's exec event has no other path field (no `binary_properties`).
+  - Detections are still right: the node resolves runtime paths through the envelope's `symlinks` (`compiler.paths.realpath`), so `sh` became `dash`, declared, and scored outside_closure (Low), not undeclared.
+  - **The gap:** the node resolves symlinks as they were in the image, not as they are in the container now. A symlink repointed at runtime (for example `/usr/bin/sh` → `/tmp/evil`, then run `sh`) is resolved to `dash` and scores Low. Writes do not catch it: making a symlink is not a write, and no policy hooks symlink, rename or unlink. Runtime hashing (R3-T9) closes it, because the executed file's hash would not be dash's.
+  - Proposed for the Test Plan's update log (§10), for the team to decide: "Tetragon reports the exec path as invoked, symlinks unresolved; PH4-01's real-path check fails by design. The node canonicalises through the image's symlinks; a runtime-repointed symlink is undetected until R3-T9." `CLAUDE.md`'s rule about real paths holds for the envelope's keys, not for Tetragon's events.
+- **A D_beh can fall after its scenario's row.** attack-1's payload `/tmp/.x9` keeps running after the row ends; its window closed 30 s later and scored D_beh (0.663 > θ_A) outside every row. It is malicious, not a false positive. Role 4's chains should join it to attack-1 by `pid` and `time`, not by row.
+
 ## Blockers
 
 - **No Tetragon or cluster in the cloud.** Every live test (marked `integration`) and every scenario result needs the demo PC. That was expected.
-- **No real Tetragon output in the repository yet.** Sprint Handoff §7, Day 1 asks for `node/testdata/raw.jsonl`. Until it exists, the normaliser's input shapes come from the Tetragon documentation, not from our version.
-- **No D2 yet.** MLB-03 to 06 need the demo image's benign windows: 4 hours or more, plus an hour held out (Q9).
+- **Real Tetragon output is recorded but not committed.** `node/testdata/raw.jsonl` exists on the demo VM; it holds host details (cwd paths, node names), so it needs a review before it goes into the repository.
+- **Scenario scripts for attack-3 to attack-9, benign-3 and benign-4 (Role 1).** Without them, 11 PH4 IDs stay not_run.
 - **No runtime hash source (C3).** D_hash never fires on a raw recording, so PH4-07, 08 and 18 record `blocked`. R3-T9 is the stretch fix: hashing `/proc/<pid>/exe`, after checking Tetragon's PID namespace in kind.
 
 ## Next steps
 
-1. **Merge #11 to #14 in order.** (`node/tests` is now in `pytest.ini`'s `testpaths`: Q2, done in #11.)
-2. **Demo PC, Day 1 work:**
-   - load `node/tetragon/values.yaml` and the policies;
-   - save 5 minutes of output as `node/testdata/raw.jsonl`;
-   - run `python -m node.run --replay node/testdata/raw.jsonl` and fix any field the normaliser drops (its summary counts drops by reason);
-   - run `pytest -m integration tests/capability/test_ph4_01_02_events.py`.
-3. **Demo PC, scenarios.** Record one session while Role 1's scenarios run (`node/README.md`, "Recipe on the demo PC"). Then run the PH4 tests and CF-05 with `PROVBIND_RECORDING`, and PH4-04 live.
-4. **Demo PC, ML-B.** Build D2 (4 hours or more, plus a held-out hour: `ml/data/mlb/README.md`), then run the MLB tests.
-5. **Stretch, R3-T9: runtime hashing.** Check Tetragon's PID namespace in kind first, then hash `/proc/<pid>/exe` through the pipeline's `hasher` hook. That unblocks PH4-07, 08 and 18.
+1. **Merge #20, then #21, then #22**, then this PR.
+2. **R3-T9, runtime hashing.** Check Tetragon's PID namespace in kind first, then hash `/proc/<pid>/exe` through the pipeline's `hasher` hook. That unblocks PH4-07, 08 and 18 and closes the symlink gap.
+3. **PH4-02b:** apply `load.yaml` and `connect.yaml` (cluster-wide copies) for a short recording, then remove them again; they change ML-B's input.
+4. **Role 1:** scenario scripts for attack-3 to attack-9, benign-3 and benign-4; then rerun the PH4 tests on a new recording.
+5. **PH4-04 (integration) and OH-01 to 03** on the demo VM: OH-01 needs a recording of 100,000 events or more.
+6. **Decide (team):** the PH4-01 proposal for the update log; the namespaced-policy workaround (does Role 1's VM need it too?).
 6. ~~If Q2 is allowed: test files for PH2-10, MLA-07 and OH-01 to 03, OH-06.~~ Done by Role 2 on 29 September at Korn's request, together with Q2's `testpaths` (see `docs/ROLE3-FIXES-2026-09-29.md`).
