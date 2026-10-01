@@ -35,9 +35,21 @@ up:  ## start kind + registry, Tetragon, Falco, Neo4j, and the demo namespace (S
 	helm upgrade --install falco falcosecurity/falco -n falco --create-namespace \
 	  --set driver.kind=modern_ebpf --set falco.json_output=true
 	docker rm -f neo4j >/dev/null 2>&1 || true
-	docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/provbind-demo neo4j:5
+	docker run -d --restart unless-stopped --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/provbind-demo neo4j:5
 	kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
 	$(if $(wildcard node/tetragon/cap.yaml),kubectl apply -f node/tetragon/write.yaml -f node/tetragon/truncate.yaml -f node/tetragon/cap.yaml,@echo "make up: node/tetragon/ is not merged yet; apply Role 3's policies once it is")
+
+.PHONY: policies-cluster
+
+policies-cluster:  ## cluster-wide copies of the write/truncate/cap policies, for kernels where the namespaced ones never fire (ROLE3-VM-TO-ROLE1 §5.2)
+	mkdir -p $(PROVBIND_RUN)
+	kubectl delete tracingpoliciesnamespaced -n demo --all --ignore-not-found
+	for f in write truncate cap; do \
+	  sed -e 's/^kind: TracingPolicyNamespaced/kind: TracingPolicy/' -e '/^  namespace: demo$$/d' \
+	      -e 's/name: provbind-/name: provbind-all-/' node/tetragon/$$f.yaml > $(PROVBIND_RUN)/$$f-all.yaml; \
+	done
+	kubectl apply -f $(PROVBIND_RUN)/write-all.yaml -f $(PROVBIND_RUN)/truncate-all.yaml -f $(PROVBIND_RUN)/cap-all.yaml
+	@echo 'then pass POLICIES="$(PROVBIND_RUN)/write-all.yaml $(PROVBIND_RUN)/truncate-all.yaml $(PROVBIND_RUN)/cap-all.yaml" to make scored / comparison'
 
 down:  ## tear the cluster and the registry down
 	kind delete cluster || true

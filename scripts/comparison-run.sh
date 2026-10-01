@@ -27,7 +27,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${DEMO_REF:?set DEMO_REF to the signed ref@digest that make demo-app printed}"
 : "${PROVBIND_KEY:=pipeline/keys/cosign.pub}"
 : "${TETRAGON_CONTAINER:=export-stdout}"
-: "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml}"
+# load.yaml (D_load, R-K3) and connect.yaml (D_net, R-U3) are on here: without them PROVBIND cannot see
+# those two scenarios at all. They change ML-B's input, so with ATTACK2=1 keep D2 recorded the same way.
+: "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml node/tetragon/load.yaml node/tetragon/connect.yaml}"
+: "${EGRESS:=testbed/egress.json}"   # D_net needs an egress allow list (node --egress); empty turns D_net off
 : "${ROUNDS:=5}"              # docs/COMPARISON-RUN.md: every scenario at least 5 times
 : "${GAP:=10}"
 : "${WAIT_S:=120}"
@@ -108,7 +111,7 @@ python3 -m controller.watch --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --key
   > "$LOGS/controller.out" 2> "$LOGS/controller.log" & PIDS+=($!)
 ( kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0 \
     | tee "$PROVBIND_RUN/rec.jsonl" \
-    | python3 -m node.run --run "$PROVBIND_RUN" ) > "$LOGS/node.out" 2> "$LOGS/node.log" & PIDS+=($!)
+    | python3 -m node.run --run "$PROVBIND_RUN" ${EGRESS:+--egress "$EGRESS"} ) > "$LOGS/node.out" 2> "$LOGS/node.log" & PIDS+=($!)
 python3 -m alerts.run --run "$PROVBIND_RUN" > "$LOGS/alerts.out" 2> "$LOGS/alerts.log" & PIDS+=($!)
 python3 -m alerts.trust --run "$PROVBIND_RUN" --poll 2 > "$LOGS/trust.out" 2> "$LOGS/trust.log" & PIDS+=($!)
 ./eval/capture_falco.sh > "$LOGS/falco.out" 2> "$LOGS/falco.log" & PIDS+=($!)
