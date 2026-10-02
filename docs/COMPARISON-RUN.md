@@ -30,10 +30,11 @@ What it shows for the four contributions:
 
 | Contribution | Evidence from this run |
 |---|---|
-| C1 specification compilation | a design property: shown in the feature table, not a detection number |
-| C2 runtime verification | detection rate and false-positive rate per system (`COMPARISON.md`) |
-| C3 attribution | attribution level per system: 3 PROVBIND, 1 Falco and DeSFAM, 0 Confine and Sig-only |
-| C4 trust re-evaluation | the admission and trust rows (A-K1, A-K3, R-K1): what Sig-only misses and PROVBIND catches |
+| C1 specification compilation | **Figure 1**: time until a new image is protected (PROVBIND measured; Confine and DeSFAM by design; Falco has no per-image specification), plus PROVBIND's compile cost per step |
+| C2 runtime verification | **Figure 2**: detection rate and false-positive rate per system over the runtime and benign scenarios, plus PROVBIND's per-event check latency |
+| C3 attribution | **Figure 3**: share of each system's detections that name the container, process, rule, package, image layer and dependency path |
+| C4 trust re-evaluation | **Figure 4**: the admission and trust scenarios, runs caught per system with Sig-only, plus the trust loop's reaction time |
+| (detail) | **Figure 5**: every scenario x system, runs flagged / runs |
 
 ---
 
@@ -48,13 +49,14 @@ What it shows for the four contributions:
 | `eval/baselines/record_trace.sh` | bpftrace recorder: the demo pod's system calls only (filtered by its PID namespace) |
 | `eval/baselines/export_binaries.sh` | copies the image's executables and libraries out of the pod, for the estimators |
 | `eval/baselines/alert_latency.py` | time-to-alert for PROVBIND and Falco |
+| `eval/baselines/plot_contributions.py`, `make plot` | the paper figures (§6), one per contribution, from a run folder |
 | `testbed/demo-app/tier2.py` (+ routes in `app.py`) | the new harmless scenario behaviours, one function per scenario |
 | `testbed/demo-app/inj.c`, `gen_payload.sh` | a harmless shared library for R-K3, embedded at image build like `x9.c` |
 | `testbed/demo-app/Dockerfile.au2` | the A-U2 image variant |
 | `testbed/demo-app/volume-patch.yaml` | mounts an `emptyDir` at `/data` for B5 |
 | `testbed/scenarios/*.sh` | one script per new scenario, each writing its ground-truth row; `deploy_lib.sh` and the `deploy-*.sh` admission scripts |
 | `scripts/comparison-run.sh`, `make comparison` | the whole run, end to end |
-| `tests/eval/test_baselines.py`, `test_aggregate.py` | unit tests (no VM needed) |
+| `tests/eval/test_baselines.py`, `test_aggregate.py`, `test_plot_contributions.py` | unit tests (no VM needed) |
 
 Everything our scenarios do happens inside the throwaway demo container.
 
@@ -162,7 +164,8 @@ admission rounds (each rebuilds an image). Do not type in the terminal or snapsh
 What it does, in order: starts the controller, node, alerts, trust loop and Falco capture (as
 `make scored`) → deploys the signed demo app with `/data` → start-up trace from the moment the pod is
 ready → exports the image's binaries → benign baseline traces → every runtime and benign scenario,
-`ROUNDS` times, each with its own trace → the admission scenarios → Confine-E and DeSFAM-E → the tables.
+`ROUNDS` times, each with its own trace → the admission scenarios → Confine-E and DeSFAM-E → the tables →
+PROVBIND's efficiency tests on the run's own files (OH-01, PH3-12, OH-04, OH-05) → the figures.
 
 ### If something goes wrong
 - **bpftrace rejects its filter** (kernel 7.0): see the note at the top of `eval/baselines/record_trace.sh`
@@ -212,6 +215,22 @@ python -m eval.baselines.aggregate --run run --confine run/results/confine.json 
 | `confine.json`, `desfam.json` | the estimators' detail per trace (for example which call Confine-E would block) |
 | `admission-bindings.jsonl` | the admission pods' bindings, saved before teardown (for Sig-only) |
 | `latency.json` | time-to-alert |
+| `OH-01.json`, `PH3-12.json`, `OH-04.json`, `OH-05.json` | PROVBIND's efficiency: per-event latency, compile time per step, runtime index time and size |
+| `figures/` | the paper figures below (PNG, 300 dpi) |
+
+**The figures** (`make plot` remakes them from any run folder):
+
+| File | Contribution | (a) comparison | (b) PROVBIND's cost |
+|---|---|---|---|
+| `fig1_c1_specification.png` | C1 | time until a new image is protected | compile time per step; runtime index |
+| `fig2_c2_verification.png` | C2 | detection rate and false-positive rate | per-event check latency |
+| `fig3_c3_attribution.png` | C3 | what each system's detections name | - |
+| `fig4_c4_trust.png` | C4 | admission and trust scenarios, Sig-only included | trust-loop reaction time |
+| `fig5_scenarios.png` | detail | every scenario x system | - |
+
+Estimated systems are marked * and hatched where a value comes from a published design ("by design"); Sig-only is
+marked with a dagger. A panel with no input says "not measured" and how to measure it. OH-01 below 100,000 events
+is shown with its real event count.
 
 The raw inputs stay in `run/` (`ground_truth.csv`, `alerts.jsonl`, `falco.jsonl`, `traces/`), so every
 table can be rebuilt. For your own charts, load the JSON:
