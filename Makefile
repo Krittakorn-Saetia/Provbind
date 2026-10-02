@@ -131,7 +131,7 @@ check-contracts:  ## check the run folder against the Sprint Handoff §4 contrac
 
 ## --- comparison Tier 2 scenarios (demo PC; docs/COMPARISON-RUN.md §3) ------------------------------
 
-.PHONY: rk2 rk3 ru3 ru4 ru5 benign-dns benign-vol au2 ak1 ak2 ak3 au2-deploy comparison
+.PHONY: rk2 rk3 ru3 ru4 ru5 benign-dns benign-vol au2 ak1 ak2 ak3 au2-deploy comparison plot
 
 rk2:  ## R-K2: replay a known kernel-CVE syscall shape (waitid, splice), no exploit
 	./testbed/scenarios/rk2.sh
@@ -171,6 +171,9 @@ au2-deploy:  ## A-U2: build+sign the au-2 variant, deploy it, run the build-time
 
 comparison:  ## the full four-system comparison run: traces every scenario, runs the estimators + aggregator (needs DEMO_REF)
 	./scripts/comparison-run.sh
+
+plot:  ## the paper figures, one per contribution (C1-C4) + scenario detail, into results/figures (needs COMPARISON.json)
+	python3 -m eval.baselines.plot_contributions --run $(PROVBIND_RUN)
 
 .PHONY: scored
 

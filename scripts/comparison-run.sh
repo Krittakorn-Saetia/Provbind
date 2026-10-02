@@ -201,8 +201,19 @@ python3 -m eval.baselines.aggregate --run "$PROVBIND_RUN" $CONF --write
 make --no-print-directory compare
 python3 -m eval.baselines.alert_latency --run "$PROVBIND_RUN" --offline --out "$RESULTS/latency.json"
 
+step "7. PROVBIND's efficiency from this run's own files (OH-01, PH3-12, OH-04, OH-05), then the figures"
+# OH-01 replays rec.jsonl through the node and times every event; below the 100,000 events the plan
+# asks for it reports "fail", but its numbers are still real ones. The cost tests read envelopes/.
+PROVBIND_RUN="$PROVBIND_RUN" PROVBIND_RECORDING="$PROVBIND_RUN/rec.jsonl" \
+  python3 -m pytest -q -p no:cacheprovider tests/capability/test_oh_node_cost.py -k oh_01 >/dev/null 2>&1 || true
+PROVBIND_RUN="$PROVBIND_RUN" python3 -m pytest -q -p no:cacheprovider tests/capability/test_ph3_12_oh_04_05_cost.py \
+  >/dev/null 2>&1 || true
+python3 -m eval.baselines.plot_contributions --run "$PROVBIND_RUN" \
+  || echo "comparison-run: figures skipped (pip install -r requirements.txt for matplotlib); run make plot later"
+
 echo
 echo "comparison run done:"
 echo "  $RESULTS/COMPARISON.md   comparison tables (COMPARISON.json holds the same data for your own plots)"
 echo "  $RESULTS/SCORING.md      PROVBIND vs Falco scoring matrix"
+echo "  $RESULTS/figures/        the paper figures: one per contribution (C1-C4) + scenario detail"
 echo "  $RESULTS/confine.json $RESULTS/desfam.json $RESULTS/latency.json"
