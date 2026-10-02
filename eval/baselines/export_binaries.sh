@@ -10,7 +10,10 @@
 # which is exactly Confine's static reachability for the app) and copies each file from the pod with
 # `kubectl exec ... cat`. With --startup-trace it also copies any program executed in the first 30 s
 # that is on disk in the pod (utilities like chown, find that run during init), matching Confine's
-# "programs seen at startup" step. Files are stored flat, with '/' turned into '%'.
+# "programs seen at startup" step. It also copies every file mapped into a running process of the pod
+# (/proc/<pid>/maps): an interpreter such as Python loads most of its libc users at runtime as
+# extension modules (_socket, select, _posixsubprocess...), which the closure does not list but
+# Confine's analysis of the running image reaches. Files are stored flat, with '/' turned into '%'.
 set -euo pipefail
 
 RUN="${PROVBIND_RUN:-./run}"; NS=demo; DEPLOY=demo-app; DIGEST=""; OUT=""; STARTUP=""
@@ -62,6 +65,11 @@ PY
 pod="$(kubectl get pods -n "$NS" -l "app=$DEPLOY" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
 [ -n "$pod" ] || pod="$(kubectl -n "$NS" get pods -o jsonpath="{.items[?(@.metadata.name=~'^$DEPLOY')].metadata.name}" 2>/dev/null | awk '{print $1}')"
 [ -n "$pod" ] || { echo "export_binaries: no pod for $DEPLOY in $NS" >&2; exit 3; }
+
+# Add the files mapped into the pod's processes (shared libraries and extension modules).
+kubectl exec -n "$NS" "$pod" -- sh -c 'cat /proc/[0-9]*/maps 2>/dev/null' 2>/dev/null \
+  | awk '$6 ~ /^\// && $7 == "" {print $6}' >> "$paths_file" || true
+sort -u -o "$paths_file" "$paths_file"
 
 n=0; miss=0
 while IFS= read -r path; do

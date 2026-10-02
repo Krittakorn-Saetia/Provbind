@@ -12,3 +12,4 @@ matplotlib>=3.8          # paper figures (eval/baselines/plot_contributions.py)
 kubernetes>=29.0
 neo4j>=5.20
 pyyaml>=6.0
+matplotlib>=3.7   # eval/plots.py (figures); optional for everything else

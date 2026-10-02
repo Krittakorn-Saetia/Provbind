@@ -24,6 +24,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${TETRAGON_CONTAINER:=export-stdout}"
 : "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml}"
 : "${ROUNDS:=3}"
+: "${EGRESS:=}"          # an egress allow list (testbed/egress.json) turns on D_net; off by default
 : "${TRUST2:=1}"        # also trust-2 (key revoked) and benign-traffic each round; 0 gives the 30 September set
 : "${GAP:=10}"          # seconds between scenarios, so no window catches the previous one's tail
 : "${WAIT_S:=120}"
@@ -46,7 +47,7 @@ python3 -m controller.watch --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --key
   > "$LOGS/controller.out" 2> "$LOGS/controller.log" & PIDS+=($!)
 ( kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0 \
     | tee "$PROVBIND_RUN/rec.jsonl" \
-    | python3 -m node.run --run "$PROVBIND_RUN" ) > "$LOGS/node.out" 2> "$LOGS/node.log" & PIDS+=($!)
+    | python3 -m node.run --run "$PROVBIND_RUN" ${EGRESS:+--egress "$EGRESS"} ) > "$LOGS/node.out" 2> "$LOGS/node.log" & PIDS+=($!)
 python3 -m alerts.run --run "$PROVBIND_RUN" > "$LOGS/alerts.out" 2> "$LOGS/alerts.log" & PIDS+=($!)
 python3 -m alerts.trust --run "$PROVBIND_RUN" --poll 2 > "$LOGS/trust.out" 2> "$LOGS/trust.log" & PIDS+=($!)
 ./eval/capture_falco.sh > "$LOGS/falco.out" 2> "$LOGS/falco.log" & PIDS+=($!)

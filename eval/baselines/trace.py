@@ -3,7 +3,16 @@
 A trace is what `eval/baselines/record_trace.sh` writes on the demo VM: one line per system call,
 tab-separated, `<time_ns>\\t<pid>\\t<comm>\\t<syscall_name>`. A blank line and a `#` comment line are
 skipped, so a header is allowed. `read_trace` also accepts a bare list of syscall names, one per line,
-for a quick check without the recorder.
+for a quick check without the recorder. A line whose call field is not a syscall-shaped identifier is
+skipped: bpftrace prints a status line (`Attaching 367 probes...`) at the top of every recording, and
+that is not a system call.
+
+The kernel's tracepoint names for a few old calls carry a `new` prefix (`sys_enter_newfstat`); they are
+renamed to the syscall-table names (`fstat`) so they match the allow lists.
+
+Events of the container runtime itself (`runc`, whose comm reads `runc:[1:CHILD]` while it enters the
+pod's namespaces for a `kubectl exec`) are dropped by default: runc installs the container's seccomp
+filter only just before it executes the command, so its own calls are never subject to an allow list.
 
 ELF imports: `imported_functions` returns the undefined dynamic symbols of one ELF file (the libc
 wrappers it calls); `imports_under` unions them over every ELF file in a directory. Confine-E and
@@ -12,6 +21,7 @@ DeSFAM-E turn those into a system-call set with `syscalls.syscalls_for`.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,8 +34,9 @@ class Event:
     syscall: str       # the system-call name, without the sys_ prefix
 
 
-def read_trace(path: str | os.PathLike) -> list[Event]:
-    """Every system-call event in a trace file, in order."""
+def read_trace(path: str | os.PathLike, keep_runtime: bool = False) -> list[Event]:
+    """Every system-call event in a trace file, in order (without the container runtime's own calls
+    unless `keep_runtime`)."""
     events: list[Event] = []
     with open(path, encoding="utf-8", errors="replace") as f:
         for n, line in enumerate(f, 1):
@@ -34,11 +45,27 @@ def read_trace(path: str | os.PathLike) -> list[Event]:
                 continue
             parts = line.split("\t")
             if len(parts) >= 4:
-                t, pid, comm, call = parts[0], parts[1], parts[2], parts[3].strip()
-                events.append(Event(_int(t, n), _int(pid, 0), comm, _clean(call)))
+                t, pid, comm, call = parts[0], parts[1], parts[2], _clean(parts[3].strip())
+                if _SYSCALL_NAME.match(call) and (keep_runtime or not is_runtime(comm)):
+                    events.append(Event(_int(t, n), _int(pid, 0), comm, call))
             else:                                          # a bare syscall name per line
-                events.append(Event(n, 0, "", _clean(line.strip())))
+                call = _clean(line.strip())
+                if _SYSCALL_NAME.match(call):              # skips bpftrace's "Attaching N probes..."
+                    events.append(Event(n, 0, "", call))
     return events
+
+
+_SYSCALL_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+# Tracepoint names that differ from the x86-64 syscall-table names.
+_ALIASES = {"newfstat": "fstat", "newstat": "stat", "newlstat": "lstat", "newuname": "uname",
+            "sendfile64": "sendfile", "umount": "umount2"}
+
+RUNTIME_COMMS = ("runc",)          # runc, runc:[0:PARENT], runc:[1:CHILD], runc:[2:INIT]
+
+
+def is_runtime(comm: str) -> bool:
+    return comm.startswith(RUNTIME_COMMS)
 
 
 def _int(value: str, default: int) -> int:
@@ -52,7 +79,7 @@ def _clean(call: str) -> str:
     for prefix in ("sys_enter_", "sys_exit_", "sys_", "__x64_sys_", "SYS_"):
         if call.startswith(prefix):
             call = call[len(prefix):]
-    return call
+    return _ALIASES.get(call, call)
 
 
 def syscalls_in(events) -> set[str]:
