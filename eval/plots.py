@@ -34,7 +34,8 @@ GROUPS = [("Admission", ["ab-1", "ak-1", "ak-2", "ak-3", "au-2"]),
 
 # docs/ROLE1-RESULTS-2026-09-30.md, Sections 1 and 7; Comparison from the run's own tables.
 HISTORY = {"Test 1\n30 Sep, 20 runs": {"PROVBIND": (0.91, 0.20), "Falco": (0.50, 0.50)},
-           "Test 2 (ML-A)\n30 Sep, 60 runs": {"PROVBIND": (1.00, 0.00), "Falco": (0.40, 0.33)}}
+           "Test 2 (ML-A)\n30 Sep, 60 runs": {"PROVBIND": (1.00, 0.00), "Falco": (0.40, 0.33)},
+           "Comparison\n1 Oct, 90 runs": {"PROVBIND": (0.86, 0.00), "Falco": (0.53, 0.33)}}
 MLA = [("ML-A (LightGBM)", 0.516, 0.090), ("Pod's full default set", 0.178, None),
        ("Curated allowlist + port rule", 0.0, None), ("Empty set (Test 1's envelope)", 0.0, None)]
 
@@ -103,7 +104,8 @@ def fig_metrics(plt, tables, out):
     fig.suptitle(f"Comparison run: five systems, {tables['runs']} scored runs", x=0.01, ha="left",
                  fontsize=13, fontweight="bold", y=1.12)
     fig.text(0.01, -0.08, "Hatched: estimated from published designs applied to our system-call traces, not measured. "
-             "DeSFAM-E's unknown-threat recall comes with a false-positive rate of 0.77: it flags most benign runs too.",
+             f"DeSFAM-E's unknown-threat recall comes with a false-positive rate of {sysm['DeSFAM-E']['fpr']:.2f}: "
+             "it flags most benign runs too." if "DeSFAM-E" in sysm else "",
              fontsize=8.5, color=INK2)
     _save(fig, out, "comparison-metrics")
     plt.close(fig)
@@ -194,13 +196,13 @@ def fig_desfam(plt, desfam, labels, out):
     plt.close(fig)
 
 
-def fig_history(plt, tables, out):
+def fig_history(plt, tables, out, label=None):
     hist = dict(HISTORY)
     if tables:
         s = tables["systems"]
-        hist[f"Comparison\n1 Oct, {tables['runs']} runs"] = {n: (s[n]["f1"], s[n]["fpr"]) for n in ("PROVBIND", "Falco")}
+        hist[label or f"This run\n{tables['runs']} runs"] = {n: (s[n]["f1"], s[n]["fpr"]) for n in ("PROVBIND", "Falco")}
     tests = list(hist)
-    fig, axes = plt.subplots(1, 2, figsize=(10, 3.4))
+    fig, axes = plt.subplots(1, 2, figsize=(4.4 + 2.0 * len(tests), 3.6))
     for ax, idx, title in ((axes[0], 0, "F1 (higher is better)"), (axes[1], 1, "False-positive rate (lower is better)")):
         w = 0.36
         for k, n in enumerate(("PROVBIND", "Falco")):
@@ -254,11 +256,12 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     os.makedirs(args.out, exist_ok=True)
     plt = _plt()
-    tables, desfam = None, None
+    tables, desfam, label = None, None, None
     if args.comparison:
         doc = json.load(open(args.comparison, encoding="utf-8"))
         tables = doc["tables"]
         desfam = doc.get("desfam")
+        label = doc.get("label")
     if args.desfam:
         desfam = json.load(open(args.desfam, encoding="utf-8"))
     if tables:
@@ -267,7 +270,7 @@ def main(argv=None) -> int:
         if desfam:
             labels = {s["scenario"]: s["label"] for s in tables["per_scenario"]}
             fig_desfam(plt, desfam, labels, args.out)
-    fig_history(plt, tables, args.out)
+    fig_history(plt, tables, args.out, label)
     fig_mla(plt, args.out)
     return 0
 

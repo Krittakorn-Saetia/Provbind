@@ -8,6 +8,9 @@ kind, Tetragon, Falco), 30 Sep to 1 Oct 2026 · **Bundle:** `provbind-results-20
 The procedure and the scenario grid are in `docs/COMPARISON-RUN.md`. This note gives the numbers, the
 known/unknown breakdown, the fixes the estimated baselines needed after the run, and the limits.
 
+> **Update, 2 October: the run was repeated with attack-2 (R-U2) and ML-B on: Section 10.** That is now
+> the main result (95 runs, PROVBIND F1 0.87, FPR 0.00). Sections 0 to 9 describe the 1 October run.
+
 ## 0. Headline
 
 90 scored runs: 18 scenarios × 5 rounds, 60 malicious and 30 benign.
@@ -24,15 +27,15 @@ PROVBIND has the highest F1 and no false positives. Its 15 misses are exactly th
 design said it would miss: rk-2 (kernel-CVE shape, the complementary case), ru-5 (credential read, its
 documented gap) and au-2 (a build step adds an undeclared program; only a weak signal).
 
-![Five systems: F1, false-positive rate, known and unknown recall](figures/comparison-metrics.png)
+![Five systems: F1, false-positive rate, known and unknown recall](figures/2026-10-01/comparison-metrics.png)
 
-PROVBIND against Falco across all three scored runs (30 September Test 1 and Test 2, this run):
+PROVBIND against Falco across all scored runs (30 September Test 1 and Test 2, this run, the redo):
 
 ![PROVBIND vs Falco across all scored runs](figures/scored-runs-history.png)
 
 ## 1. Per scenario (flagged runs / 5)
 
-![Per scenario, per system](figures/comparison-per-scenario.png)
+![Per scenario, per system](figures/2026-10-01/comparison-per-scenario.png)
 
 
 | Scenario | Grid | Truth | PROVBIND | Falco | Confine-E | DeSFAM-E | Sig-only |
@@ -129,7 +132,7 @@ traffic):
 | attacks (attack-1, rk-3, ru-3, ru-4) | 0.02 – 0.08 |
 | rk-2, ru-5 | 0.06 – 0.24 |
 
-![DeSFAM-E anomalous-window fractions per trace](figures/desfam-anomaly-fractions.png)
+![DeSFAM-E anomalous-window fractions per trace](figures/2026-10-01/desfam-anomaly-fractions.png)
 
 No threshold separates benign from malicious here. The baseline contains only the load generator, so
 DNS lookups, volume writes and `kubectl exec` look new. With a representative baseline DeSFAM reports
@@ -174,11 +177,11 @@ benign load at the app's rate, `ml/data/mlb/README.md`) and then the runtime rou
 
 ## 8. Figures
 
-`docs/figures/` (PNG and SVG), made by `python -m eval.plots` (needs `matplotlib`):
-`comparison-metrics`, `comparison-per-scenario`, `desfam-anomaly-fractions`, `scored-runs-history`
-(all three scored runs) and `mla-capabilities` (ML-A, 30 September). The comparison figures are drawn
-from `docs/figures/data/comparison-2026-10-01.json`, this run's tables; after a new run, draw them from
-the run's own files: `python -m eval.plots --comparison run/results/COMPARISON.json --desfam
+`docs/figures/` (PNG and SVG), made by `python -m eval.plots` (needs `matplotlib`): the redo's
+`comparison-metrics` and `comparison-per-scenario` (from `data/comparison-2026-10-02.json`),
+`scored-runs-history` (all four scored runs) and `mla-capabilities` (ML-A, 30 September). The 1 October
+run's figures, with `desfam-anomaly-fractions`, are in `docs/figures/2026-10-01/` (from
+`data/comparison-2026-10-01.json`). After a new run, draw them from the run's own files: `python -m eval.plots --comparison run/results/COMPARISON.json --desfam
 run/results/desfam.json --out docs/figures`.
 
 ![ML-A against simple baselines](figures/mla-capabilities.png)
@@ -191,3 +194,54 @@ run/results/desfam.json --out docs/figures`.
   open.
 - The P1 tests above that were not run, if the team wants them before the deadline.
 - Tool versions for `testbed/VERSIONS.md`.
+
+## 10. The redo with attack-2 and ML-B (2 October)
+
+**Run:** `scripts/redo-comparison.sh` on the same VM and image (`sha256:fcca765f…`): ML-B's D2 for this
+image (`scripts/record-d2.sh`), then `ATTACK2=1 scripts/comparison-run.sh`, the node with `--mlb`.
+95 scored runs: 19 scenarios × 5 rounds, 65 malicious and 30 benign. Every other setting as on 1 October.
+
+### 10.1 ML-B for the demo image (D2)
+
+| | Value |
+|---|---|
+| Benign load | 7 h (4,532 requests, 0 failed), then a 1 h gap, then 1 h held out (645 requests) |
+| Windows | 154 train, 66 validation, 55 held out (`ml/data/mlb/fcca765f…/`) |
+| Threshold θ_A | 0.548, at the **95th** percentile: fewer than 100 validation windows, so Test Plan §5's fallback |
+| Held-out false-positive rate (MLB-04) | **0 of 55 windows** (forest 0, range guard 0) |
+
+Caveats: the app gave about 31 windows an hour (Role 3's VM: 53), so D2 is below the 360 windows Test Plan
+§12.2 asks for; the 99th-percentile threshold would need about 12 h of load. The held-out maximum score
+equals θ_A exactly; a window counts only above θ_A, so it is not a false positive, but it is the margin.
+
+### 10.2 Results
+
+| System | Kind | TP | FP | FN | TN | Precision | Recall | **F1** | **FPR** | Attribution |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **PROVBIND** | measured | 50 | 0 | 15 | 30 | 1.00 | 0.77 | **0.87** | **0.00** | 3 |
+| Falco | measured | 25 | 10 | 40 | 20 | 0.71 | 0.38 | 0.50 | 0.33 | 1 |
+| Confine-E | estimated | 0 | 5 | 65 | 25 | 0.00 | 0.00 | — | 0.17 | 0 |
+| DeSFAM-E | estimated | 35 | 25 | 30 | 5 | 0.58 | 0.54 | 0.56 | 0.83 | 1 |
+| Sig-only | derived | 5 | 0 | 60 | 30 | 1.00 | 0.08 | 0.14 | 0.00 | 0 |
+
+![Five systems, redo with attack-2](figures/comparison-metrics.png)
+
+| System | Known (35 runs) | Unknown (30 runs) |
+|---|---|---|
+| **PROVBIND** | **30/35 (0.86)** | **20/30 (0.67)** |
+| Falco | 15/35 (0.43) | 10/30 (0.33) |
+| Confine-E | 0/35 | 0/30 |
+| DeSFAM-E | 10/35 (0.29) | 25/30 (0.83), with FPR 0.83 |
+| Sig-only | 5/35 (0.14) | 0/30 |
+
+![Per scenario, redo](figures/comparison-per-scenario.png)
+
+**Reading it:**
+- **attack-2: PROVBIND 5/5, Falco 0/5.** Every attack-2 run raised only `D_beh/anomalous_window`
+  (Medium) and no deterministic detection: ML-B alone caught it, as designed (E2E-03, MLB-05).
+- **Reproducible.** Every other scenario gave the same PROVBIND result as on 1 October, and ML-B added
+  no false positive: benign rows raised only Low `D_exec/outside_closure` (the `kubectl exec` shell) or
+  nothing. PROVBIND's misses are still rk-2, ru-5 and au-2.
+- **DeSFAM-E** flagged ph4-14 in 5 of 5 runs (3 of 5 on 1 October), so its FPR rose to 0.83; it also
+  flagged attack-2, which says little at that false-positive rate (Section 4).
+- Coverage (Section 7): R-U2 is now in the comparison; E2E-03 is covered on this VM as well as Role 3's.
