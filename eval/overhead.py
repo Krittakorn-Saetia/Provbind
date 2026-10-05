@@ -57,7 +57,7 @@ def _read(path: str) -> str:
 
 def sample(proc: str = "/proc") -> dict:
     """CPU seconds (utime + stime) and RSS of every process in a group, plus the host's CPU counters."""
-    pids = {}
+    pids, others = {}, {}
     for name in os.listdir(proc):
         if not name.isdigit():
             continue
@@ -68,9 +68,10 @@ def sample(proc: str = "/proc") -> dict:
         fields = stat[stat.rindex(")") + 2:].split()
         cmd = _read(f"{proc}/{name}/cmdline").replace("\0", " ")
         group = next((g for g, match in GROUPS.items() if match(comm, cmd)), None)
-        if group is None:
-            continue
         cpu = (int(fields[11]) + int(fields[12])) / TICK         # utime, stime (fields 14 and 15)
+        if group is None:                                         # everything else: for "where the time goes"
+            others[name] = {"comm": comm, "cmd": cmd[:80], "cpu_s": cpu}
+            continue
         rss = 0
         for line in _read(f"{proc}/{name}/status").splitlines():
             if line.startswith("VmRSS:"):
@@ -79,7 +80,7 @@ def sample(proc: str = "/proc") -> dict:
     cpu_line = next((ln for ln in _read(f"{proc}/stat").splitlines() if ln.startswith("cpu ")), "cpu 0 0 0 0")
     vals = [int(x) for x in cpu_line.split()[1:]]
     idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
-    return {"time": time.time(), "pids": pids, "host": {"total": sum(vals), "idle": idle}}
+    return {"time": time.time(), "pids": pids, "others": others, "host": {"total": sum(vals), "idle": idle}}
 
 
 def cpu_delta(before: dict, after: dict, seconds: float | None = None) -> dict:
@@ -100,6 +101,14 @@ def cpu_delta(before: dict, after: dict, seconds: float | None = None) -> dict:
     out["monitor_cpu_pct"] = round(sum(out[g]["cpu_pct"] for g in MONITOR_GROUPS), 2)
     out["monitor_rss_mb"] = round(sum(out[g]["rss_mb"] for g in MONITOR_GROUPS), 1)
     out["seconds"] = round(elapsed, 1)
+    # the top CPU users over the window, monitors or not (kubelet, apiserver, containerd, the app...)
+    top = {}
+    for pid, p in list(after.get("others", {}).items()) + [(k, {"comm": v["group"], "cpu_s": v["cpu_s"]})
+                                                            for k, v in after["pids"].items()]:
+        prev = before.get("others", {}).get(pid) or before["pids"].get(pid)
+        d = p["cpu_s"] - (prev["cpu_s"] if prev else 0.0)
+        top[p["comm"]] = top.get(p["comm"], 0.0) + d
+    out["top"] = [[k, round(100.0 * v / elapsed, 2)] for k, v in sorted(top.items(), key=lambda kv: -kv[1])[:10]]
     return out
 
 
@@ -129,6 +138,12 @@ def load_rows(path: Path) -> list[dict]:
     return rows
 
 
+def spread_of(rows, config, kind, field):
+    vals = [r[field] for r in rows if r.get("config") == config and r.get("kind") == kind
+            and isinstance(r.get(field), (int, float))]
+    return (min(vals), max(vals)) if vals else (None, None)
+
+
 def median_of(rows, config, kind, field):
     vals = [r[field] for r in rows if r.get("config") == config and r.get("kind") == kind
             and isinstance(r.get(field), (int, float))]
@@ -146,16 +161,19 @@ def build(rows, threshold=20.0, comparison=None, oh01=None) -> dict:
     table = []
     for kind, field, label, lower in METRICS:
         base, _ = median_of(rows, "none", kind, field)
-        entry = {"metric": label, "kind": kind, "field": field, "values": {}, "overhead_pct": {}}
+        entry = {"metric": label, "kind": kind, "field": field, "values": {}, "overhead_pct": {}, "spread": {}}
         for c in configs:
             v, n = median_of(rows, c, kind, field)
             entry["values"][c] = v
+            entry["spread"][c] = spread_of(rows, c, kind, field)
             entry["overhead_pct"][c] = overhead_pct(v, base, lower) if c != "none" else 0.0
         table.append(entry)
     cpu = {}
     for c in configs:
         for f in ("monitor_cpu_pct", "monitor_rss_mb", "host_busy_pct"):
             cpu.setdefault(c, {})[f] = median_of(rows, c, "cpu", f)[0]
+        tops = [r.get("top") for r in rows if r.get("config") == c and r.get("kind") == "cpu" and r.get("top")]
+        cpu[c]["top"] = tops[-1] if tops else None
     reps = {c: len({r.get("rep") for r in rows if r.get("config") == c}) for c in configs}
 
     def worst(config, kinds):
@@ -218,12 +236,24 @@ def render(doc) -> str:
     for e in doc["table"]:
         out.append(f"| {e['metric']} | " + " | ".join(fmt(e["values"].get(c)) for c in cs) + " | "
                    + " | ".join(fmt(e["overhead_pct"].get(c), "%") for c in cs if c != "none") + " |")
+    out += ["", "Spread over repetitions (min – max):", "", "| Metric | " + " | ".join(cs) + " |",
+            "|---|" + "---|" * len(cs)]
+    for e in doc["table"]:
+        out.append(f"| {e['metric']} | " + " | ".join(
+            f"{fmt((e.get('spread') or {}).get(c, (None, None))[0])} – {fmt((e.get('spread') or {}).get(c, (None, None))[1])}"
+            for c in cs) + " |")
     out += ["", "| Configuration | monitor CPU (% of one core) | monitor memory (MB) | host CPU busy (%) |",
             "|---|---|---|---|"]
     for c in cs:
         m = doc["cpu"].get(c, {})
         out.append(f"| {c} | {fmt(m.get('monitor_cpu_pct'))} | {fmt(m.get('monitor_rss_mb'))} | "
                    f"{fmt(m.get('host_busy_pct'))} |")
+    if any(doc["cpu"].get(c, {}).get("top") for c in cs):
+        out += ["", "Top CPU users in the last repetition of each configuration (% of one core):", ""]
+        for c in cs:
+            t = doc["cpu"].get(c, {}).get("top")
+            if t:
+                out.append(f"- **{c}**: " + ", ".join(f"{k} {v:.1f}" for k, v in t))
     out += ["", f"## Against the {th:.0f}% limit", ""]
     for c, v in doc["verdict"].items():
         ok_app = "within" if v["app_within_threshold"] else "OVER"

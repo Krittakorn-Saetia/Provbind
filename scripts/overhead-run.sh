@@ -44,6 +44,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${WARM_S:=20}"
 : "${THRESHOLD:=20}"
 : "${CONFIGS:=none falco tetragon provbind}"
+: "${SKIP_PREP:=0}"                         # 1 = skip steps 0, 0b, 0c (an ablation run reuses them)
+: "${NODE_MLB:=1}"                          # 0 = the provbind configuration's node runs without ML-B
 : "${PREP_RUNS:=5}"                         # cold compiles of the image for PROVBIND's preparation time
 LOADNS=provbind-load
 RES="$OUT_RUN/results"; LOGS="$OUT_RUN/logs"; ROWS="$RES/overhead.jsonl"
@@ -104,7 +106,7 @@ configure() { # CONFIG
               python3 -m controller.watch --run "$OUT_RUN" --namespace "$NAMESPACE" --key "$PROVBIND_KEY" \
                 >> "$LOGS/controller.out" 2>> "$LOGS/controller.log" & PIDS+=($!)
               ( kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0 \
-                  | python3 -m node.run --run "$OUT_RUN" --mlb ${EGRESS:+--egress "$EGRESS"} ) \
+                  | python3 -m node.run --run "$OUT_RUN" $([ "$NODE_MLB" = 1 ] && echo --mlb) ${EGRESS:+--egress "$EGRESS"} ) \
                 >> "$LOGS/node.out" 2>> "$LOGS/node.log" & PIDS+=($!)
               python3 -m alerts.run --run "$OUT_RUN" >> "$LOGS/alerts.out" 2>> "$LOGS/alerts.log" & PIDS+=($!)
               python3 -m alerts.trust --run "$OUT_RUN" --poll 2 >> "$LOGS/trust.out" 2>> "$LOGS/trust.log" & PIDS+=($!) ;;
@@ -119,6 +121,7 @@ micro() {
   kubectl -n "$NAMESPACE" exec -i "deploy/$DEPLOY" -- python3 - "$FILE_OPS" "$SPAWNS" < eval/overhead_micro.py
 }
 
+if [ "$SKIP_PREP" != 1 ]; then
 # --- 0. PROVBIND's own cost from the comparison run's files ----------------------------------------
 step "0. OH-01 (per-event verification), OH-04/OH-05 (compile, index) from $PROVBIND_RUN"
 if [ -f "$PROVBIND_RUN/rec.jsonl" ]; then
@@ -165,6 +168,8 @@ python3 -m eval.zero_day_check --run "$PROVBIND_RUN" --mlb-data "ml/data/mlb/${D
   --egress "$EGRESS" || echo "  a zero-day check FAILED: see $PROVBIND_RUN/results/ZERODAY.md"
 cp "$PROVBIND_RUN/results/ZERODAY.md" "$RES/" 2>/dev/null || true
 
+fi   # SKIP_PREP
+
 # --- setup: the same demo pod, a Service for it, an in-cluster load client --------------------------
 step "setup: policies, demo app, Service, load pod; the ML-B model and envelopes from $PROVBIND_RUN"
 for policy in $POLICIES; do kubectl apply -f "$policy" >/dev/null; done
@@ -209,9 +214,11 @@ done
 step "2. report"
 restore
 trap - EXIT
-python3 -m eval.prep_time falco --ready-s "${FALCO_READY[@]}" --out "$PREP"
-python3 -m eval.prep_time report --prep "$PREP" --out "$RES"
-cp "$RES/PREP.json" "$PROVBIND_RUN/results/" 2>/dev/null || true      # figure 1 reads it from the run folder
+if [ "$SKIP_PREP" != 1 ]; then
+  python3 -m eval.prep_time falco --ready-s "${FALCO_READY[@]}" --out "$PREP"
+  python3 -m eval.prep_time report --prep "$PREP" --out "$RES"
+  cp "$RES/PREP.json" "$PROVBIND_RUN/results/" 2>/dev/null || true    # figure 1 reads it from the run folder
+fi
 python3 -m eval.overhead report --dir "$RES" --threshold "$THRESHOLD" \
   --comparison "$PROVBIND_RUN/results/COMPARISON.json" --oh01 "$RES/OH-01.json"
 kubectl -n "$LOADNS" delete pod loadgen --wait=false >/dev/null 2>&1 || true

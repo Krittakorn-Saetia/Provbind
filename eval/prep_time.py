@@ -100,14 +100,17 @@ def _packages(args):
 
 def confine(args):
     span, events = _trace_span_s(args.startup)
+    # Confine watches a container's first seconds; the comparison run recorded for --startup-seconds
+    # (STARTUP_SECONDS, 30), so that window is the time the method spends, even if the trace came out short
+    observed = max(span, args.startup_seconds or 0.0)
     allow, funcs, n_elf, t_imports, t_map = _static(args.binaries)
-    parts = {"startup_observation": round(span, 3), "export_binaries": args.export_s,
+    parts = {"startup_observation": round(observed, 3), "export_binaries": args.export_s,
              "elf_import_extraction": round(t_imports, 3), "syscall_mapping": round(t_map, 3)}
     _append(args.out, {"system": "Confine-E", "what": "start-up observation + export binaries + static analysis",
                        "seconds": round(sum(v for v in parts.values() if v), 3), "parts_s": parts,
                        "n": n_elf, "n_what": "ELF files analysed", **_packages(args),
                        "imported_functions": len(funcs), "allow_list": len(allow),
-                       "startup_syscalls": events})
+                       "startup_syscalls": events, "startup_trace_span_s": round(span, 3)})
 
 
 def desfam(args):
@@ -219,6 +222,8 @@ def main(argv=None) -> int:
     c.add_argument("--binaries", required=True)
     c.add_argument("--startup", required=True)
     c.add_argument("--export-s", type=float)
+    c.add_argument("--startup-seconds", type=float, default=30.0,
+                   help="the start-up recording window the comparison run used (STARTUP_SECONDS, default 30)")
     c.add_argument("--packages", type=int, help="distinct packages owning the analysed ELF files")
     c.add_argument("--unowned", type=int, help="analysed files no package owns (e.g. a source-built runtime)")
     d = sub.add_parser("desfam")

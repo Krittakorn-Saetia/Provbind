@@ -214,9 +214,66 @@ and DeSFAM-E's own preparation. ML-B's 7 h is far longer than DeSFAM-E's 30 min 
 obvious candidate for optimisation (more requests per hour, or fewer windows); Section 4 will state it
 with the numbers.
 
-## 4. Results
+## 4. Results (overhead run, 5 October 2026, demo VM)
 
-*To be filled in from `run-overhead/results/OVERHEAD.md` after the run.*
+**Zero-day validity (Z1–Z7): all pass.** Specification compiled 2026-10-01 14:50Z, first scenario
+2026-10-02 00:24Z; no attack artefact declared; 220 ML-B windows, none after the first scenario or
+overlapping an attack; model and DeSFAM baseline written first; no advisory; Falco on default rules.
+
+**Preparation time per new image (measured):** PROVBIND 5.34 s (median of 5 cold compiles; 109 packages,
+5,695 files); PROVBIND + ML-B 7 h (4,532 requests, 220 windows; training 0.8 s); Falco 0 s (no per-image
+step); Confine-E 30 s start-up window + 2.2 s (export 1.9 s, analysis 0.24 s; 27 ELF files from 8 packages,
++17 outside packages); DeSFAM-E 30.4 min (profiling; training 0.8 s; 320 requests, 2,297 windows).
+Note: the redo run's start-up trace came out empty, so Confine-E's start-up step is counted as its 30 s
+recording window, not the trace's span.
+
+**Runtime overhead, against no monitoring (medians of 3 repetitions):**
+
+| Metric | Falco | Tetragon only | PROVBIND |
+|---|---|---|---|
+| request latency p95, request mix | +13.1% | +8.1% | **+34.4%** |
+| request latency p95, file-writing requests | +9.5% | +15.6% | **+44.8%** |
+| throughput, request mix / file-writing | −11.8% / −10.3% | −5.8% / −13.8% | **−20.5% / −29.1%** |
+| worst case: file write / process start | +1.4% / +9.4% | +43.5% / +159.5% | **+84.8% / +133.5%** |
+| monitor CPU (% of one core) / memory | 12.7% / 98 MB | 15.8% / 204 MB | 14.4% / 428 MB |
+
+In absolute terms the request mix's p95 went from 2.68 ms to 3.60 ms (+0.92 ms; Falco +0.35 ms).
+
+**Q4, against 20%: PROVBIND is over.** Its worst application overhead is 44.8% (worst case 133.5%).
+Falco stays under 20% on the application (13.7%). Against the paper's own baseline, the existing runtime
+collection (Tetragon with the same policies), PROVBIND's userspace adds 17–25% to latency and 16–18% to
+throughput: also just over.
+
+**Where the time goes (from these numbers):**
+- **The sensor's policies** carry much of it: Tetragon with PROVBIND's five policies alone already adds
+  16% on file-writing requests, 44% per file write and 160% per process start. Process starts are
+  expensive because the capability hook (`cap.yaml`) and the library-load hook (`load.yaml`) fire many
+  times for every new process; every file write hits `write.yaml`.
+- **PROVBIND's own userspace** adds the rest (17–25% over Tetragon alone). Its verification is cheap
+  (OH-01: 1.9 µs per event at p50, 6.7 µs at p99), so the cost is the pipeline around it: Tetragon's JSON
+  through `kubectl logs` into a Python process, ML-B's windows, the alert engine, on a VM whose CPU was
+  already 69% busy with no monitor at all (82% with PROVBIND).
+
+**Caveats.**
+- The VM was close to saturation (69% busy before any monitor), so every monitor's CPU competes with the
+  app directly; overheads on a node with idle cores would be lower. This must be stated.
+- The test app's requests are tiny (1.7 ms), so a fixed per-event cost is a large percentage; for a real
+  service with longer requests the same absolute cost (+0.9 ms) is a smaller share.
+- Three repetitions; the report now also gives the min–max spread.
+
+**Q3, the trade-off.** For 0 false positives instead of Falco's 10 (of 30 benign runs), and 50 detections
+instead of 25 (of 65 attacks), PROVBIND costs about +0.6 ms more per request than Falco at p95 (+21
+percentage points) and 4x Falco's memory. Whether that is worth it depends on the supervisor's 20% rule,
+which PROVBIND does not yet meet, so the answer is: **the accuracy gain is large, but the cost has to come
+down before the trade-off can be claimed.**
+
+**Next: find and cut the cost** (`scripts/overhead-ablation.sh`, about 1.5 h): each policy alone against no
+monitoring, and PROVBIND without ML-B. Then optimise what it points at. The likely candidates:
+1. **Narrow the hooks in the kernel:** filter `write.yaml` to the paths that matter, and `cap.yaml` to the
+   capabilities the envelope tracks, instead of sending every event to userspace (Tetragon `matchArgs`).
+2. **A cheaper event path:** read Tetragon's gRPC or export file directly instead of `kubectl logs`, and
+   parse with a faster JSON library, or batch.
+3. **ML-B only when needed:** it only adds D_beh (attack-2); measure its share and offer it as an option.
 
 ## 5. Question 1: the graphs
 
