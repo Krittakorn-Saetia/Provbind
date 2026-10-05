@@ -179,6 +179,13 @@ def build(rows, threshold=20.0, comparison=None, oh01=None) -> dict:
                     for e in table}
         pc, fc = cpu["provbind"]["monitor_cpu_pct"], cpu["falco"]["monitor_cpu_pct"]
         vs_falco["monitor CPU, PROVBIND / Falco"] = round(pc / fc, 2) if pc is not None and fc else None
+    vs_tetragon = None                 # the paper's own baseline: overhead over the existing runtime collection
+    if "provbind" in configs and "tetragon" in configs:
+        vs_tetragon = {}
+        for kind, field, label, lower in METRICS:
+            t, _ = median_of(rows, "tetragon", kind, field)
+            p, _ = median_of(rows, "provbind", kind, field)
+            vs_tetragon[label] = overhead_pct(p, t, lower)
     trade = None
     if comparison:
         systems = comparison.get("tables", {}).get("systems", {})
@@ -191,7 +198,8 @@ def build(rows, threshold=20.0, comparison=None, oh01=None) -> dict:
                           "worst_micro_overhead_pct": v.get("worst_micro_overhead_pct"),
                           "monitor_cpu_pct": cpu.get(cfg, {}).get("monitor_cpu_pct")})
     return {"threshold_pct": threshold, "configs": configs, "repetitions": reps, "table": table, "cpu": cpu,
-            "verdict": verdict, "provbind_minus_falco": vs_falco, "tradeoff": trade, "oh01": oh01}
+            "verdict": verdict, "provbind_minus_falco": vs_falco, "provbind_over_tetragon": vs_tetragon,
+            "tradeoff": trade, "oh01": oh01}
 
 
 def fmt(v, unit=""):
@@ -228,6 +236,13 @@ def render(doc) -> str:
                 "|---|---|"]
         for k, v in doc["provbind_minus_falco"].items():
             out.append(f"| {k} | {fmt(v, '' if 'CPU,' in k else ' points')} |")
+    if doc.get("provbind_over_tetragon"):
+        out += ["", "## PROVBIND over the existing runtime collection (Tetragon with the same policies)", "",
+                "The paper's evaluation plan reports overhead relative to the runtime collection, not to an "
+                "unmonitored host: this is PROVBIND's own userspace cost.", "",
+                "| Metric | PROVBIND vs Tetragon alone |", "|---|---|"]
+        for k, v in doc["provbind_over_tetragon"].items():
+            out.append(f"| {k} | {fmt(v, '%')} |")
     if doc["tradeoff"]:
         out += ["", "## Cost beside accuracy", "",
                 "| System | TP | FP | F1 | FPR | worst app overhead | worst micro overhead | monitor CPU |",

@@ -85,3 +85,10 @@ def test_record_and_report_cli(tmp_path, monkeypatch, capsys):
         assert overhead.main(["record", "--out", str(out), "--config", cfg, "--rep", "1", "--kind", "mix"]) == 0
     assert overhead.main(["report", "--dir", str(tmp_path)]) == 0
     assert (tmp_path / "OVERHEAD.md").exists() and "PROVBIND runtime overhead" in capsys.readouterr().out
+
+
+def test_overhead_over_tetragon_is_reported():
+    r = rows() + [{"config": "tetragon", "rep": 1, "kind": "mix", "p50_ms": 5, "p95_ms": 11, "rps": 95}]
+    doc = overhead.build(r)
+    assert doc["provbind_over_tetragon"]["request latency p95, mix (ms)"] == 4.5
+    assert "existing runtime collection" in overhead.render(doc)
