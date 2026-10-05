@@ -5,7 +5,8 @@ folder. PNG at 300 dpi, sized for the IEEE page (7.16 in across two columns, 3.5
 
 | File | Contribution | (a) comparison | (b) PROVBIND's cost |
 |---|---|---|---|
-| fig1_c1_specification.png | C1 specification compilation | time until each system can protect a new image | compile time per step; runtime index |
+| fig1_c1_specification.png | C1 specification compilation | time until each system can protect a new image (exact, measured, with package counts, when results/PREP.json exists) | compile time per step; runtime index (without PREP.json) |
+| fig1b_c1_components.png | C1, optional | each system's preparation split into its timed components | - |
 | fig2_c2_verification.png | C2 runtime verification | detection rate and false-positive rate (runtime and benign scenarios) | per-event check latency (OH-01) |
 | fig3_c3_attribution.png | C3 attribution | share of each system's detections that name container, process, rule, package, layer, dependency path | - |
 | fig4_c4_trust.png | C4 trust re-evaluation | admission and trust scenarios: runs caught per system, Sig-only included | trust-loop reaction time |
@@ -441,16 +442,12 @@ def _fmt_exact(s):
 
 
 def fig1_c1_measured(d, path, dpi):
-    """Figure 1 when every system's preparation was measured (results/PREP.json from eval/prep_time.py)."""
+    """Figure 1 when every system's preparation was measured (results/PREP.json from eval/prep_time.py):
+    the time until a new image is protected, exact, with the packages and repetitions behind it. The
+    component breakdown is a separate image (fig1b_c1_components.png)."""
     plt = _plt()
-    prep = d["prep"]
-    ready = c1_readiness_measured(prep)
-    comps = c1_components(prep)
-    heights = [max(2, len(c[2])) + 1.2 for c in comps] + ([1.4] if prep.get("Falco") else [])
-    fig = plt.figure(figsize=(7.16, 1.2 + 0.24 * sum(heights)))
-    gs = fig.add_gridspec(len(heights), 2, width_ratios=[1.05, 1], height_ratios=heights, wspace=0.8,
-                          hspace=1.1)
-    a = fig.add_subplot(gs[:, 0])
+    ready = c1_readiness_measured(d["prep"])
+    fig, a = plt.subplots(figsize=(3.6, 0.62 * len(ready) + 0.9))
     ys = list(range(len(ready)))[::-1]
     vals = [r["seconds"] for r in ready if r["seconds"]]
     lo, hi = (min(vals) / 3 if vals else 1), (max(vals) * 40 if vals else 3600)
@@ -473,13 +470,36 @@ def fig1_c1_measured(d, path, dpi):
     a.minorticks_off()
     a.set_ylim(-0.8, len(ready) - 0.4)
     a.set_yticks(ys)
-    a.set_yticklabels([_tick(r["system"], KIND.get(r["system"], "measured")) for r in ready])
+    a.set_yticklabels([_tick(r["system"], KIND.get(r["system"], "measured")) for r in ready], fontsize=7)
     a.tick_params(axis="y", length=0)
     _grid(a, "x")
-    _panel(a, "a", "Time until a new image is protected (measured)")
+    a.set_title("Time until a new image is protected (measured)", loc="left", fontsize=8, color=INK, pad=6)
+    _footer(fig, ["C1. Every time was measured on our VM. PROVBIND compiles its specification",
+                  "from signed build evidence once per image digest; PROVBIND + ML-B adds the",
+                  "benign recording ML-B learns from. * Confine-E and DeSFAM-E are estimated",
+                  "systems: their times are their preparation steps as we ran them, each timed."])
+    return _save(plt, fig, path, dpi)
 
+
+def fig1b_c1(d, path, dpi):
+    """Figure 1b (optional): each system's preparation split into its timed components, one small panel
+    per system on its own scale. Needs results/PREP.json; without it, PROVBIND's compile steps only."""
+    plt = _plt()
+    prep = d.get("prep") or {}
+    comps = c1_components(prep)
+    if not comps:                                       # no PREP.json: PROVBIND's steps from the envelopes
+        st = c1_steps(d)
+        if st["steps"]:
+            comps = [("PROVBIND", st["total_s"], [(k, v / 1000) for k, v in st["steps"]])]
+    if not comps:
+        fig, ax = plt.subplots(figsize=(3.6, 1.2))
+        _empty(ax, "Not measured: no PREP.json and no envelope in this run folder.")
+        return _save(plt, fig, path, dpi)
+    heights = [max(2, len(c[2])) + 1.2 for c in comps] + ([1.4] if prep.get("Falco") else [])
+    fig = plt.figure(figsize=(3.8, 0.21 * sum(heights) + 0.2))
+    gs = fig.add_gridspec(len(heights), 1, height_ratios=heights, hspace=1.1)
     for i, (name, total, parts) in enumerate(comps):
-        ax = fig.add_subplot(gs[i, 1])
+        ax = fig.add_subplot(gs[i, 0])
         names = [k for k, _ in parts][::-1]
         secs = [v for _, v in parts][::-1]
         top = max(secs) if secs else 1
@@ -492,20 +512,18 @@ def fig1_c1_measured(d, path, dpi):
         ax.tick_params(axis="x", labelsize=5.5)
         ax.set_xlim(0, top * 1.45)
         _grid(ax, "x")
-        ax.set_title(("(b)  " if i == 0 else "") + f"{_tick(name, KIND.get(name, 'measured'))}: {_fmt_exact(total)}",
-                     loc="left", fontsize=7, color=INK, pad=3)
+        ax.set_title(f"{_tick(name, KIND.get(name, 'measured'))}: {_fmt_exact(total)}", loc="left", fontsize=7,
+                     color=INK, pad=3)
     f = prep.get("Falco")
     if f:
-        ax = fig.add_subplot(gs[len(comps), 1])
+        ax = fig.add_subplot(gs[len(comps), 0])
         ax.set_axis_off()
         ax.text(0, 0.5, "Falco: no per-image component (generic rules)."
                 + (f"\nIts DaemonSet is ready {_fmt_exact(f['restart_ready_s'])} after a restart "
                    f"(median of {f.get('restarts')} restarts)." if f.get("restart_ready_s") is not None else ""),
                 transform=ax.transAxes, fontsize=6.3, color=INK2, va="center")
-    _footer(fig, ["C1. Every time was measured on our VM. PROVBIND compiles its specification from signed build "
-                  "evidence once per image digest; PROVBIND + ML-B adds the benign recording ML-B learns from.",
-                  "* Confine-E and DeSFAM-E are estimated systems: their times are their preparation steps as we ran "
-                  "them (recordings, binary export, analysis, training), each timed. Each panel in (b) has its own scale."])
+    _footer(fig, ["Preparation time per component, measured on our VM. Each panel has its own scale.",
+                  "* Estimated systems: their preparation steps as we ran them, each timed."])
     return _save(plt, fig, path, dpi)
 
 
@@ -849,7 +867,8 @@ def fig5_scenarios(d, path, dpi):
     return _save(plt, fig, path, dpi)
 
 
-FIGURES = (("fig1_c1_specification.png", fig1_c1), ("fig2_c2_verification.png", fig2_c2),
+FIGURES = (("fig1_c1_specification.png", fig1_c1), ("fig1b_c1_components.png", fig1b_c1),
+           ("fig2_c2_verification.png", fig2_c2),
            ("fig3_c3_attribution.png", fig3_c3), ("fig4_c4_trust.png", fig4_c4),
            ("fig5_scenarios.png", fig5_scenarios))
 

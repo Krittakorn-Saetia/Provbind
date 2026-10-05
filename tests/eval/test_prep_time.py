@@ -67,4 +67,7 @@ def test_figure1_component_breakdown_for_every_system(tmp_path):
     pytest_mpl = __import__("importlib").util.find_spec("matplotlib")
     if pytest_mpl:
         out = pc.fig1_c1({"prep": prep}, tmp_path / "fig1.png", 80)
-        assert (tmp_path / "fig1.png").stat().st_size > 10_000 and out.endswith("fig1.png")
+        assert (tmp_path / "fig1.png").stat().st_size > 5_000 and out.endswith("fig1.png")
+        assert (tmp_path / "fig1b.png").exists() is False
+        pc.fig1b_c1({"prep": prep}, tmp_path / "fig1b.png", 80)
+        assert (tmp_path / "fig1b.png").stat().st_size > 5_000
