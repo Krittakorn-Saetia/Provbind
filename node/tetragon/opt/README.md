@@ -5,7 +5,7 @@ The originals are unchanged; apply ONE set at a time (both together report every
 
 | Policy | Change | Why | What PROVBIND loses |
 |---|---|---|---|
-| write | no return probe; in-kernel rate limit: an identical event (same file, same mask) once a minute per process | the app rewrites the same few files; every write() was an event | repeated writes to the same file by the same process within a minute (the first is still reported) |
+| write | no return probe; in-kernel rate limit: an identical event (same file, same mask) once a minute per process; only paths starting with `/` leave the kernel | the app rewrites the same few files; every write() was an event, and so was every HTTP response written to a socket | repeated writes to the same file by the same process within a minute (the first is still reported) |
 | cap | in-kernel rate limit: the same capability check once a minute per process | `cap_capable` is one of the hottest kernel functions | repeated checks of the same capability by the same process (the first is still reported) |
 | load | no return probe; in-kernel rate limit: the same library mapped executable once a minute across processes | every new process maps the same libraries | a second process mapping an already-reported library within a minute |
 | truncate, connect | unchanged (rare events) | | |

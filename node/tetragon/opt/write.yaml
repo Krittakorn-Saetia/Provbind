@@ -1,4 +1,6 @@
-# Optimised variant of ../write.yaml (see README.md): no return probe, an in-kernel rate limit per process.
+# Optimised variant of ../write.yaml (see README.md): no return probe, an in-kernel rate limit per process,
+# and only paths starting with "/" leave the kernel (socket:[…] and pipe:[…] writes, which node/normalize.py
+# drops anyway, are every HTTP response the app sends).
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicyNamespaced
 metadata:
@@ -15,6 +17,10 @@ spec:
       type: "int"       # mask: 0x02 MAY_WRITE
     selectors:
     - matchArgs:
+      - index: 0
+        operator: "Prefix"
+        values:
+        - "/"           # a real file, not a socket or pipe
       - index: 1
         operator: "Mask"
         values:

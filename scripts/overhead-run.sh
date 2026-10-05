@@ -208,9 +208,18 @@ kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout=180s >/dev/nul
 kubectl -n "$NAMESPACE" get svc "$DEPLOY" >/dev/null 2>&1 \
   || kubectl -n "$NAMESPACE" expose deployment "$DEPLOY" --port 8080 >/dev/null
 kubectl get ns "$LOADNS" >/dev/null 2>&1 || kubectl create ns "$LOADNS" >/dev/null
-kubectl -n "$LOADNS" get pod loadgen >/dev/null 2>&1 \
-  || kubectl -n "$LOADNS" run loadgen --image="$DEMO_REF" --restart=Never --command -- sleep infinity >/dev/null
-kubectl -n "$LOADNS" wait --for=condition=Ready pod/loadgen --timeout=180s >/dev/null
+# The load pod: a pod still terminating from an earlier run looks Ready for its grace period and then dies
+# under the client (this broke every client workload of the 5 October opt2 run), so such a pod is waited
+# out and a fresh one started. Checked again before every configuration.
+ensure_loadgen() {
+  if [ -n "$(kubectl -n "$LOADNS" get pod loadgen -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null)" ] \
+     || ! [ "$(kubectl -n "$LOADNS" get pod loadgen -o jsonpath='{.status.phase}' 2>/dev/null)" = Running ]; then
+    kubectl -n "$LOADNS" delete pod loadgen --ignore-not-found --wait=true --timeout=120s >/dev/null 2>&1 || true
+    kubectl -n "$LOADNS" run loadgen --image="$DEMO_REF" --restart=Never --command -- sleep infinity >/dev/null
+  fi
+  kubectl -n "$LOADNS" wait --for=condition=Ready pod/loadgen --timeout=180s >/dev/null
+}
+ensure_loadgen
 client 5 mix > "$LOGS/connectivity.json" && echo "  client reaches $URL: $(cat "$LOGS/connectivity.json")"
 
 # Neo4j serves only offline attribution (alerts/attribute.py), which no configuration here runs; a JVM in
@@ -228,6 +237,7 @@ for rep in $(seq 1 "$REPS"); do
   for cfg in $order; do
     step "rep $rep/$REPS: $cfg"
     configure "$cfg"
+    ensure_loadgen
     client 10 mix > /dev/null || true                                   # warm the path, discarded
     python3 -m eval.overhead sample > "$LOGS/before.json"
     # A failed workload is recorded without numbers and the run goes on (the report skips it).
@@ -254,5 +264,6 @@ if [ "$SKIP_PREP" != 1 ]; then
 fi
 python3 -m eval.overhead report --dir "$RES" --threshold "$THRESHOLD" \
   --comparison "$PROVBIND_RUN/results/COMPARISON.json" --oh01 "$RES/OH-01.json"
-kubectl -n "$LOADNS" delete pod loadgen --wait=false >/dev/null 2>&1 || true
+# Deleted and waited for, so the next run never finds it half-gone.
+kubectl -n "$LOADNS" delete pod loadgen --ignore-not-found --wait=true --timeout=120s >/dev/null 2>&1 || true
 echo "overhead run done: $RES/OVERHEAD.md, $RES/PREP.md and $RES/ZERODAY.md"

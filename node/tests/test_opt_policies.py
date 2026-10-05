@@ -35,3 +35,9 @@ def test_an_event_without_return_value_is_kept():
     n = Normalizer()
     n(line)
     assert n.stats.get("denied", 0) == 0                 # no return value is not a refusal
+
+
+def test_socket_and_pipe_writes_stay_in_the_kernel():
+    sel = load(OPT / "write.yaml")["spec"]["kprobes"][0]["selectors"][0]
+    assert {"index": 0, "operator": "Prefix", "values": ["/"]} in sel["matchArgs"]
+    assert any(a["index"] == 1 and a["values"] == ["2"] for a in sel["matchArgs"])   # still MAY_WRITE only

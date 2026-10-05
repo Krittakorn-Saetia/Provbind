@@ -286,6 +286,43 @@ the test itself were then found in the top-CPU list and fixed:
   monitor), which had inflated every monitor's percentage.
 Both fixes apply to all configurations equally; the run is repeated with them.
 
+**Clean rerun, original policies (orig2, 5 October night; Neo4j paused, name resolved once):**
+
+| Metric (median of 3, against no monitoring) | Falco | Tetragon only | PROVBIND |
+|---|---|---|---|
+| request latency p95, request mix | +7.9% | +5.8% | **+6.3%** |
+| throughput, request mix | −5.4% | −4.4% | **−4.4%** |
+| request latency p50 / p95, file-writing requests (/cache) | +8.0% / +9.6% | +35.2% / +32.8% | **+34.5% / +33.6%** |
+| throughput, file-writing requests | −8.9% | −27.5% | **−27.1%** |
+| worst case: file write / process start | +9.6% / +12.9% | +94.8% / +236.7% | +38.4% / +209.0% |
+| monitor CPU (% of one core) / memory | 9.2% / 109 MB | 24.8% / 210 MB | 22.8% / 824 MB |
+
+In absolute terms: request mix p95 1.50 → 1.59 ms; /cache p95 1.33 → 1.77 ms (+0.44 ms, Falco +0.13 ms).
+
+What this run shows:
+- **Without the two test artefacts, PROVBIND's own userspace costs nothing measurable.** Against Tetragon
+  with the same policies, every application metric is within ±0.6% (the spreads overlap). The 17–25%
+  of the first run was the artefacts (Neo4j, CoreDNS) and the busy VM, not PROVBIND.
+- **On the ordinary request mix PROVBIND is within 20%** (+6.3%, close to Falco's +7.9%).
+- **All of the remaining cost is the sensor's file-write hook** on requests that write a file: Tetragon
+  alone already adds 33–35% there. `write.yaml` hooks `security_file_permission` with no path filter
+  (ML-B needs every written file), and every write, including each HTTP response written to a socket,
+  becomes an event the node then throws away.
+- So Q4's answer is now precise: **PROVBIND meets 20% on mixed traffic, not on write-heavy traffic, and
+  the part over is the kernel hook, not the PROVBIND software.**
+
+**Optimised rerun (opt2): invalid for the application metrics.** Every client workload failed in every
+configuration, `none` included: the load pod deleted at the end of orig2 (`--wait=false`) was still
+terminating when opt2 started, passed the readiness check during its grace period, then died under the
+client. Only the micro-benchmark ran (file write +97%, process start +175% for PROVBIND), and the CPU
+figures are not comparable because the window held only the micro-benchmark. The file event source
+(`EVENT_SOURCE=file`, `docker exec … tail`) also showed high CPU in docker and containerd (export 60%,
+dockerd 35%, containerd-shim 48% of a core), so it is dropped: `kubectl logs` was not the bottleneck
+(export 1.6% in orig2). Fixed in `scripts/overhead-run.sh`: the load pod is waited out and recreated
+when it is terminating or not running, checked before every configuration, and deleted with a wait at
+the end; failed workloads are now listed in the report instead of showing as "OVER 20%". The optimised
+write policy also drops socket and pipe writes in the kernel (`Prefix "/"`; the node dropped them anyway).
+
 **Next: find and cut the cost** (`scripts/overhead-ablation.sh`, about 1.5 h): each policy alone against no
 monitoring, and PROVBIND without ML-B. Then optimise what it points at. The likely candidates:
 1. **Narrow the hooks in the kernel:** filter `write.yaml` to the paths that matter, and `cap.yaml` to the

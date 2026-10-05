@@ -176,6 +176,9 @@ def build(rows, threshold=20.0, comparison=None, oh01=None) -> dict:
         tops = [r.get("top") for r in rows if r.get("config") == c and r.get("kind") == "cpu" and r.get("top")]
         cpu[c]["top"] = tops[-1] if tops else None
     reps = {c: len({r.get("rep") for r in rows if r.get("config") == c}) for c in configs}
+    failed = sorted({(r.get("config"), r.get("kind")) for r in rows if r.get("failed")})
+    failed = [{"config": c, "kind": k, "count": sum(1 for r in rows if r.get("failed") and r.get("config") == c
+                                                    and r.get("kind") == k)} for c, k in failed]
 
     def worst(config, kinds):
         vals = [e["overhead_pct"].get(config) for e in table if e["kind"] in kinds]
@@ -218,7 +221,7 @@ def build(rows, threshold=20.0, comparison=None, oh01=None) -> dict:
                           "monitor_cpu_pct": cpu.get(cfg, {}).get("monitor_cpu_pct")})
     return {"threshold_pct": threshold, "configs": configs, "repetitions": reps, "table": table, "cpu": cpu,
             "verdict": verdict, "provbind_minus_falco": vs_falco, "provbind_over_tetragon": vs_tetragon,
-            "tradeoff": trade, "oh01": oh01}
+            "tradeoff": trade, "oh01": oh01, "failed": failed}
 
 
 def fmt(v, unit=""):
@@ -234,6 +237,9 @@ def render(doc) -> str:
            + ". Values are medians over repetitions; overhead is against `none` (no monitor).", "",
            "| Metric | " + " | ".join(cs) + " | " + " | ".join(f"{c} overhead" for c in cs if c != "none") + " |",
            "|---|" + "---|" * (len(cs) * 2 - 1)]
+    if doc.get("failed"):
+        out[-2:-2] = ["**Failed workloads (no numbers; a — below may come from these):** "
+                      + ", ".join(f"{f['config']} {f['kind']} x{f['count']}" for f in doc["failed"]) + ".", ""]
     for e in doc["table"]:
         out.append(f"| {e['metric']} | " + " | ".join(fmt(e["values"].get(c)) for c in cs) + " | "
                    + " | ".join(fmt(e["overhead_pct"].get(c), "%") for c in cs if c != "none") + " |")
@@ -259,9 +265,11 @@ def render(doc) -> str:
     for c, v in doc["verdict"].items():
         ok_app = "within" if v["app_within_threshold"] else "OVER"
         ok_mic = "within" if v["micro_within_threshold"] else "over"
-        out.append(f"- **{c}**: worst application overhead {fmt(v['worst_app_overhead_pct'], '%')} ({ok_app} "
-                   f"{th:.0f}%); worst-case micro-benchmark {fmt(v['worst_micro_overhead_pct'], '%')} "
-                   f"({ok_mic} {th:.0f}%).")
+        app_s = (f"{fmt(v['worst_app_overhead_pct'], '%')} ({ok_app} {th:.0f}%)"
+                 if v["worst_app_overhead_pct"] is not None else "no data (the workloads failed)")
+        mic_s = (f"{fmt(v['worst_micro_overhead_pct'], '%')} ({ok_mic} {th:.0f}%)"
+                 if v["worst_micro_overhead_pct"] is not None else "no data (the workload failed)")
+        out.append(f"- **{c}**: worst application overhead {app_s}; worst-case micro-benchmark {mic_s}.")
     if doc["provbind_minus_falco"]:
         out += ["", "## PROVBIND against Falco", "", "| Metric | PROVBIND overhead minus Falco overhead |",
                 "|---|---|"]
@@ -316,7 +324,10 @@ def main(argv=None) -> int:
         print(json.dumps(cpu_delta(json.load(open(args.before)), json.load(open(args.after)), args.seconds)))
     elif args.cmd == "record":
         text = sys.stdin.read().strip().splitlines()
-        obj = json.loads(text[-1]) if text else {}
+        obj = json.loads(text[-1]) if text else {"failed": True}
+        if not text:
+            print(f"overhead: {args.config} rep {args.rep} {args.kind}: the workload printed nothing (failed)",
+                  file=sys.stderr)
         obj.update({"config": args.config, "rep": args.rep, "kind": args.kind, "recorded": time.time()})
         with open(args.out, "a", encoding="utf-8") as f:
             f.write(json.dumps(obj) + "\n")

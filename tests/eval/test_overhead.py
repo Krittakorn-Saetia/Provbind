@@ -92,3 +92,20 @@ def test_overhead_over_tetragon_is_reported():
     doc = overhead.build(r)
     assert doc["provbind_over_tetragon"]["request latency p95, mix (ms)"] == 4.5
     assert "existing runtime collection" in overhead.render(doc)
+
+
+def test_failed_workloads_are_reported():
+    rows = [{"config": "none", "rep": 1, "kind": "mix", "p95_ms": 10.0},
+            {"config": "provbind", "rep": 1, "kind": "mix", "failed": True},
+            {"config": "provbind", "rep": 1, "kind": "cache", "failed": True}]
+    doc = overhead.build(rows)
+    assert {"config": "provbind", "kind": "mix", "count": 1} in doc["failed"]
+    assert "Failed workloads" in overhead.render(doc)
+
+
+def test_missing_numbers_are_not_called_over_the_limit():
+    rows = [{"config": "none", "rep": 1, "kind": "micro", "file_op_us": 100.0, "spawn_ms": 0.5},
+            {"config": "provbind", "rep": 1, "kind": "micro", "file_op_us": 110.0, "spawn_ms": 0.55},
+            {"config": "provbind", "rep": 1, "kind": "mix", "failed": True}]
+    text = overhead.render(overhead.build(rows))
+    assert "worst application overhead no data" in text
