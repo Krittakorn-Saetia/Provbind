@@ -66,6 +66,27 @@ Our zero-day testing follows the method of two established host-intrusion-detect
    unseen [1, 20]. The same authors' group extended this to Windows for "zero-day and stealth attacks"
    (Haider, Creech, Xie and Hu, Future Internet 2016) [21].
 
+**Newer work (2022–2026) that uses the same method:**
+
+3. **LID-DS 2021** (M. Grimmer, T. Kaelble, F. Nirsberger, E. Schulze, T. Rucks, J. Hoffmann, E. Rahm,
+   "Dataset Report: LID-DS 2021," CRITIS 2022, Springer LNCS, 2023). The updated framework: every scenario
+   has three roles, **Attacker, Victim and User, each a Docker container**; the user's benign timings are
+   sampled from real web-server logs; 15 scenarios re-create real CVEs/CWEs [22].
+4. **Syairozi and Arizal, "Comparative Analysis of eBPF-Based Runtime Security Monitoring Tools in
+   Monitoring and Threat Detection on Kubernetes,"** RITECH 2025, pp. 136–141. Falco, Tetragon and Tracee
+   run **live in a Kubernetes cluster** while emulated attacks (container escape, DoS, cryptomining, from
+   the OWASP Kubernetes Top 10) are carried out; measured: detection rate, false-positive rate, mean time
+   to detect, CPU and memory [23]. **This is the closest to ours**: the same live, Kubernetes, emulated-
+   attack evaluation of runtime monitors, including Falco, with the same metrics (and the same cost
+   measures as our overhead test).
+5. **Kozachok, Vyugov and Magomedov, "From CVE to CWE: Syscall-Based HIDS Generalisation,"** arXiv
+   2606.22581, 2026. A one-class detector **trained on normal behaviour only** is tested on **CVEs it never
+   saw** (held-out LID-DS-2021 scenarios grouped by weakness class): the zero-day-by-construction
+   protocol, applied in 2026 [24].
+6. **DeSFAM** (IEEE Access 2025), one of our baselines, evaluates its detector the same way: attacks
+   (privilege escalation, container escape) carried out against containers, the detector trained on
+   benign behaviour [11].
+
 | Element | LID-DS / ADFA-LD | Ours | Adapted? |
 |---|---|---|---|
 | Victim | the vulnerable app in a Docker container | the demo app in a Kubernetes pod (kind) | same idea, on Kubernetes |
@@ -249,4 +270,7 @@ What changed:
 19. LID-DS, Recording Framework documentation (victim container, normal-behaviour generator, exploit container, sysdig, warm-up and recording windows). https://github.com/LID-DS/LID-DS/wiki/LID-DS-Recording-Framework:-Documentation-and-Installation
 20. G. Creech and J. Hu, "Generation of a new IDS test dataset: Time to retire the KDD collection," IEEE WCNC 2013, pp. 4487–4492. https://dblp.org/rec/conf/wcnc/CreechH13.html
 21. W. Haider, G. Creech, Y. Xie, J. Hu, "Windows Based Data Sets for Evaluation of Robustness of Host Based Intrusion Detection Systems (IDS) to Zero-Day and Stealth Attacks," Future Internet 8(3):29, 2016. https://doi.org/10.3390/fi8030029
+22. M. Grimmer, T. Kaelble, F. Nirsberger, E. Schulze, T. Rucks, J. Hoffmann, E. Rahm, "Dataset Report: LID-DS 2021," CRITIS 2022, LNCS vol. 13723, Springer, 2023. https://link.springer.com/chapter/10.1007/978-3-031-35190-7_6
+23. A. A. Syairozi, Arizal, "Comparative Analysis of eBPF-Based Runtime Security Monitoring Tools in Monitoring and Threat Detection on Kubernetes," RITECH 2025, SciTePress, pp. 136–141. https://www.scitepress.org/Papers/2025/142727/142727.pdf
+24. A. V. Kozachok, S. G. Vyugov, S. G. Magomedov, "From CVE to CWE: Syscall-Based HIDS Generalisation," arXiv:2606.22581, 2026. https://arxiv.org/abs/2606.22581
 18. DigiCert, "What went wrong with GitHub stolen code signing keys." https://www.digicert.com/blog/github-stolen-code-signing-keys-and-how-to-prevent-it
