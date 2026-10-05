@@ -37,7 +37,8 @@ GROUPS = {
     "provbind": lambda comm, cmd: "python" in comm and any(m in cmd for m in
                                                            ("node.run", "controller.watch", "alerts.run",
                                                             "alerts.trust")),
-    "export": lambda comm, cmd: comm == "kubectl" and "ds/tetragon" in cmd,
+    "export": lambda comm, cmd: (comm == "kubectl" and "ds/tetragon" in cmd)
+                                or (comm in ("docker", "tail") and "tetragon.log" in cmd),
     "app": lambda comm, cmd: "python" in comm and "app.py" in cmd,
 }
 MONITOR_GROUPS = ("tetragon", "falco", "provbind", "export")

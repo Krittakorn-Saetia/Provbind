@@ -30,6 +30,14 @@ import datetime as dt
 import json
 import posixpath
 import re
+
+try:                                    # orjson parses Tetragon's JSON several times faster (overhead work);
+    import orjson as _orjson            # optional: without it the standard library is used
+    _loads = _orjson.loads
+    _JSON_ERRORS: tuple = (ValueError, _orjson.JSONDecodeError)
+except ImportError:                     # pragma: no cover - depends on the environment
+    _loads = json.loads
+    _JSON_ERRORS = (ValueError,)
 from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable, Iterator
@@ -231,8 +239,8 @@ class Normalizer:
     def __call__(self, line) -> Event | None:
         if isinstance(line, (str, bytes)):
             try:
-                obj = json.loads(line)
-            except ValueError:
+                obj = _loads(line)
+            except _JSON_ERRORS:
                 return self._drop("bad_json")
         else:
             obj = line

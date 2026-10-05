@@ -13,3 +13,4 @@ kubernetes>=29.0
 neo4j>=5.20
 pyyaml>=6.0
 matplotlib>=3.7   # eval/plots.py (figures); optional for everything else
+orjson>=3.9        # optional: faster JSON parsing in node/normalize.py (overhead work)

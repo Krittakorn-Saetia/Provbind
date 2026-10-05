@@ -30,7 +30,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${TETRAGON_CONTAINER:=export-stdout}"
 # load.yaml (D_load, R-K3) and connect.yaml (D_net, R-U3) are on here: without them PROVBIND cannot see
 # those two scenarios at all. They change ML-B's input, so with ATTACK2=1 keep D2 recorded the same way.
-: "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml node/tetragon/load.yaml node/tetragon/connect.yaml}"
+: "${POLICY_SET:=orig}"       # orig = node/tetragon/*.yaml; opt = the rate-limited variant in node/tetragon/opt/
+: "${EVENT_SOURCE:=kubectl}"  # kubectl = kubectl logs; file = Tetragon's export file in the kind node (docker exec)
+: "${KIND_NODE:=kind-control-plane}"
+: "${TETRAGON_LOG:=/var/run/cilium/tetragon/tetragon.log}"
+PDIR=node/tetragon; [ "$POLICY_SET" = opt ] && PDIR=node/tetragon/opt
+: "${POLICIES:=$PDIR/write.yaml $PDIR/truncate.yaml $PDIR/cap.yaml $PDIR/load.yaml $PDIR/connect.yaml}"
 : "${EGRESS:=testbed/egress.json}"   # D_net needs an egress allow list (node --egress); empty turns D_net off
 : "${ROUNDS:=5}"              # docs/COMPARISON-RUN.md: every scenario at least 5 times
 : "${GAP:=10}"
@@ -111,11 +116,17 @@ run_traced() {    # SCENARIO K TARGET [REST]
   sleep "$GAP"
 }
 
-step "0. background: controller, node, alerts, trust loop, Falco"
+step "0. background: controller, node, alerts, trust loop, Falco (policies: $POLICY_SET, events: $EVENT_SOURCE)"
+OTHER=node/tetragon/opt; [ "$POLICY_SET" = opt ] && OTHER=node/tetragon
+for f in write truncate cap load connect; do kubectl delete -f "$OTHER/$f.yaml" --ignore-not-found >/dev/null 2>&1 || true; done
 for policy in $POLICIES; do kubectl apply -f "$policy" >/dev/null; done
+events() {
+  if [ "$EVENT_SOURCE" = file ]; then docker exec "$KIND_NODE" tail -n 0 -F "$TETRAGON_LOG"
+  else kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0; fi
+}
 python3 -m controller.watch --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --key "$PROVBIND_KEY" \
   > "$LOGS/controller.out" 2> "$LOGS/controller.log" & PIDS+=($!)
-( kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0 \
+( events \
     | tee "$PROVBIND_RUN/rec.jsonl" \
     | python3 -m node.run --run "$PROVBIND_RUN" ${EGRESS:+--egress "$EGRESS"} $([ "$MLB" = 1 ] && echo --mlb) ) > "$LOGS/node.out" 2> "$LOGS/node.log" & PIDS+=($!)
 python3 -m alerts.run --run "$PROVBIND_RUN" > "$LOGS/alerts.out" 2> "$LOGS/alerts.log" & PIDS+=($!)

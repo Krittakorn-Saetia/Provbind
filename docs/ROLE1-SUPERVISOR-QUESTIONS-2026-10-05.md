@@ -267,6 +267,12 @@ percentage points) and 4x Falco's memory. Whether that is worth it depends on th
 which PROVBIND does not yet meet, so the answer is: **the accuracy gain is large, but the cost has to come
 down before the trade-off can be claimed.**
 
+**Optimised variant (built 5 October, to be measured):** `node/tetragon/opt/` (rate-limited write, cap and
+load hooks; no return probe on write and load), `EVENT_SOURCE=file` (read Tetragon's export file in the
+kind node instead of `kubectl logs`), orjson in the node, and ML-B optional (`NODE_MLB=0`). Measured with
+`POLICY_SET=opt EVENT_SOURCE=file scripts/overhead-run.sh`; detection re-checked with the same settings in
+`scripts/comparison-run.sh` before any claim.
+
 **Next: find and cut the cost** (`scripts/overhead-ablation.sh`, about 1.5 h): each policy alone against no
 monitoring, and PROVBIND without ML-B. Then optimise what it points at. The likely candidates:
 1. **Narrow the hooks in the kernel:** filter `write.yaml` to the paths that matter, and `cap.yaml` to the

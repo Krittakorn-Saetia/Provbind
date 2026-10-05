@@ -1,0 +1,25 @@
+# Optimised variant of ../write.yaml (see README.md): no return probe, an in-kernel rate limit per process.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-opt-write
+  namespace: demo
+spec:
+  kprobes:
+  - call: "security_file_permission"
+    syscall: false
+    args:
+    - index: 0
+      type: "file"      # struct file *: gives the path
+    - index: 1
+      type: "int"       # mask: 0x02 MAY_WRITE
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Mask"
+        values:
+        - "2"           # MAY_WRITE
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+        rateLimitScope: "process"

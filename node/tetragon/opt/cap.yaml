@@ -1,0 +1,26 @@
+# Optimised variant of ../cap.yaml (see README.md): an in-kernel rate limit per process.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-opt-cap
+  namespace: demo
+spec:
+  kprobes:
+  - call: "cap_capable"
+    syscall: false
+    return: true
+    args:
+    - index: 0
+      type: "nop"               # const struct cred *
+    - index: 1
+      type: "user_namespace"    # the namespace the check is made in
+    - index: 2
+      type: "capability"        # int cap
+    returnArg:
+      index: 0
+      type: "int"
+    selectors:
+    - matchActions:
+      - action: Post
+        rateLimit: "1m"
+        rateLimitScope: "process"

@@ -1,0 +1,33 @@
+# Optimised set: unchanged copy of ../truncate.yaml (rare events), renamed so the two sets never clash.
+# D_write for truncation (Test Plan §8): `: > /etc/passwd` changes a file without a write call.
+#
+# truncate(2) goes through security_path_truncate. From kernel 6.2, ftruncate(2) and
+# open(O_TRUNC) go through security_file_truncate instead. On an older kernel, delete the second
+# entry, or the policy fails to load. Both become kind "write" in node/normalize.py.
+#
+# VERIFY on the demo PC: `uname -r`, and that both hooks load.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-opt-truncate
+  namespace: demo
+spec:
+  kprobes:
+  - call: "security_path_truncate"
+    syscall: false
+    return: true
+    args:
+    - index: 0
+      type: "path"      # const struct path *
+    returnArg:
+      index: 0
+      type: "int"
+  - call: "security_file_truncate"
+    syscall: false
+    return: true
+    args:
+    - index: 0
+      type: "file"      # struct file *
+    returnArg:
+      index: 0
+      type: "int"

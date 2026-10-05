@@ -33,7 +33,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${DEPLOY:=demo-app}"
 : "${PROVBIND_KEY:=pipeline/keys/cosign.pub}"
 : "${TETRAGON_CONTAINER:=export-stdout}"
-: "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml node/tetragon/load.yaml node/tetragon/connect.yaml}"
+: "${POLICY_SET:=orig}"                    # orig = node/tetragon/*.yaml; opt = node/tetragon/opt/*.yaml (rate-limited)
+: "${EVENT_SOURCE:=kubectl}"               # kubectl = kubectl logs; file = read Tetragon's export file in the kind node
+: "${KIND_NODE:=kind-control-plane}"
+: "${TETRAGON_LOG:=/var/run/cilium/tetragon/tetragon.log}"
+PDIR=node/tetragon; [ "$POLICY_SET" = opt ] && PDIR=node/tetragon/opt
+: "${POLICIES:=$PDIR/write.yaml $PDIR/truncate.yaml $PDIR/cap.yaml $PDIR/load.yaml $PDIR/connect.yaml}"
 : "${EGRESS:=testbed/egress.json}"
 : "${REPS:=3}"
 : "${MIX_S:=120}"
@@ -85,10 +90,27 @@ provbind_stop() {
   PIDS=()
   pkill -f "node.run --run $OUT_RUN" 2>/dev/null || true
   pkill -f "kubectl logs -n kube-system ds/tetragon" 2>/dev/null || true
+  pkill -f "tail -n 0 -F $TETRAGON_LOG" 2>/dev/null || true
   sleep 2
+}
+swap_policy_set() {   # SET : load one policy set and remove the other (both at once would double every event)
+  local keep=node/tetragon drop=node/tetragon/opt
+  [ "$1" = opt ] && keep=node/tetragon/opt && drop=node/tetragon
+  for f in write truncate cap load connect; do kubectl delete -f "$drop/$f.yaml" --ignore-not-found >/dev/null 2>&1 || true; done
+}
+events() {    # Tetragon's event stream, from kubectl logs or straight from the export file in the kind node
+  if [ "$EVENT_SOURCE" = file ]; then
+    docker exec "$KIND_NODE" tail -n 0 -F "$TETRAGON_LOG"
+  else
+    kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0
+  fi
 }
 restore() {
   provbind_stop
+  if [ "$POLICY_SET" = opt ] && [ "${KEEP_POLICY_SET:-0}" != 1 ]; then   # leave the original policies in place
+    swap_policy_set orig
+    for f in write truncate cap load connect; do kubectl apply -f "node/tetragon/$f.yaml" >/dev/null 2>&1 || true; done
+  fi
   ds_on kube-system tetragon || true
   ds_on falco falco || true
 }
@@ -100,12 +122,12 @@ configure() { # CONFIG
     none)     ds_off kube-system tetragon; ds_off falco falco ;;
     falco)    ds_off kube-system tetragon; ds_on falco falco ;;
     tetragon) ds_off falco falco; ds_on kube-system tetragon
-              ( kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0 > /dev/null ) &
+              ( events > /dev/null ) &
               PIDS+=($!) ;;
     provbind) ds_off falco falco; ds_on kube-system tetragon
               python3 -m controller.watch --run "$OUT_RUN" --namespace "$NAMESPACE" --key "$PROVBIND_KEY" \
                 >> "$LOGS/controller.out" 2>> "$LOGS/controller.log" & PIDS+=($!)
-              ( kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0 \
+              ( events \
                   | python3 -m node.run --run "$OUT_RUN" $([ "$NODE_MLB" = 1 ] && echo --mlb) ${EGRESS:+--egress "$EGRESS"} ) \
                 >> "$LOGS/node.out" 2>> "$LOGS/node.log" & PIDS+=($!)
               python3 -m alerts.run --run "$OUT_RUN" >> "$LOGS/alerts.out" 2>> "$LOGS/alerts.log" & PIDS+=($!)
@@ -171,7 +193,8 @@ cp "$PROVBIND_RUN/results/ZERODAY.md" "$RES/" 2>/dev/null || true
 fi   # SKIP_PREP
 
 # --- setup: the same demo pod, a Service for it, an in-cluster load client --------------------------
-step "setup: policies, demo app, Service, load pod; the ML-B model and envelopes from $PROVBIND_RUN"
+step "setup: policies ($POLICY_SET), events from $EVENT_SOURCE, demo app, Service, load pod; ML-B model and envelopes from $PROVBIND_RUN"
+swap_policy_set "$POLICY_SET"
 for policy in $POLICIES; do kubectl apply -f "$policy" >/dev/null; done
 mkdir -p "$OUT_RUN/envelopes"
 cp -r "$PROVBIND_RUN/envelopes/." "$OUT_RUN/envelopes/"
