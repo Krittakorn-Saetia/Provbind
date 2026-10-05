@@ -62,7 +62,7 @@ SCENARIOS = {
     "ru-3": ("R-U3", "Runtime, unknown"), "ru-4": ("R-U4", "Runtime, unknown"),
     "ru-5": ("R-U5", "Runtime, unknown"),
     "benign-1": ("B1", "Benign"), "benign-traffic": ("B2", "Benign"), "ph4-14": ("B3", "Benign"),
-    "benign-3": ("B4", "Benign"), "benign-4": ("B5", "Benign"),
+    "benign-3": ("B4", "Benign"), "benign-4": ("B5", "Benign"), "ab-1": ("A-B1", "Benign"),
 }
 CELLS = ("Admission, known", "Admission, unknown", "Runtime, known", "Runtime, unknown", "Benign", "Other")
 
@@ -254,20 +254,36 @@ def _falco_fields(line):
             bool(line.get("rule")), False, False, False)
 
 
+ORIGIN_FIELDS = ("Package", "Image layer", "Dependency path")    # exist only for a file that is in the image
+NO_FILE_IN_IMAGE = ("undeclared", "anomalous_window")          # a dropped file, or a behaviour window
+
+
+def _in_image(a):
+    """Whether a PROVBIND alert is about a file that is in the image (so it has a package, layer, path)."""
+    return str(a.get("class", "")) in ("D_exec", "D_load", "D_write", "D_cap", "D_hash") \
+        and str(a.get("subclass", "")) not in NO_FILE_IN_IMAGE
+
+
 def c3_attribution(d):
-    """Figure 3: share of each system's runtime detections in attack runs that name each field."""
+    """Figure 3: share of each system's runtime detections in attack runs that name each field. `counts`
+    gives (named, out of) per field: the origin fields count only alerts about a file in the image."""
     w = _attack_windows(d["gt"])
     prov = [a for a in d["alerts"] if str(a.get("class", "")).startswith("D_")
             and str(a.get("bucket", "")).lower() in ("critical", "high", "medium")
             and _in_any(w, *alert_pod(a), parse_time(a.get("time")))]
     falco = [x for x in d["falco"] if _in_any(w, *falco_pod(x), parse_time(x.get("time")))]
-    share, n, how = {}, {}, {}
+    share, n, how, counts = {}, {}, {}, {}
     for name, items, fn in (("PROVBIND", prov, _prov_fields), ("Falco", falco, _falco_fields)):
         n[name], how[name] = len(items), "measured"
         share[name] = [sum(fn(x)[i] for x in items) / len(items) for i in range(len(FIELDS))] if items else None
+        in_image = [x for x in items if _in_image(x)] if name == "PROVBIND" else items
+        counts[name] = [(sum(fn(x)[i] for x in (in_image if f in ORIGIN_FIELDS else items)),
+                         len(in_image) if f in ORIGIN_FIELDS else len(items)) for i, f in enumerate(FIELDS)]
     for name, flags in BY_DESIGN_FIELDS.items():
         n[name], how[name], share[name] = None, "by design", [float(v) for v in flags]
-    return {"fields": FIELDS, "systems": SYSTEMS, "share": share, "n": n, "how": how}
+    n_image = sum(1 for x in prov if _in_image(x))
+    return {"fields": FIELDS, "systems": SYSTEMS, "share": share, "n": n, "how": how, "counts": counts,
+            "n_image": n_image}
 
 
 def c4_matrix(rows):
@@ -627,45 +643,59 @@ def fig2_c2(d, path, dpi):
 
 
 def fig3_c3(d, path, dpi):
+    """Figure 3: what each system's alerts name. Measured columns give "named / alerts"; the estimated
+    systems are not run live, so their columns say what their design records (yes / no), in grey."""
     plt = _plt()
-    import numpy as np
     att = c3_attribution(d)
-    systems, fields = att["systems"], att["fields"]
+    fields, systems = att["fields"], att["systems"]
     cmap = _cmap(BLUE_RAMP, "blue")
-    grid = np.full((len(fields), len(systems)), np.nan)
-    for j, s in enumerate(systems):
-        if att["share"][s] is not None:
-            grid[:, j] = att["share"][s]
-    fig, ax = plt.subplots(figsize=(3.5, 2.55))
-    shown = np.where(np.isnan(grid), 0, grid)
-    rgba = cmap(0.06 + 0.86 * shown)
-    rgba[np.isnan(grid)] = (0.94, 0.94, 0.93, 1)
-    ax.imshow(rgba, aspect="auto")
-    for i in range(len(fields)):
-        for j in range(len(systems)):
-            v = grid[i, j]
-            txt = "n/a" if np.isnan(v) else f"{v * 100:.0f}%"
-            ax.text(j, i, txt, ha="center", va="center", fontsize=6.8,
-                    color=SURFACE if (not np.isnan(v) and v > 0.55) else INK)
-    labels = []
-    for s in systems:
-        sub = f"n = {att['n'][s]}" if att["how"][s] == "measured" else "by design"
-        labels.append(f"{_tick(s, KIND[s])}\n{sub}")
-    ax.set_xticks(range(len(systems)))
-    ax.set_xticklabels(labels, fontsize=6.8)
+    groups = (("Where", ("Container / pod", "Process")), ("Why", ("Rule / clause / technique",)),
+              ("Supply-chain origin", ORIGIN_FIELDS))
+    fig, ax = plt.subplots(figsize=(5.2, 3.1))
+    xs = {s: j + (0.35 if j >= 2 else 0) for j, s in enumerate(systems)}       # a gap before estimated systems
+    for i, f in enumerate(fields):
+        y = i
+        for s in systems:
+            x = xs[s]
+            if att["how"][s] == "measured" and att["counts"].get(s):
+                k, n = att["counts"][s][i]
+                frac = k / n if n else 0
+                ax.add_patch(plt.Rectangle((x + 0.04, y + 0.06), 0.92, 0.88, color=cmap(0.06 + 0.86 * frac), lw=0))
+                txt = f"{k} / {n}\n{frac * 100:.0f}%" if n else "no alert\nof this kind"
+                ax.text(x + 0.5, y + 0.5, txt, ha="center", va="center", fontsize=6.3, linespacing=1.15,
+                        color=SURFACE if frac > 0.55 else INK)
+            else:
+                ax.add_patch(plt.Rectangle((x + 0.04, y + 0.06), 0.92, 0.88, color="#efeeea", lw=0))
+                if s == "Confine-E":
+                    txt = "no alert"
+                else:
+                    flag = (BY_DESIGN_FIELDS.get(s) or (0,) * len(fields))[i]
+                    txt = "yes" if flag else "no"
+                ax.text(x + 0.5, y + 0.5, txt, ha="center", va="center", fontsize=6.3, color=INK2, style="italic")
+    ax.set_xlim(0, xs[systems[-1]] + 1)
+    ax.set_ylim(len(fields), 0)
+    head = {"PROVBIND": f"PROVBIND\n{att['n'].get('PROVBIND') or 0} alerts", "Falco": f"Falco\n{att['n'].get('Falco') or 0} alerts",
+            "Confine-E": "Confine-E*\nby design", "DeSFAM-E": "DeSFAM-E*\nby design"}
+    ax.set_xticks([xs[s] + 0.5 for s in systems])
+    ax.set_xticklabels([head.get(s, s) for s in systems], fontsize=6.8)
     ax.xaxis.tick_top()
-    ax.set_yticks(range(len(fields)))
-    ax.set_yticklabels(fields)
+    ax.set_yticks([i + 0.5 for i in range(len(fields))])
+    ax.set_yticklabels(fields, fontsize=6.8)
     ax.tick_params(length=0)
     for sp in ax.spines.values():
         sp.set_visible(False)
-    ax.set_xticks(np.arange(-0.5, len(systems)), minor=True)
-    ax.set_yticks(np.arange(-0.5, len(fields)), minor=True)
-    ax.grid(which="minor", color=SURFACE, linewidth=2)
-    ax.tick_params(which="minor", length=0)
-    _footer(fig, ["C3. Share of each system's runtime detections in attack runs that name each item.",
-                  "PROVBIND and Falco: measured from their alert files (n = detections).",
-                  "* Confine-E, DeSFAM-E: estimated systems; their published design."])
+    row = 0
+    for g, members in groups:                                                   # group labels and rules
+        if row:
+            ax.axhline(row, color=INK2, linewidth=0.7, xmax=0.97)
+        ax.text(-1.9, row + len(members) / 2, g, rotation=90, ha="center", va="center", fontsize=6.3,
+                color=INK2, style="italic", clip_on=False)
+        row += len(members)
+    _footer(fig, ["C3. What each system's alerts in attack runs name. PROVBIND and Falco: measured from their alert files,",
+                  f"shown as named / alerts. Supply-chain origin rows count only PROVBIND alerts about a file that is in the image",
+                  f"({att['n_image']} of {att['n'].get('PROVBIND') or 0}); a dropped file, a connection or a behaviour window has no package or layer to name.",
+                  "* Confine-E and DeSFAM-E are estimated, not run live: grey cells say what their design records. Confine-E",
+                  "raises no alert at all (seccomp blocks the call silently)."])
     return _save(plt, fig, path, dpi)
 
 
@@ -732,46 +762,90 @@ def fig4_c4(d, path, dpi):
     return _save(plt, fig, path, dpi)
 
 
+NICE = {"ak-1": "Advisory exists before deploy", "ak-2": "Unsigned image", "ak-3": "Signing key revoked before deploy",
+        "au-2": "Undeclared program added at build", "trust-1": "Advisory published while running",
+        "trust-2": "Signing key revoked while running", "rk-2": "Kernel-CVE call pattern (replay only)",
+        "rk-3": "Library injection", "attack-1": "New program dropped and run", "attack-2": "Burst of new files",
+        "ru-3": "Connection to an unlisted address", "ru-4": "Declared program replaced",
+        "ru-5": "Credential file read", "benign-1": "Interactive shell", "benign-traffic": "Normal web requests",
+        "ph4-14": "New temporary file", "benign-3": "DNS lookups", "benign-4": "Writes to a mounted volume",
+        "ab-1": "Clean signed image deployed"}
+ADMISSION = {"ak-1", "ak-2", "ak-3", "au-2", "ab-1"}
+STAGES = {"Confine-E": "runtime", "DeSFAM-E": "runtime", "Sig-only": "admission"}   # stages a system covers
+
+
+def scenario_outcome(scenario, truth, system, flagged, runs):
+    """(kind, text) for one cell of figure 5: right / wrong / partial, or n/a when the system has no check
+    at that stage (scored as missed or as no alarm in the tables)."""
+    stage = "admission" if scenario in ADMISSION else "runtime"
+    if STAGES.get(system, stage) != stage:
+        return "na", "n/a"
+    right = flagged if truth == "malicious" else runs - flagged
+    if truth == "malicious":
+        text = "caught" if flagged == runs else ("missed" if flagged == 0 else f"{flagged}/{runs} caught")
+    else:
+        text = "no alarm" if flagged == 0 else ("false alarm" if flagged == runs else f"{flagged}/{runs} false alarm")
+    kind = "right" if right == runs else ("wrong" if right == 0 else "partial")
+    return kind, text
+
+
 def fig5_scenarios(d, path, dpi):
+    """Figure 5: every scenario x system, coloured by whether the outcome was RIGHT (attack caught, benign
+    activity left alone) or WRONG (attack missed, false alarm); grey where a system has no check at that
+    stage. One rule for every row, a symbol beside every word, and a total per system at the bottom."""
     plt = _plt()
-    import numpy as np
     names, rows = heatmap(d["tables"])
     if not rows:
         raise ValueError("no scenario rows in COMPARISON.json")
-    blues, oranges = _cmap(BLUE_RAMP, "blue"), _cmap(ORANGE_RAMP, "orange")
-    rgba = np.zeros((len(rows), len(names), 4))
+    fill = {"right": "#256abf", "wrong": "#eb6834", "partial": "#f6b090", "na": "#efeeea"}
+    ink = {"right": SURFACE, "wrong": INK, "partial": INK, "na": INK2}
+    mark = {"right": "\u2713 ", "wrong": "\u2717 ", "partial": "~ ", "na": ""}
+    totals = {n: [0, 0] for n in names}
+    fig, ax = plt.subplots(figsize=(6.2, 0.24 * (len(rows) + 1) + 0.7))
     for i, r in enumerate(rows):
-        cm = oranges if r["truth"] == "benign" else blues
-        for j, f in enumerate(r["fraction"]):
-            rgba[i, j] = cm(0.06 + 0.86 * f)
-    fig, ax = plt.subplots(figsize=(3.5, 0.2 * len(rows) + 0.9))
-    ax.imshow(rgba, aspect="auto")
-    for i, r in enumerate(rows):
-        for j, (f, c) in enumerate(zip(r["fraction"], r["counts"])):
-            ax.text(j, i, c, ha="center", va="center", fontsize=6, color=SURFACE if f > 0.55 else INK)
-    ax.set_xticks(range(len(names)))
-    ax.set_xticklabels([_tick(n, KIND.get(n, "measured")) for n in names], rotation=30, ha="left", fontsize=6.8)
+        for j, m in enumerate(names):
+            flagged = int(round(r["fraction"][j] * r["runs"]))
+            kind, text = scenario_outcome(r["scenario"], r["truth"], m, flagged, r["runs"])
+            right = flagged if r["truth"] == "malicious" else r["runs"] - flagged
+            totals[m][0] += right                      # as the tables score it: n/a = missed, or no alarm
+            totals[m][1] += r["runs"]
+            ax.add_patch(plt.Rectangle((j + 0.03, i + 0.07), 0.94, 0.86, color=fill[kind], lw=0))
+            ax.text(j + 0.5, i + 0.5, mark[kind] + text, ha="center", va="center", fontsize=5.9, color=ink[kind])
+    y = len(rows) + 0.25
+    for j, m in enumerate(names):
+        k, n = totals[m]
+        ax.text(j + 0.5, y + 0.5, f"{k} / {n} right", ha="center", va="center", fontsize=6.3, color=INK,
+                fontweight="bold")
+    ax.axhline(len(rows) + 0.12, color=INK2, linewidth=0.8)
+    ax.set_xlim(0, len(names))
+    ax.set_ylim(len(rows) + 1.3, 0)
+    ax.set_xticks([j + 0.5 for j in range(len(names))])
+    ax.set_xticklabels([_tick(n, KIND.get(n, "measured")) for n in names], fontsize=6.8)
     ax.xaxis.tick_top()
-    ax.set_yticks(range(len(rows)))
-    ax.set_yticklabels([r["label"] for r in rows], fontsize=6.8)
+    labels = [f"{NICE.get(r['scenario'], r['scenario'])}" + (f" ({SCENARIOS[r['scenario']][0]})"
+              if SCENARIOS.get(r["scenario"], ("",))[0] else "") for r in rows]
+    ax.set_yticks([i + 0.5 for i in range(len(rows))] + [y + 0.5])
+    ax.set_yticklabels(labels + ["Runs judged right"], fontsize=6.3)
     ax.tick_params(length=0)
     for sp in ax.spines.values():
         sp.set_visible(False)
-    ax.set_xticks(np.arange(-0.5, len(names)), minor=True)
-    ax.set_yticks(np.arange(-0.5, len(rows)), minor=True)
-    ax.grid(which="minor", color=SURFACE, linewidth=1.5)
-    ax.tick_params(which="minor", length=0)
     spans = {}
     for i, r in enumerate(rows):
         spans.setdefault(r["cell"], [i, i])[1] = i
-    for cell, (s, e) in spans.items():
-        if s:
-            ax.axhline(s - 0.5, color=INK2, linewidth=0.8)
-        ax.text(len(names) - 0.35, (s + e) / 2, cell, va="center", ha="left", fontsize=6.3, color=INK2,
+    for cell, (s0, e) in spans.items():
+        if s0:
+            ax.axhline(s0, color=INK2, linewidth=0.8)
+        ax.text(len(names) + 0.1, (s0 + e + 1) / 2, cell, va="center", ha="left", fontsize=6.0, color=INK2,
                 style="italic", clip_on=False)
-    _footer(fig, ["Cell: runs flagged / runs. Blue rows: attacks (flagged = detected).",
-                  "Orange rows: benign (flagged = false alarm).",
-                  "* estimated systems; † Sig-only, derived from binding records."])
+    from matplotlib.patches import Patch
+    ax.legend(handles=[Patch(color=fill["right"], label="\u2713 right: attack caught, or normal activity left alone"),
+                       Patch(color=fill["wrong"], label="\u2717 wrong: attack missed, or false alarm"),
+                       Patch(color=fill["na"], label="n/a: the system has no check at this stage (scored as missed, or as no alarm)")],
+              loc="upper left", bbox_to_anchor=(-0.02, 1.13), ncol=3, fontsize=5.6, frameon=False,
+              handlelength=1.2, columnspacing=1.0)
+    _footer(fig, ["Each cell is 5 runs. Falco's admission 'catches' come from rules that fire on every pod start: it also alarms on the clean",
+                  "deploy (A-B1). The bottom row counts every run as the comparison tables do (true positives + true negatives).",
+                  "* Confine-E, DeSFAM-E: estimated systems (runtime only).  \u2020 Sig-only: a signature check at admission only."])
     return _save(plt, fig, path, dpi)
 
 

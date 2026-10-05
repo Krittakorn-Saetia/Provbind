@@ -119,3 +119,21 @@ def test_renders_five_pngs(tmp_path):
     assert pc.main(["--run", str(run), "--dpi", "60"]) == 0
     for name, _ in pc.FIGURES:
         assert (run / "results" / "figures" / name).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_c3_counts_use_in_image_alerts_for_origin_fields(tmp_path):
+    att = pc.c3_attribution(pc.load_run(_run(tmp_path)))
+    c = dict(zip(att["fields"], att["counts"]["PROVBIND"]))
+    assert c["Container / pod"] == (2, 2)
+    assert att["n_image"] == 1 and c["Package"] == (1, 1)              # the D_net alert has no file in the image
+    assert dict(zip(att["fields"], att["counts"]["Falco"]))["Package"] == (0, 1)
+
+
+def test_scenario_outcome_is_right_wrong_or_na():
+    assert pc.scenario_outcome("attack-1", "malicious", "PROVBIND", 5, 5) == ("right", "caught")
+    assert pc.scenario_outcome("ru-5", "malicious", "PROVBIND", 0, 5) == ("wrong", "missed")
+    assert pc.scenario_outcome("benign-1", "benign", "Falco", 5, 5) == ("wrong", "false alarm")
+    assert pc.scenario_outcome("benign-3", "benign", "PROVBIND", 0, 5) == ("right", "no alarm")
+    assert pc.scenario_outcome("ak-1", "malicious", "Confine-E", 0, 5) == ("na", "n/a")   # runtime-only system
+    assert pc.scenario_outcome("trust-1", "malicious", "Sig-only", 0, 5) == ("na", "n/a")  # admission-only
+    assert pc.scenario_outcome("ph4-14", "benign", "DeSFAM-E", 3, 5)[0] == "partial"
