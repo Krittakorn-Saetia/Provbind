@@ -64,7 +64,7 @@ Our zero-day testing follows the method of two established host-intrusion-detect
    collection," IEEE WCNC 2013). Built to evaluate host IDS "capable of reliably detecting zero-day
    attacks": the detector is trained **only on normal traces**, so every attack in the test set is
    unseen [1, 20]. The same authors' group extended this to Windows for "zero-day and stealth attacks"
-   (Haider et al., Future Internet 2016) [21].
+   (Haider, Creech, Xie and Hu, Future Internet 2016) [21].
 
 | Element | LID-DS / ADFA-LD | Ours | Adapted? |
 |---|---|---|---|
@@ -248,5 +248,5 @@ What changed:
 17. Sandfly Security, "Detecting and de-cloaking HiddenWasp Linux stealth malware." https://sandflysecurity.com/blog/detecting-and-de-cloaking-hiddenwasp-linux-stealth-malware
 19. LID-DS, Recording Framework documentation (victim container, normal-behaviour generator, exploit container, sysdig, warm-up and recording windows). https://github.com/LID-DS/LID-DS/wiki/LID-DS-Recording-Framework:-Documentation-and-Installation
 20. G. Creech and J. Hu, "Generation of a new IDS test dataset: Time to retire the KDD collection," IEEE WCNC 2013, pp. 4487–4492. https://dblp.org/rec/conf/wcnc/CreechH13.html
-21. W. Haider, J. Hu, M. Xie, "Windows Based Data Sets for Evaluation of Robustness of Host Based Intrusion Detection Systems (IDS) to Zero-Day and Stealth Attacks," Future Internet 8(3):29, 2016. https://doi.org/10.3390/fi8030029
+21. W. Haider, G. Creech, Y. Xie, J. Hu, "Windows Based Data Sets for Evaluation of Robustness of Host Based Intrusion Detection Systems (IDS) to Zero-Day and Stealth Attacks," Future Internet 8(3):29, 2016. https://doi.org/10.3390/fi8030029
 18. DigiCert, "What went wrong with GitHub stolen code signing keys." https://www.digicert.com/blog/github-stolen-code-signing-keys-and-how-to-prevent-it
