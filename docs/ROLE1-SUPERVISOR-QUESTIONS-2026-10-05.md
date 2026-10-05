@@ -50,6 +50,38 @@ when it runs) [8]; we used the Datadog malicious-packages dataset the same way.
 **So: we adapted recognised methods (A, C, D) rather than invented one.** What is ours: the scenarios
 themselves.
 
+### 2.2b The papers whose method we follow, and what we changed
+
+Our zero-day testing follows the method of two established host-intrusion-detection benchmarks:
+
+1. **LID-DS** (M. Grimmer, M. M. Röhling, D. Kreußel, S. Ganz, "A Modern and Sophisticated Host Based
+   Intrusion Detection Data Set," BSI IT-Sicherheitskongress 2019; the method paper is M. M. Röhling
+   et al., "Standardized container virtualization approach for collecting host intrusion detection
+   data," FedCSIS 2019, ACSIS vol. 18). Each scenario is a **victim container**, a **normal-behaviour
+   generator**, and an **exploit container** that re-creates a known vulnerability, recorded with
+   sysdig in timed windows (warm-up, then recording), with and without the exploit, many times [2, 7, 19].
+2. **ADFA-LD** (G. Creech and J. Hu, "Generation of a new IDS test dataset: Time to retire the KDD
+   collection," IEEE WCNC 2013). Built to evaluate host IDS "capable of reliably detecting zero-day
+   attacks": the detector is trained **only on normal traces**, so every attack in the test set is
+   unseen [1, 20]. The same authors' group extended this to Windows for "zero-day and stealth attacks"
+   (Haider et al., Future Internet 2016) [21].
+
+| Element | LID-DS / ADFA-LD | Ours | Adapted? |
+|---|---|---|---|
+| Victim | the vulnerable app in a Docker container | the demo app in a Kubernetes pod (kind) | same idea, on Kubernetes |
+| Normal behaviour | a normal-behaviour generator | `make loadgen` and 6 benign scenarios | same |
+| Attacks | exploit container re-creating real CVEs | harmless re-creations of real malicious-package behaviours (Section 2.5b) | **adapted**: supply-chain behaviours instead of CVE exploits, and harmless by rule (Test Plan §12.4) |
+| Zero-day by construction | detector trained on normal traces only | PROVBIND's envelope from signed build data, ML-B trained on benign D2 only; leakage checked (Z1–Z7) | same principle, plus an explicit leakage check |
+| Recording | sysdig, timed windows | Tetragon (PROVBIND), Falco, bpftrace (for the estimated baselines), ground-truth windows | same, with live detectors |
+| Repetitions | many recordings per scenario | 5 rounds per scenario | same |
+| Evaluation | offline, on the recorded dataset | **live**, the detectors run during the attacks; estimated baselines on the recorded traces | **adapted**: live measurement for PROVBIND and Falco |
+| Known vs unknown | — (all attacks unseen) | **added**: "known" = an advisory, signature or revoked key exists; "unknown" = nothing describes it | **added**, because supply-chain defences mostly work on known indicators |
+
+So: **yes, others use this method, and we adapted it**: same structure (container victim, normal
+generator, re-created attacks, timed recording, repetitions, normal-only detectors), applied to
+supply-chain behaviours instead of CVE exploits, kept harmless, run live, and split into known and
+unknown.
+
 ### 2.3 Weaknesses a reviewer will raise
 1. **We wrote the attacks ourselves** (designer bias): our tests could fit what PROVBIND checks.
 2. **They are not mapped to a public taxonomy**, so a reader cannot check coverage.
@@ -214,4 +246,7 @@ What changed:
 15. StepSecurity, "Compromised PyPI package: mrmustard 0.7.4 steals SSH, cloud, and Kubernetes credentials." https://www.stepsecurity.io/blog/compromised-pypi-mrmustard-0-7-4-credential-stealer
 16. The Hacker News, "Malicious PyPI and npm packages discovered exploiting dependencies in supply chain attacks," 2025. https://thehackernews.com/2025/08/malicious-pypi-and-npm-packages.html
 17. Sandfly Security, "Detecting and de-cloaking HiddenWasp Linux stealth malware." https://sandflysecurity.com/blog/detecting-and-de-cloaking-hiddenwasp-linux-stealth-malware
+19. LID-DS, Recording Framework documentation (victim container, normal-behaviour generator, exploit container, sysdig, warm-up and recording windows). https://github.com/LID-DS/LID-DS/wiki/LID-DS-Recording-Framework:-Documentation-and-Installation
+20. G. Creech and J. Hu, "Generation of a new IDS test dataset: Time to retire the KDD collection," IEEE WCNC 2013, pp. 4487–4492. https://dblp.org/rec/conf/wcnc/CreechH13.html
+21. W. Haider, J. Hu, M. Xie, "Windows Based Data Sets for Evaluation of Robustness of Host Based Intrusion Detection Systems (IDS) to Zero-Day and Stealth Attacks," Future Internet 8(3):29, 2016. https://doi.org/10.3390/fi8030029
 18. DigiCert, "What went wrong with GitHub stolen code signing keys." https://www.digicert.com/blog/github-stolen-code-signing-keys-and-how-to-prevent-it
