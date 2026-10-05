@@ -273,6 +273,19 @@ kind node instead of `kubectl logs`), orjson in the node, and ML-B optional (`NO
 `POLICY_SET=opt EVENT_SOURCE=file scripts/overhead-run.sh`; detection re-checked with the same settings in
 `scripts/comparison-run.sh` before any claim.
 
+**First optimised run (5 October evening):** PROVBIND's worst application overhead 32.1% (from 44.8%);
+Tetragon with the rate-limited policies 12.3% (from 16.5%), its CPU 11.6% (from 15.8%). Two artefacts of
+the test itself were then found in the top-CPU list and fixed:
+- **Neo4j (Java) took a whole core during PROVBIND's last repetition.** Only offline attribution uses it,
+  and no configuration runs that: the JVM was busy on its own (most likely recovering after the VM's hard
+  power-off). It is now paused for every configuration (`STOP_NEO4J=1`). PROVBIND's best repetition in
+  that run (p95 3.10 ms against 2.76 ms, throughput 2,112 against 2,137 req/s) suggests what remains
+  without it.
+- **CoreDNS took over a core in every configuration**: the load client resolved the service name on
+  every request. It now resolves it once. This lowers the VM's baseline load (69% busy before any
+  monitor), which had inflated every monitor's percentage.
+Both fixes apply to all configurations equally; the run is repeated with them.
+
 **Next: find and cut the cost** (`scripts/overhead-ablation.sh`, about 1.5 h): each policy alone against no
 monitoring, and PROVBIND without ML-B. Then optimise what it points at. The likely candidates:
 1. **Narrow the hooks in the kernel:** filter `write.yaml` to the paths that matter, and `cap.yaml` to the

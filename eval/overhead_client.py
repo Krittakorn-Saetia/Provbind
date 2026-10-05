@@ -9,6 +9,7 @@ Standard library only (the load pod runs the demo image's Python).
 """
 import json
 import random
+import socket
 import sys
 import threading
 import time
@@ -42,8 +43,21 @@ def pct(values, q):
     return round(v[min(len(v) - 1, int(round(q / 100 * (len(v) - 1))))], 3)
 
 
+def resolve_once(base):
+    """Look the service name up once, not on every request: with urllib each request would query CoreDNS
+    again, and thousands of lookups a second load the node as much as the app does."""
+    scheme, rest = base.split("://", 1)
+    host, _, port = rest.partition(":")
+    try:
+        ip = socket.gethostbyname(host)
+    except OSError:
+        return base
+    return f"{scheme}://{ip}" + (f":{port}" if port else "")
+
+
 def main():
     base, seconds, conc, mix = sys.argv[1].rstrip("/"), float(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+    base = resolve_once(base)
     lat, errors = [], []
     deadline = time.monotonic() + seconds
     started = time.monotonic()

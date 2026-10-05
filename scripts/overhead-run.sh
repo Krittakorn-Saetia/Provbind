@@ -49,6 +49,7 @@ PDIR=node/tetragon; [ "$POLICY_SET" = opt ] && PDIR=node/tetragon/opt
 : "${WARM_S:=20}"
 : "${THRESHOLD:=20}"
 : "${CONFIGS:=none falco tetragon provbind}"
+: "${STOP_NEO4J:=1}"                        # 1 = pause Neo4j while measuring (only offline attribution uses it)
 : "${SKIP_PREP:=0}"                         # 1 = skip steps 0, 0b, 0c (an ablation run reuses them)
 : "${NODE_MLB:=1}"                          # 0 = the provbind configuration's node runs without ML-B
 : "${PREP_RUNS:=5}"                         # cold compiles of the image for PROVBIND's preparation time
@@ -107,6 +108,7 @@ events() {    # Tetragon's event stream, from kubectl logs or straight from the 
 }
 restore() {
   provbind_stop
+  if [ "${NEO4J_STOPPED:-0}" = 1 ]; then docker start neo4j >/dev/null 2>&1 || true; fi
   if [ "$POLICY_SET" = opt ] && [ "${KEEP_POLICY_SET:-0}" != 1 ]; then   # leave the original policies in place
     swap_policy_set orig
     for f in write truncate cap load connect; do kubectl apply -f "node/tetragon/$f.yaml" >/dev/null 2>&1 || true; done
@@ -210,6 +212,14 @@ kubectl -n "$LOADNS" get pod loadgen >/dev/null 2>&1 \
   || kubectl -n "$LOADNS" run loadgen --image="$DEMO_REF" --restart=Never --command -- sleep infinity >/dev/null
 kubectl -n "$LOADNS" wait --for=condition=Ready pod/loadgen --timeout=180s >/dev/null
 client 5 mix > "$LOGS/connectivity.json" && echo "  client reaches $URL: $(cat "$LOGS/connectivity.json")"
+
+# Neo4j serves only offline attribution (alerts/attribute.py), which no configuration here runs; a JVM in
+# the background can take a whole core at random (it did on 5 October), so it is paused for every
+# configuration alike and started again at the end.
+NEO4J_STOPPED=0
+if [ "$STOP_NEO4J" = 1 ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx neo4j; then
+  docker stop neo4j >/dev/null && NEO4J_STOPPED=1 && echo "  Neo4j paused for the measurements"
+fi
 
 # --- 1. the measurements ------------------------------------------------------------------------------
 for rep in $(seq 1 "$REPS"); do
