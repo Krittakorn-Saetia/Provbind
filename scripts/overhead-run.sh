@@ -160,6 +160,11 @@ REQS=$(grep -oE "loadgen: [0-9]+ requests in 600s" "$PROVBIND_RUN/comparison-run
 python3 -m eval.prep_time desfam --binaries "$OUT_RUN/prep-binaries" --benign "$BASE/benign-*.txt" \
   --requests "${REQS:-0}" --packages "$PKGS" --unowned "$UNOWNED" --out "$PREP" || echo "  DeSFAM-E timing failed"
 
+step "0c. zero-day validity checks on the comparison run (eval/zero_day_check.py)"
+python3 -m eval.zero_day_check --run "$PROVBIND_RUN" --mlb-data "ml/data/mlb/${DEMO_REF##*@sha256:}" \
+  --egress "$EGRESS" || echo "  a zero-day check FAILED: see $PROVBIND_RUN/results/ZERODAY.md"
+cp "$PROVBIND_RUN/results/ZERODAY.md" "$RES/" 2>/dev/null || true
+
 # --- setup: the same demo pod, a Service for it, an in-cluster load client --------------------------
 step "setup: policies, demo app, Service, load pod; the ML-B model and envelopes from $PROVBIND_RUN"
 for policy in $POLICIES; do kubectl apply -f "$policy" >/dev/null; done
@@ -210,4 +215,4 @@ cp "$RES/PREP.json" "$PROVBIND_RUN/results/" 2>/dev/null || true      # figure 1
 python3 -m eval.overhead report --dir "$RES" --threshold "$THRESHOLD" \
   --comparison "$PROVBIND_RUN/results/COMPARISON.json" --oh01 "$RES/OH-01.json"
 kubectl -n "$LOADNS" delete pod loadgen --wait=false >/dev/null 2>&1 || true
-echo "overhead run done: $RES/OVERHEAD.md and $RES/PREP.md"
+echo "overhead run done: $RES/OVERHEAD.md, $RES/PREP.md and $RES/ZERODAY.md"

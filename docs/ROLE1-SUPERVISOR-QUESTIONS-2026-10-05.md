@@ -75,6 +75,44 @@ themselves.
 | ak-2 | unsigned image | T1525 Implant Internal Image |
 | ak-3, trust-2 | signing key revoked (stolen-key case) | T1553.002 Subvert Trust Controls: Code Signing |
 
+### 2.5 Is our zero-day set valid? The checks
+
+Two things make a self-made "unknown" attack set valid: **the detectors never saw the attacks before the
+test** (no leakage), and **each attack stands for something real**.
+
+**(a) No leakage: checked on the run data** by `eval/zero_day_check.py`, which the overhead run executes
+first (step 0c) and writes to `results/ZERODAY.md`:
+
+| Check | What it proves |
+|---|---|
+| Z1 | PROVBIND's specification of the demo image was compiled before the first scenario ran |
+| Z2 | no unknown attack's artefact is in the specification: `/tmp/.x9`, `/tmp/.cache`, `/tmp/.inj.so` in no image file; 203.0.113.9 outside the egress list; `helperd` (A-U2) owned by no package |
+| Z3 | ML-B's training and validation windows all ended before the first scenario, and none overlaps an attack |
+| Z4 | the ML-B model was written before the first scenario |
+| Z5 | DeSFAM-E's benign baseline was recorded before the first scenario |
+| Z6 | no advisory names anything but the known-trust test package (the unknown attacks have no advisory) |
+| Z7 | Falco runs its default rules, with no custom rule written for our scenarios |
+
+**(b) Each scenario stands for a real, publicly reported behaviour** (public incident write-ups only; no
+sample was downloaded or run, Test Plan §12.4):
+
+| Scenario | Real behaviour it stands for | Public report |
+|---|---|---|
+| attack-1 drop and run | compromised litellm 1.82.7/1.82.8 downloads `/tmp/pglog` and executes it; ua-parser-js 0.7.29 downloads and runs an executable from its preinstall script | [12], [13] |
+| au-2 build-time program | ua-parser-js's preinstall script runs at install time (install-time execution, the second most common behaviour in the Datadog analysis) | [13] |
+| ru-5 credential read | litellm reads `/var/run/secrets/kubernetes.io/serviceaccount/token`; mrmustard 0.7.4 collects SSH keys, AWS credentials and Kubernetes configuration | [14], [15] |
+| ru-3 outbound connection | the same packages send what they collect to an attacker's server | [14], [15] |
+| rk-3 library injection | termncolor/colorinal drop a shared object (`terminate.so`) and load it; LD_PRELOAD user-space rootkits such as HiddenWasp | [16], [17] |
+| ru-4 binary replaced | ATT&CK T1554 Compromise Host Software Binary (a technique-level source: we found no package incident that replaces a system binary inside a container) | ATT&CK |
+| attack-2 file burst | not from a sample: the test plan's in-envelope adversary (only ML-B can see it), T1486-like | — |
+| ak-3, trust-2 revoked key | stolen code-signing keys: GitHub's certificates (2022, invalidated), Nvidia's (used to sign malware) | [18] |
+| ak-1, trust-1 advisory | malicious-package advisories (OSV `MAL-` entries) for a dependency | [8] |
+| rk-2 kernel-CVE shape | the call pattern of kernel CVEs such as Dirty Pipe (splice), as DeSFAM's paper uses | [11] |
+
+**(c) What remains a limit.** The scenarios were written by us, not by an independent red team, and one
+image is tested. The checks above show the detectors had no access to the attacks; they do not remove
+designer bias. That is stated in the write-up, with the third-party test set (2.4) as the way to close it.
+
 ## 3. Questions 3 and 4: the overhead test
 
 **What was missing.** The comparison measured accuracy only. Korn's figure script has panels for
@@ -170,3 +208,10 @@ What changed:
 9. Falco, "Falco eBPF & Kernel Module Performance." https://github.com/falcosecurity/libs/files/8334709/Falco.eBPF.Kernel.Module.Performance.pdf
 10. InfoQ, "eBPF Kubernetes Security Tool Tetragon Improves Performance and Stability," 2023. https://www.infoq.com/news/2023/11/kubernetes-ebpf-tetragon/
 11. DeSFAM, IEEE Access 2025, doi:10.1109/ACCESS.2025.3592192. https://ieeexplore.ieee.org/document/11095719/
+12. Datadog Security Labs, "LiteLLM and Telnyx compromised on PyPI: tracing the TeamPCP supply chain campaign." https://securitylabs.datadoghq.com/articles/litellm-compromised-pypi-teampcp-supply-chain-campaign/
+13. Rapid7, "NPM library (ua-parser-js) hijacked: what you need to know," 2021. https://www.rapid7.com/blog/post/2021/10/25/npm-library-ua-parser-js-hijacked-what-you-need-to-know/
+14. SafeDep, "Malicious litellm 1.82.8: credential theft and persistent backdoor." https://safedep.io/malicious-litellm-1-82-8-analysis/
+15. StepSecurity, "Compromised PyPI package: mrmustard 0.7.4 steals SSH, cloud, and Kubernetes credentials." https://www.stepsecurity.io/blog/compromised-pypi-mrmustard-0-7-4-credential-stealer
+16. The Hacker News, "Malicious PyPI and npm packages discovered exploiting dependencies in supply chain attacks," 2025. https://thehackernews.com/2025/08/malicious-pypi-and-npm-packages.html
+17. Sandfly Security, "Detecting and de-cloaking HiddenWasp Linux stealth malware." https://sandflysecurity.com/blog/detecting-and-de-cloaking-hiddenwasp-linux-stealth-malware
+18. DigiCert, "What went wrong with GitHub stolen code signing keys." https://www.digicert.com/blog/github-stolen-code-signing-keys-and-how-to-prevent-it
