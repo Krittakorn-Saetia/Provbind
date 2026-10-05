@@ -1,8 +1,9 @@
 # Supervisor's four questions (5 October 2026): Role 1's answers and the follow-up test
 
-**From:** Role 1 · **For:** the supervisor, Korn and the team · **Status:** question 2 answered below;
-questions 3 and 4 need the overhead test (`scripts/overhead-run.sh`, Section 3), whose numbers go into
-Section 4 when it has run; question 1 (the graphs) is being reworked with the figures he saw.
+**From:** Role 1 · **For:** the supervisor, Korn and the team · **Status:** question 2 answered below.
+Questions 1, 3 and 4 need one more run on the VM, `scripts/overhead-run.sh` (about 1.6 h). It is a new
+measurement, not a repeat of the comparison, whose accuracy results stand. It measures runtime overhead
+(Sections 3–4) and each system's preparation time with exact counts (Section 5, figure 1).
 
 | # | Question | Where |
 |---|---|---|
@@ -116,8 +117,11 @@ the comparison run) beside its measured overhead. Falco raised 10 false positive
 0. The question is whether PROVBIND's extra cost, if any, buys those 10.
 
 **Also part of "time spent to avoid mistakes"** (one-off setup, not runtime): compiling an envelope per
-image (OH-04), and ML-B's training data, which took 9 h of benign load per image on our VM (Section 10 of
-the comparison write-up). The latter is the obvious candidate for optimisation, and Section 4 will state it.
+image, and ML-B's training data (7 h of benign load for our image, plus 1 h held out for checking;
+Section 10 of the comparison write-up). Both are measured per system in Section 5, against Confine-E's
+and DeSFAM-E's own preparation. ML-B's 7 h is far longer than DeSFAM-E's 30 min of profiling, so it is the
+obvious candidate for optimisation (more requests per hour, or fewer windows); Section 4 will state it
+with the numbers.
 
 ## 4. Results
 
@@ -125,7 +129,25 @@ the comparison write-up). The latter is the obvious candidate for optimisation, 
 
 ## 5. Question 1: the graphs
 
-*Being reworked once we have the figures the supervisor saw and his comments.*
+The supervisor's comment on figure 1 (`fig1_c1_specification`, "time until a new image is protected"):
+**he wants the exact measured time for each system, not estimates, and exactly how many operations each
+time is based on.** Before, Confine-E and DeSFAM-E were drawn as hatched "by design" minimums (30 s, 30 min).
+
+What changed:
+- `eval/prep_time.py` measures each system's preparation on our VM, and `scripts/overhead-run.sh` runs it
+  (step 0b):
+
+  | System | Measured as | Count shown |
+  |---|---|---|
+  | PROVBIND | `compiler.compile` on the image, cold, 5 times | compiles, files per image |
+  | PROVBIND + ML-B | D2 benign load (from the record-d2 log) + model training, timed | requests, windows |
+  | Falco | no per-image step; DaemonSet ready time after each restart | restarts |
+  | Confine-E | start-up trace span + exporting the binaries + static analysis, timed | ELF files |
+  | DeSFAM-E | baseline profiling span + allow list + Isolation Forest training, timed | requests, windows |
+
+- Figure 1 (`eval/baselines/plot_contributions.py`) reads `results/PREP.json` when it exists: every bar is
+  measured, labelled with its exact seconds, and has its count printed under it. Without the file it
+  falls back to the old drawing.
 
 ## References
 

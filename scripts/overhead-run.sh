@@ -5,7 +5,10 @@
 #   DEMO_REF=<registry>/demo-app@sha256:<hex> scripts/overhead-run.sh
 #
 # 0. PROVBIND's own cost from the comparison run's files (no new run): OH-01 per-event verification
-#    latency (replays $PROVBIND_RUN/rec.jsonl), OH-04/OH-05 compile time and index memory.
+#    latency (replays $PROVBIND_RUN/rec.jsonl), OH-04/OH-05 compile time and index memory; then each
+#    system's measured preparation time for a new image (eval/prep_time.py): PROVBIND compiles the image
+#    PREP_RUNS times cold, Confine-E's export and static analysis and DeSFAM-E's training are timed, their
+#    start-up and profiling recordings come from the comparison run, Falco's restart is timed in step 1.
 # 1. For each repetition, the four configurations in a shuffled order (eval/overhead.py):
 #      none      Tetragon and Falco stopped (their DaemonSets scheduled nowhere)
 #      falco     Falco only
@@ -41,6 +44,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${WARM_S:=20}"
 : "${THRESHOLD:=20}"
 : "${CONFIGS:=none falco tetragon provbind}"
+: "${PREP_RUNS:=5}"                         # cold compiles of the image for PROVBIND's preparation time
 LOADNS=provbind-load
 RES="$OUT_RUN/results"; LOGS="$OUT_RUN/logs"; ROWS="$RES/overhead.jsonl"
 URL="http://$DEPLOY.$NAMESPACE.svc.cluster.local:8080"
@@ -62,10 +66,17 @@ ds_off() {    # NS DS
   for _ in $(seq 1 90); do [ -z "$(ds_pods "$1" "$2")" ] && return 0; sleep 2; done
   echo "overhead-run: $2 did not stop" >&2; return 1
 }
-ds_on() {     # NS DS
+FALCO_READY=()
+ds_on() {     # NS DS : schedule it again; when it was off, time how long it takes to be ready
+  local was_off t0
+  [ -z "$(ds_pods "$1" "$2")" ] && was_off=1 || was_off=0
+  t0=$(date +%s.%N)
   kubectl -n "$1" patch ds "$2" --type merge \
     -p '{"spec":{"template":{"spec":{"nodeSelector":{"provbind-overhead":null}}}}}' >/dev/null
   kubectl -n "$1" rollout status "ds/$2" --timeout=300s >/dev/null
+  if [ "$was_off" = 1 ] && [ "$2" = falco ]; then
+    FALCO_READY+=("$(python3 -c "import sys; print(round(float(sys.argv[2]) - float(sys.argv[1]), 3))" "$t0" "$(date +%s.%N)")")
+  fi
 }
 provbind_stop() {
   for p in "${PIDS[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done
@@ -120,6 +131,26 @@ for f in OH-01 OH-04 OH-05 PH3-12; do
   [ -f "$PROVBIND_RUN/results/$f.json" ] && cp "$PROVBIND_RUN/results/$f.json" "$RES/" && echo "  $f recorded"
 done
 
+step "0b. preparation time per system, measured (PROVBIND x$PREP_RUNS cold compiles, Confine-E, DeSFAM-E)"
+PREP="$RES/prep.jsonl"
+mkdir -p "$OUT_RUN/prep-work"
+python3 -m eval.prep_time provbind --ref "$DEMO_REF" --runs "$PREP_RUNS" --work "$OUT_RUN/prep-work" \
+  --key "$PROVBIND_KEY" --out "$PREP" || echo "  PROVBIND compile timing failed (see above)"
+BASE="$PROVBIND_RUN/traces/baseline"
+t0=$(date +%s.%N)
+eval/baselines/export_binaries.sh --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --deploy "$DEPLOY" \
+  --digest "${DEMO_REF##*@}" --out "$OUT_RUN/prep-binaries" --startup-trace "$BASE/startup.txt" \
+  && EXPORT_S=$(python3 -c "import sys; print(round(float(sys.argv[2]) - float(sys.argv[1]), 3))" "$t0" "$(date +%s.%N)") \
+  && python3 -m eval.prep_time confine --binaries "$OUT_RUN/prep-binaries" --startup "$BASE/startup.txt" \
+       --export-s "$EXPORT_S" --out "$PREP" \
+  || echo "  Confine-E timing failed"
+python3 -m eval.prep_time mlb --log "$PROVBIND_RUN/record-d2.log" --data "ml/data/mlb/${DEMO_REF##*@sha256:}" \
+  --work "$OUT_RUN/prep-work" --out "$PREP" || echo "  ML-B timing failed"
+REQS=$(grep -oE "loadgen: [0-9]+ requests in 600s" "$PROVBIND_RUN/comparison-run.log" 2>/dev/null | head -3 \
+       | awk '{s += $2} END {print s + 0}')
+python3 -m eval.prep_time desfam --binaries "$OUT_RUN/prep-binaries" --benign "$BASE/benign-*.txt" \
+  --requests "${REQS:-0}" --out "$PREP" || echo "  DeSFAM-E timing failed"
+
 # --- setup: the same demo pod, a Service for it, an in-cluster load client --------------------------
 step "setup: policies, demo app, Service, load pod; the ML-B model and envelopes from $PROVBIND_RUN"
 for policy in $POLICIES; do kubectl apply -f "$policy" >/dev/null; done
@@ -164,7 +195,10 @@ done
 step "2. report"
 restore
 trap - EXIT
+python3 -m eval.prep_time falco --ready-s "${FALCO_READY[@]}" --out "$PREP"
+python3 -m eval.prep_time report --prep "$PREP" --out "$RES"
+cp "$RES/PREP.json" "$PROVBIND_RUN/results/" 2>/dev/null || true      # figure 1 reads it from the run folder
 python3 -m eval.overhead report --dir "$RES" --threshold "$THRESHOLD" \
   --comparison "$PROVBIND_RUN/results/COMPARISON.json" --oh01 "$RES/OH-01.json"
 kubectl -n "$LOADNS" delete pod loadgen --wait=false >/dev/null 2>&1 || true
-echo "overhead run done: $RES/OVERHEAD.md"
+echo "overhead run done: $RES/OVERHEAD.md and $RES/PREP.md"

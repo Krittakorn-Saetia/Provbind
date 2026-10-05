@@ -37,7 +37,7 @@ from eval.compare import alert_pod, confusion, falco_pod, load_ground_truth, loa
 
 # --- what is compared ---------------------------------------------------------------------------------
 SYSTEMS = ("PROVBIND", "Falco", "Confine-E", "DeSFAM-E")           # figures 1-3; figure 4 adds Sig-only
-KIND = {"PROVBIND": "measured", "Falco": "measured", "Confine-E": "estimated", "DeSFAM-E": "estimated",
+KIND = {"PROVBIND": "measured", "PROVBIND + ML-B": "measured", "Falco": "measured", "Confine-E": "estimated", "DeSFAM-E": "estimated",
         "Sig-only": "derived"}
 MARK = {"measured": "", "estimated": "*", "derived": "†"}
 NOT_DETECTION = {"tamper-1"}                    # a log-integrity check, not a detection run
@@ -108,6 +108,7 @@ def load_run(run):
             "alerts": load_jsonl(run / "alerts.jsonl"), "falco": load_jsonl(run / "falco.jsonl"),
             "envelopes": envs, "profile_s": profile,
             "desfam": _json(run / "results" / "desfam.json") or {},
+            "prep": _json(run / "results" / "PREP.json") or {},          # eval/prep_time.py (overhead run)
             "results": {i: _json(run / "results" / f"{i}.json") for i in ("OH-01", "OH-04", "OH-05")}}
 
 
@@ -125,8 +126,48 @@ def compile_seconds(env):
     return round(sum(v for v in t.values() if isinstance(v, (int, float))) / 1000, 2) if t else None
 
 
+def _count(n, what):
+    return f"n = {n:,} {what}" if isinstance(n, int) else ""
+
+
+def c1_readiness_measured(prep):
+    """Figure 1a from eval/prep_time.py: every system's preparation time measured on the VM, with counts."""
+    rows = []
+    p = prep.get("PROVBIND")
+    if p:
+        rows.append({"system": "PROVBIND", "seconds": p.get("seconds"), "how": "measured",
+                     "note": f"{_count(p.get('n'), 'cold compiles')}, {p.get('files') or 0:,} files each"})
+    m = prep.get("PROVBIND + ML-B")
+    if m and m.get("seconds"):
+        parts = m.get("parts_s") or {}
+        rows.append({"system": "PROVBIND + ML-B", "seconds": m.get("seconds"), "how": "measured",
+                     "note": f"{_count(m.get('n'), 'requests')}, {m.get('windows') or 0:,} windows; "
+                             f"load {(parts.get('benign_load') or 0) / 3600:.1f} h + training {parts.get('training') or 0:.1f} s"})
+    f = prep.get("Falco")
+    if f:
+        rows.append({"system": "Falco", "seconds": None, "how": "none",
+                     "note": "0 s: no per-image step (generic rules)"
+                             + (f"\nDaemonSet restart {f['restart_ready_s']:.0f} s, n = {f.get('restarts')} restarts"
+                                if f.get("restart_ready_s") is not None else "")})
+    c = prep.get("Confine-E")
+    if c:
+        parts = c.get("parts_s") or {}
+        rows.append({"system": "Confine-E", "seconds": c.get("seconds"), "how": "measured",
+                     "note": f"{_count(c.get('n'), 'ELF files')}; start-up {parts.get('startup_observation', 0):.0f} s"
+                             f" + export {parts.get('export_binaries') or 0:.0f} s + analysis {parts.get('static_analysis', 0):.1f} s"})
+    s_ = prep.get("DeSFAM-E")
+    if s_:
+        parts = s_.get("parts_s") or {}
+        rows.append({"system": "DeSFAM-E", "seconds": s_.get("seconds"), "how": "measured",
+                     "note": f"{_count(s_.get('n'), 'requests')}, {s_.get('windows') or 0:,} windows; "
+                             f"profiling {parts.get('profiling', 0) / 60:.0f} min + training {parts.get('training', 0):.1f} s"})
+    return rows
+
+
 def c1_readiness(d):
-    """Figure 1a: time until each system can protect a new image."""
+    """Figure 1a: time until each system can protect a new image (measured when PREP.json exists)."""
+    if d.get("prep"):
+        return c1_readiness_measured(d["prep"])
     comp = [s for s in (compile_seconds(e) for e in d["envelopes"]) if s]
     profile = d["profile_s"] or DEFAULT_PROFILE_S
     return [
@@ -347,8 +388,10 @@ def _note_below(ax, text, y=-0.36):
 def fig1_c1(d, path, dpi):
     plt = _plt()
     from matplotlib.patches import Patch
-    fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 2.5), gridspec_kw={"width_ratios": [1.1, 1]})
     ready = c1_readiness(d)
+    measured_all = all(r["how"] in ("measured", "none") for r in ready)
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 3.0 if measured_all else 2.5),
+                               gridspec_kw={"width_ratios": [1.5, 1] if measured_all else [1.1, 1]})
     ys = list(range(len(ready)))[::-1]
     vals = [r["seconds"] for r in ready if r["seconds"]]
     lo, hi = (min(vals) / 3 if vals else 1), (max(vals) * 6 if vals else 3600)
@@ -359,8 +402,11 @@ def fig1_c1(d, path, dpi):
             continue
         a.barh(y, r["seconds"] - lo, height=0.5, left=lo, color=S1, edgecolor=SURFACE, linewidth=1,
                hatch="///" if r["how"] == "by design" else None)        # from the axis edge to the value
-        label = ("≥ " if r["how"] == "by design" else "") + _fmt_s(r["seconds"])
+        label = ("≥ " if r["how"] == "by design" else "") + (f"{r['seconds']:.1f} s" if r["seconds"] < 60
+                                                           else f"{r['seconds']:.0f} s = {_fmt_s(r['seconds'])}")
         a.text(r["seconds"] * 1.12, y, label, va="center", fontsize=7, color=INK)
+        if measured_all and r.get("note"):                                    # the exact count behind the bar
+            a.text(lo * 1.15, y - 0.36, r["note"], va="center", fontsize=5.6, color=INK2)
     a.set_xscale("log")
     a.set_xlim(lo, hi)
     ticks = [t for t in (1, 10, 60, 600, 3600, 36000) if lo <= t <= hi]
@@ -371,10 +417,13 @@ def fig1_c1(d, path, dpi):
     a.set_yticklabels([_tick(r["system"], KIND[r["system"]]) for r in ready])
     a.tick_params(axis="y", length=0)
     _grid(a, "x")
-    _panel(a, "a", "Time until a new image is protected")
-    a.legend(handles=[Patch(facecolor=S1, edgecolor=SURFACE, label="measured in this run"),
-                      Patch(facecolor=S1, edgecolor=SURFACE, hatch="///", label="by design (minimum the method needs)")],
-             loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=2, fontsize=6.5)
+    if measured_all:
+        _panel(a, "a", "Time until a new image is protected (measured)")
+    else:
+        _panel(a, "a", "Time until a new image is protected")
+        a.legend(handles=[Patch(facecolor=S1, edgecolor=SURFACE, label="measured in this run"),
+                          Patch(facecolor=S1, edgecolor=SURFACE, hatch="///", label="by design (minimum the method needs)")],
+                 loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=2, fontsize=6.5)
 
     st = c1_steps(d)
     if not st["steps"]:
@@ -400,8 +449,11 @@ def fig1_c1(d, path, dpi):
     fig.tight_layout(w_pad=2.5)
     _footer(fig, ["C1. PROVBIND's specification is compiled from signed build evidence, so it exists before the workload runs; "
                   "the compile is paid once per image digest, not per pod.",
-                  "Falco uses hand-written generic rules. * Confine-E and DeSFAM-E: estimated systems; their bars are the "
-                  "observation their published design needs before it can protect a new image."])
+                  ("Falco uses hand-written generic rules. * Confine-E and DeSFAM-E: estimated systems; their bars are their "
+                   "preparation as run on our VM (start-up or profiling recording + analysis or training), timed."
+                   if measured_all else
+                   "Falco uses hand-written generic rules. * Confine-E and DeSFAM-E: estimated systems; their bars are the "
+                   "observation their published design needs before it can protect a new image.")])
     return _save(plt, fig, path, dpi)
 
 
