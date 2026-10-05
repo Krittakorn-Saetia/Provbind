@@ -57,7 +57,7 @@ def _trace_span_s(path):
 
 
 def provbind(args):
-    times, steps, files = [], {}, None
+    times, steps, files, packages = [], {}, None, None
     for i in range(args.runs):
         work = Path(tempfile.mkdtemp(prefix=f"prep-{i}-", dir=args.work))
         t0 = time.perf_counter()
@@ -71,48 +71,69 @@ def provbind(args):
         hexd = args.ref.split("@sha256:")[-1]
         env = json.loads((work / "envelopes" / f"{hexd}.json").read_text())
         files = len(env.get("files") or {})
+        packages = len(env.get("packages") or {})
         for k, v in (env.get("timings_ms") or {}).items():
             if isinstance(v, (int, float)):
                 steps.setdefault(k, []).append(v)
     _append(args.out, {"system": "PROVBIND", "what": "compile the envelope (cold, fresh run folder)",
                        "seconds": round(statistics.median(times), 3) if times else None,
                        "seconds_all": [round(t, 3) for t in times], "n": len(times), "n_what": "compiles",
-                       "files": files, "steps_ms": {k: round(statistics.median(v), 1) for k, v in steps.items()}})
+                       "files": files, "packages": packages, "steps_ms": {k: round(statistics.median(v), 1) for k, v in steps.items()}})
+
+
+def _static(binaries):
+    """Confine's static analysis in two timed parts: ELF import extraction, then mapping to system calls."""
+    from eval.baselines.syscalls import LIBC_RUNTIME, syscalls_for
+    from eval.baselines.trace import imports_under
+    t0 = time.perf_counter()
+    funcs, n_elf = imports_under(binaries)
+    t_imports = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    allow = syscalls_for(funcs) | (LIBC_RUNTIME if n_elf else set())
+    t_map = time.perf_counter() - t0
+    return allow, funcs, n_elf, t_imports, t_map
+
+
+def _packages(args):
+    return {"packages": args.packages, "files_outside_packages": args.unowned}
 
 
 def confine(args):
-    from eval.baselines.confine_estimate import static_set
     span, events = _trace_span_s(args.startup)
-    t0 = time.perf_counter()
-    allow, how = static_set(args.binaries)
-    analysis = time.perf_counter() - t0
-    total = span + (args.export_s or 0.0) + analysis
+    allow, funcs, n_elf, t_imports, t_map = _static(args.binaries)
+    parts = {"startup_observation": round(span, 3), "export_binaries": args.export_s,
+             "elf_import_extraction": round(t_imports, 3), "syscall_mapping": round(t_map, 3)}
     _append(args.out, {"system": "Confine-E", "what": "start-up observation + export binaries + static analysis",
-                       "seconds": round(total, 3),
-                       "parts_s": {"startup_observation": round(span, 3), "export_binaries": args.export_s,
-                                   "static_analysis": round(analysis, 3)},
-                       "n": how["elf_files"], "n_what": "ELF files analysed",
-                       "imported_functions": how["imported_functions"], "allow_list": len(allow),
+                       "seconds": round(sum(v for v in parts.values() if v), 3), "parts_s": parts,
+                       "n": n_elf, "n_what": "ELF files analysed", **_packages(args),
+                       "imported_functions": len(funcs), "allow_list": len(allow),
                        "startup_syscalls": events})
 
 
 def desfam(args):
     from eval.baselines.desfam_estimate import Detector, final_set
+    from eval.baselines.trace import read_trace, syscalls_in
     paths = sorted(glob.glob(args.benign))
     spans = [_trace_span_s(p) for p in paths]
     profile = sum(s for s, _ in spans)
+    _, _, n_elf, t_imports, t_map = _static(args.binaries)               # S_static, as Confine-E
     t0 = time.perf_counter()
-    s_final, _ = final_set(args.binaries, paths, args.docker_seccomp)
-    allow_s = time.perf_counter() - t0
+    for path in paths:                                                   # S_dynamic from the profiling traces
+        syscalls_in(read_trace(path))
+    t_dynamic = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    s_final, _ = final_set(args.binaries, paths, args.docker_seccomp)    # the whole Eq. 1 (for its size)
+    t_final = time.perf_counter() - t0 - t_imports - t_map - t_dynamic   # what Eq. 1 adds on top
     t0 = time.perf_counter()
     det = Detector.train(paths)
     train_s = time.perf_counter() - t0
+    parts = {"profiling": round(profile, 3), "static_allow_list": round(t_imports + t_map, 3),
+             "dynamic_allow_list": round(t_dynamic, 3), "combine_eq1": round(max(0.0, t_final), 3),
+             "isolation_forest_training": round(train_s, 3)}
     _append(args.out, {"system": "DeSFAM-E", "what": "benign profiling + allow list + Isolation Forest training",
-                       "seconds": round(profile + allow_s + train_s, 3),
-                       "parts_s": {"profiling": round(profile, 3), "allow_list": round(allow_s, 3),
-                                   "training": round(train_s, 3)},
-                       "n": args.requests, "n_what": "benign requests during profiling",
-                       "profiling_runs": len(paths), "syscalls": sum(e for _, e in spans),
+                       "seconds": round(sum(parts.values()), 3), "parts_s": parts,
+                       "n": args.requests, "n_what": "benign requests during profiling", **_packages(args),
+                       "elf_files": n_elf, "profiling_runs": len(paths), "syscalls": sum(e for _, e in spans),
                        "windows": det.n_train, "allow_list": len(s_final)})
 
 
@@ -163,13 +184,16 @@ def report(args):
         made = ", ".join(f"{k.replace('_', ' ')} {_fmt(v)}" for k, v in parts.items() if v is not None) or r["what"]
         count = f"{r['n']} {r['n_what']}"
         if s == "PROVBIND":
-            count += f" ({r.get('files')} files each); all: {r.get('seconds_all')}"
+            count += (f"; {r.get('packages')} packages, {r.get('files')} files per image; "
+                      f"all: {r.get('seconds_all')}")
         elif s == "Confine-E":
-            count += f", {r.get('imported_functions')} imported functions, {r.get('startup_syscalls')} start-up system calls"
+            count += (f" from {r.get('packages')} packages (+{r.get('files_outside_packages')} outside any package), "
+                      f"{r.get('imported_functions')} imported functions, {r.get('startup_syscalls')} start-up system calls")
         elif s == "PROVBIND + ML-B":
             count += f", {r.get('windows')} training windows"
         elif s == "DeSFAM-E":
-            count += f", {r.get('profiling_runs')} profiling runs, {r.get('syscalls')} system calls, {r.get('windows')} windows"
+            count += (f", {r.get('profiling_runs')} profiling runs, {r.get('syscalls')} system calls, "
+                      f"{r.get('windows')} windows; {r.get('elf_files')} ELF files from {r.get('packages')} packages")
         elif s == "Falco":
             made = "no per-image step: generic rules apply at once"
             count = (f"DaemonSet ready after a restart in {_fmt(r.get('restart_ready_s'))} "
@@ -195,11 +219,15 @@ def main(argv=None) -> int:
     c.add_argument("--binaries", required=True)
     c.add_argument("--startup", required=True)
     c.add_argument("--export-s", type=float)
+    c.add_argument("--packages", type=int, help="distinct packages owning the analysed ELF files")
+    c.add_argument("--unowned", type=int, help="analysed files no package owns (e.g. a source-built runtime)")
     d = sub.add_parser("desfam")
     d.add_argument("--binaries", required=True)
     d.add_argument("--benign", required=True)
     d.add_argument("--requests", type=int)
     d.add_argument("--docker-seccomp")
+    d.add_argument("--packages", type=int)
+    d.add_argument("--unowned", type=int)
     m = sub.add_parser("mlb")
     m.add_argument("--log", required=True, help="scripts/record-d2.sh's log (run/record-d2.log)")
     m.add_argument("--data", required=True, help="ml/data/mlb/<hex>")

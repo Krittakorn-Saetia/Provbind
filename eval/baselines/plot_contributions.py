@@ -136,13 +136,13 @@ def c1_readiness_measured(prep):
     p = prep.get("PROVBIND")
     if p:
         rows.append({"system": "PROVBIND", "seconds": p.get("seconds"), "how": "measured",
-                     "note": f"{_count(p.get('n'), 'cold compiles')}, {p.get('files') or 0:,} files each"})
+                     "note": f"{p.get('packages') or 0:,} packages, {p.get('files') or 0:,} files; "
+                             f"median of {_count(p.get('n'), 'cold compiles')}"})
     m = prep.get("PROVBIND + ML-B")
     if m and m.get("seconds"):
         parts = m.get("parts_s") or {}
         rows.append({"system": "PROVBIND + ML-B", "seconds": m.get("seconds"), "how": "measured",
-                     "note": f"{_count(m.get('n'), 'requests')}, {m.get('windows') or 0:,} windows; "
-                             f"load {(parts.get('benign_load') or 0) / 3600:.1f} h + training {parts.get('training') or 0:.1f} s"})
+                     "note": f"trained on {_count(m.get('n'), 'requests')}, {m.get('windows') or 0:,} windows"})
     f = prep.get("Falco")
     if f:
         rows.append({"system": "Falco", "seconds": None, "how": "none",
@@ -153,14 +153,15 @@ def c1_readiness_measured(prep):
     if c:
         parts = c.get("parts_s") or {}
         rows.append({"system": "Confine-E", "seconds": c.get("seconds"), "how": "measured",
-                     "note": f"{_count(c.get('n'), 'ELF files')}; start-up {parts.get('startup_observation', 0):.0f} s"
-                             f" + export {parts.get('export_binaries') or 0:.0f} s + analysis {parts.get('static_analysis', 0):.1f} s"})
+                     "note": f"{c.get('packages') or 0:,} packages ({c.get('n') or 0:,} ELF files"
+                             + (f", +{c['files_outside_packages']} outside packages" if c.get("files_outside_packages") else "")
+                             + ")"})
     s_ = prep.get("DeSFAM-E")
     if s_:
         parts = s_.get("parts_s") or {}
         rows.append({"system": "DeSFAM-E", "seconds": s_.get("seconds"), "how": "measured",
-                     "note": f"{_count(s_.get('n'), 'requests')}, {s_.get('windows') or 0:,} windows; "
-                             f"profiling {parts.get('profiling', 0) / 60:.0f} min + training {parts.get('training', 0):.1f} s"})
+                     "note": f"{s_.get('packages') or 0:,} packages; profiled on {_count(s_.get('n'), 'requests')}, "
+                             f"{s_.get('windows') or 0:,} windows"})
     return rows
 
 
@@ -385,7 +386,116 @@ def _note_below(ax, text, y=-0.36):
     ax.text(0.0, y, text, transform=ax.transAxes, ha="left", va="top", fontsize=6.3, color=INK2)
 
 
+LABELS = {"startup_observation": "start-up recording", "export_binaries": "export binaries from the pod",
+          "elf_import_extraction": "read ELF imports", "syscall_mapping": "map imports to system calls",
+          "static_analysis": "static analysis", "profiling": "benign profiling",
+          "static_allow_list": "static allow list", "dynamic_allow_list": "dynamic allow list",
+          "combine_eq1": "combine (Eq. 1)", "isolation_forest_training": "Isolation Forest training",
+          "allow_list": "allow list", "training": "model training", "benign_load": "benign load (D2)"}
+
+
+def c1_components(prep, keep=5):
+    """Figure 1b: each system's preparation split into its timed components (seconds)."""
+    out = []
+    p = prep.get("PROVBIND")
+    if p and p.get("steps_ms"):
+        steps = sorted(((k, v / 1000) for k, v in p["steps_ms"].items()), key=lambda kv: -kv[1])
+        head, tail = steps[:keep], steps[keep:]
+        if tail:
+            head.append((f"other {len(tail)} steps", sum(v for _, v in tail)))
+        out.append(("PROVBIND", p.get("seconds"), head))
+    for name in ("PROVBIND + ML-B", "Confine-E", "DeSFAM-E"):
+        r = prep.get(name)
+        if r and r.get("parts_s"):
+            parts = [(LABELS.get(k, k.replace("_", " ")), v) for k, v in r["parts_s"].items() if v is not None]
+            out.append((name, r.get("seconds"), parts))
+    return out
+
+
+def _fmt_exact(s):
+    if s is None:
+        return "—"
+    if s < 1:
+        return f"{s * 1000:.0f} ms"
+    if s < 60:
+        return f"{s:.2f} s"
+    if s < 3600:
+        return f"{s:,.0f} s ({s / 60:.1f} min)"
+    return f"{s:,.0f} s ({s / 3600:.2f} h)"
+
+
+def fig1_c1_measured(d, path, dpi):
+    """Figure 1 when every system's preparation was measured (results/PREP.json from eval/prep_time.py)."""
+    plt = _plt()
+    prep = d["prep"]
+    ready = c1_readiness_measured(prep)
+    comps = c1_components(prep)
+    heights = [max(2, len(c[2])) + 1.2 for c in comps] + ([1.4] if prep.get("Falco") else [])
+    fig = plt.figure(figsize=(7.16, 1.2 + 0.24 * sum(heights)))
+    gs = fig.add_gridspec(len(heights), 2, width_ratios=[1.05, 1], height_ratios=heights, wspace=0.8,
+                          hspace=1.1)
+    a = fig.add_subplot(gs[:, 0])
+    ys = list(range(len(ready)))[::-1]
+    vals = [r["seconds"] for r in ready if r["seconds"]]
+    lo, hi = (min(vals) / 3 if vals else 1), (max(vals) * 40 if vals else 3600)
+    for y, r in zip(ys, ready):
+        if r["seconds"] is None:
+            a.text(lo * 1.15, y + 0.08, "0 s: no per-image step (generic rules)", va="center", fontsize=6.8,
+                   color=INK2, style="italic")
+            a.text(lo * 1.15, y - 0.3, "0 packages analysed", va="center", fontsize=6, color=INK2)
+            continue
+        a.barh(y, r["seconds"] - lo, height=0.45, left=lo, color=S1, edgecolor=SURFACE, linewidth=1)
+        a.text(r["seconds"] * 1.12, y + 0.04, _fmt_exact(r["seconds"]), va="center", fontsize=6.8, color=INK)
+        a.text(lo * 1.15, y - 0.36, r["note"], va="center", fontsize=6, color=INK2)
+    a.set_xscale("log")
+    a.set_xlim(lo, hi)
+    ticks = [t for t in (1, 10, 60, 600, 3600, 36000) if lo <= t <= hi]
+    a.set_xticks(ticks)
+    a.set_xticklabels([{1: "1 s", 10: "10 s", 60: "1 min", 600: "10 min", 3600: "1 h", 36000: "10 h"}[t] for t in ticks],
+                      fontsize=6.5)
+    a.set_xlabel("seconds, log scale", fontsize=6.5)
+    a.minorticks_off()
+    a.set_ylim(-0.8, len(ready) - 0.4)
+    a.set_yticks(ys)
+    a.set_yticklabels([_tick(r["system"], KIND.get(r["system"], "measured")) for r in ready])
+    a.tick_params(axis="y", length=0)
+    _grid(a, "x")
+    _panel(a, "a", "Time until a new image is protected (measured)")
+
+    for i, (name, total, parts) in enumerate(comps):
+        ax = fig.add_subplot(gs[i, 1])
+        names = [k for k, _ in parts][::-1]
+        secs = [v for _, v in parts][::-1]
+        top = max(secs) if secs else 1
+        ax.barh(range(len(secs)), secs, height=0.6, color=S1, edgecolor=SURFACE, linewidth=1)
+        for j, v in enumerate(secs):
+            ax.text(v + top * 0.02, j, _fmt_exact(v), va="center", fontsize=5.8, color=INK)
+        ax.set_yticks(range(len(secs)))
+        ax.set_yticklabels(names, fontsize=6)
+        ax.tick_params(axis="y", length=0)
+        ax.tick_params(axis="x", labelsize=5.5)
+        ax.set_xlim(0, top * 1.45)
+        _grid(ax, "x")
+        ax.set_title(("(b)  " if i == 0 else "") + f"{_tick(name, KIND.get(name, 'measured'))}: {_fmt_exact(total)}",
+                     loc="left", fontsize=7, color=INK, pad=3)
+    f = prep.get("Falco")
+    if f:
+        ax = fig.add_subplot(gs[len(comps), 1])
+        ax.set_axis_off()
+        ax.text(0, 0.5, "Falco: no per-image component (generic rules)."
+                + (f"\nIts DaemonSet is ready {_fmt_exact(f['restart_ready_s'])} after a restart "
+                   f"(median of {f.get('restarts')} restarts)." if f.get("restart_ready_s") is not None else ""),
+                transform=ax.transAxes, fontsize=6.3, color=INK2, va="center")
+    _footer(fig, ["C1. Every time was measured on our VM. PROVBIND compiles its specification from signed build "
+                  "evidence once per image digest; PROVBIND + ML-B adds the benign recording ML-B learns from.",
+                  "* Confine-E and DeSFAM-E are estimated systems: their times are their preparation steps as we ran "
+                  "them (recordings, binary export, analysis, training), each timed. Each panel in (b) has its own scale."])
+    return _save(plt, fig, path, dpi)
+
+
 def fig1_c1(d, path, dpi):
+    if d.get("prep"):
+        return fig1_c1_measured(d, path, dpi)
     plt = _plt()
     from matplotlib.patches import Patch
     ready = c1_readiness(d)

@@ -141,15 +141,24 @@ t0=$(date +%s.%N)
 eval/baselines/export_binaries.sh --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --deploy "$DEPLOY" \
   --digest "${DEMO_REF##*@}" --out "$OUT_RUN/prep-binaries" --startup-trace "$BASE/startup.txt" \
   && EXPORT_S=$(python3 -c "import sys; print(round(float(sys.argv[2]) - float(sys.argv[1]), 3))" "$t0" "$(date +%s.%N)") \
-  && python3 -m eval.prep_time confine --binaries "$OUT_RUN/prep-binaries" --startup "$BASE/startup.txt" \
-       --export-s "$EXPORT_S" --out "$PREP" \
+  || echo "  exporting the binaries failed"
+# Which packages own the analysed ELF files (dpkg in the demo container; a source-built runtime such as
+# the image's Python under /usr/local belongs to no package and is counted apart).
+OWN=$(ls "$OUT_RUN/prep-binaries" 2>/dev/null | sed 's|%|/|g' | kubectl -n "$NAMESPACE" exec -i "deploy/$DEPLOY" -- sh -c \
+  'while read p; do q=$(dpkg -S "$p" 2>/dev/null | head -1); [ -n "$q" ] || q=$(dpkg -S "${p#/usr}" 2>/dev/null | head -1);
+   if [ -n "$q" ]; then echo "PKG ${q%%:*}"; else echo NONE; fi; done' 2>/dev/null || true)
+PKGS=$( { printf '%s\n' "$OWN" | grep '^PKG' || true; } | sort -u | wc -l)
+UNOWNED=$(printf '%s\n' "$OWN" | grep -c '^NONE' || true)
+echo "  analysed ELF files come from $PKGS packages (+$UNOWNED files outside any package)"
+python3 -m eval.prep_time confine --binaries "$OUT_RUN/prep-binaries" --startup "$BASE/startup.txt" \
+  --export-s "${EXPORT_S:-0}" --packages "$PKGS" --unowned "$UNOWNED" --out "$PREP" \
   || echo "  Confine-E timing failed"
 python3 -m eval.prep_time mlb --log "$PROVBIND_RUN/record-d2.log" --data "ml/data/mlb/${DEMO_REF##*@sha256:}" \
   --work "$OUT_RUN/prep-work" --out "$PREP" || echo "  ML-B timing failed"
 REQS=$(grep -oE "loadgen: [0-9]+ requests in 600s" "$PROVBIND_RUN/comparison-run.log" 2>/dev/null | head -3 \
        | awk '{s += $2} END {print s + 0}')
 python3 -m eval.prep_time desfam --binaries "$OUT_RUN/prep-binaries" --benign "$BASE/benign-*.txt" \
-  --requests "${REQS:-0}" --out "$PREP" || echo "  DeSFAM-E timing failed"
+  --requests "${REQS:-0}" --packages "$PKGS" --unowned "$UNOWNED" --out "$PREP" || echo "  DeSFAM-E timing failed"
 
 # --- setup: the same demo pod, a Service for it, an in-cluster load client --------------------------
 step "setup: policies, demo app, Service, load pod; the ML-B model and envelopes from $PROVBIND_RUN"

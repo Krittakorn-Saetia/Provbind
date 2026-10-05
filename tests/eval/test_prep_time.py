@@ -44,3 +44,27 @@ def test_figure1_uses_measured_times():
     assert all(r["how"] in ("measured", "none") for r in rows)
     assert "n = 5 cold compiles" in rows[0]["note"] and "n = 4,532 requests" in rows[1]["note"]
     assert rows[2]["seconds"] is None and "no per-image step" in rows[2]["note"]
+
+
+def test_figure1_component_breakdown_for_every_system(tmp_path):
+    prep = {"PROVBIND": {"seconds": 3.2, "n": 5, "files": 5696, "packages": 87,
+                         "steps_ms": {"evidence": 2210, "union": 620, "validate": 120, "caps": 110, "fetch": 40,
+                                      "owners": 28, "sbom": 1}},
+            "PROVBIND + ML-B": {"seconds": 25210.0, "n": 4532, "windows": 220,
+                                "parts_s": {"benign_load": 25200.0, "training": 9.6}},
+            "Falco": {"seconds": 0.0, "restart_ready_s": 41.0, "restarts": 6},
+            "Confine-E": {"seconds": 44.7, "n": 31, "packages": 12, "files_outside_packages": 9,
+                          "parts_s": {"startup_observation": 30.0, "export_binaries": 12.3,
+                                      "elf_import_extraction": 2.2, "syscall_mapping": 0.004}},
+            "DeSFAM-E": {"seconds": 1812.5, "n": 320, "packages": 12, "windows": 2378,
+                         "parts_s": {"profiling": 1800.0, "static_allow_list": 2.2, "dynamic_allow_list": 1.9,
+                                     "combine_eq1": 0.01, "isolation_forest_training": 8.4}}}
+    comps = pc.c1_components(prep)
+    assert [c[0] for c in comps] == ["PROVBIND", "PROVBIND + ML-B", "Confine-E", "DeSFAM-E"]
+    assert comps[0][2][-1] == ("other 2 steps", 0.029)                   # steps past the top five are grouped
+    assert dict(comps[2][2])["read ELF imports"] == 2.2
+    assert "87 packages, 5,696 files" in pc.c1_readiness({"prep": prep})[0]["note"]
+    pytest_mpl = __import__("importlib").util.find_spec("matplotlib")
+    if pytest_mpl:
+        out = pc.fig1_c1({"prep": prep}, tmp_path / "fig1.png", 80)
+        assert (tmp_path / "fig1.png").stat().st_size > 10_000 and out.endswith("fig1.png")

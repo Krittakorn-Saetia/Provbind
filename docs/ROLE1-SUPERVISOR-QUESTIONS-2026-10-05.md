@@ -145,9 +145,17 @@ What changed:
   | Confine-E | start-up trace span + exporting the binaries + static analysis, timed | ELF files |
   | DeSFAM-E | baseline profiling span + allow list + Isolation Forest training, timed | requests, windows |
 
-- Figure 1 (`eval/baselines/plot_contributions.py`) reads `results/PREP.json` when it exists: every bar is
-  measured, labelled with its exact seconds, and has its count printed under it. Without the file it
-  falls back to the old drawing.
+- Figure 1 (`eval/baselines/plot_contributions.py`) reads `results/PREP.json` when it exists:
+  - (a) every bar is measured, labelled with its exact time (e.g. "1,812 s (30.2 min)"), with the exact
+    number of packages and files analysed (PROVBIND: packages in the SBOM; Confine-E and DeSFAM-E: the
+    packages owning the ELF files they analysed, found with `dpkg -S` in the container) and the
+    repetitions or requests behind it;
+  - (b) a component breakdown for **every** system, not only PROVBIND, one small panel each on its own
+    scale: PROVBIND's compile steps, PROVBIND + ML-B (benign load, training), Confine-E (start-up
+    recording, binary export, reading ELF imports, mapping to system calls), DeSFAM-E (profiling, static
+    and dynamic allow list, Eq. 1, Isolation Forest training), and Falco (no per-image component; its
+    DaemonSet restart time).
+  Without the file the figure falls back to the old drawing.
 
 ## References
 
