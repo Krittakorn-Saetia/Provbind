@@ -323,6 +323,30 @@ when it is terminating or not running, checked before every configuration, and d
 the end; failed workloads are now listed in the report instead of showing as "OVER 20%". The optimised
 write policy also drops socket and pipe writes in the kernel (`Prefix "/"`; the node dropped them anyway).
 
+**Optimised policies, valid rerun (opt3, 6 October; `POLICY_SET=opt`, events through `kubectl logs`):**
+
+| Metric (median of 3, against no monitoring) | Falco | Tetragon only | PROVBIND | orig2 PROVBIND |
+|---|---|---|---|---|
+| request latency p50 / p95, request mix | +4.6% / +6.4% | +1.9% / +2.9% | **+2.4% / +3.3%** | +4.2% / +6.3% |
+| throughput, request mix | −4.8% | −2.1% | **−2.6%** | −4.4% |
+| request latency p50 / p95, file-writing requests | +7.9% / +6.9% | +24.5% / +20.2% | **+23.7% / +18.8%** | +34.5% / +33.6% |
+| throughput, file-writing requests | −6.6% | −18.3% | **−17.9%** | −27.1% |
+| worst case: file write / process start | +3.2% / +4.1% | +55.6% / +116.7% | +58.1% / +145.7% | +38.4% / +209.0% |
+| monitor CPU (% of one core) / memory | 8.1% / 119 MB | 15.2% / 173 MB | 15.5% / 405 MB | 22.8% / 824 MB |
+
+In absolute terms: request mix p95 1.26 → 1.30 ms (+0.04 ms); /cache p50 0.84 → 1.04 ms (+0.20 ms),
+p95 1.05 → 1.25 ms (+0.20 ms). Spreads are narrow (e.g. /cache p50 1.03–1.05 ms against 0.84–0.85 ms).
+
+- **Against 20%:** the request mix is far inside (+3.3% worst); on the all-writes workload p95 (+18.8%)
+  and throughput (−17.9%) are inside, the median latency (+23.7%) is 3.7 points over. Of the six
+  application metrics, five are within 20%.
+- PROVBIND over Tetragon alone stays within ±1.2% on every application metric: what is left is still the
+  kernel write hook, now about 0.2 ms per file-writing request.
+- The worst-case micro-benchmarks (a tight loop of file writes or process starts, no request work) stay
+  far over 20%; they bound the per-operation cost and are not an application workload.
+- **Not yet claimable:** detection with the optimised policies has to be re-run (rate limiting removes
+  repeated identical events, and ML-B was trained under the original policies).
+
 **Next: find and cut the cost** (`scripts/overhead-ablation.sh`, about 1.5 h): each policy alone against no
 monitoring, and PROVBIND without ML-B. Then optimise what it points at. The likely candidates:
 1. **Narrow the hooks in the kernel:** filter `write.yaml` to the paths that matter, and `cap.yaml` to the
