@@ -138,6 +138,10 @@ step "1. deploy the signed demo app by digest, with an emptyDir at /data (B5)"
 kubectl -n "$NAMESPACE" create deployment "$DEPLOY" --image="$DEMO_REF" --port=8080 \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "$NAMESPACE" patch deployment "$DEPLOY" --patch-file testbed/demo-app/volume-patch.yaml >/dev/null
+# Always a fresh pod, started while Tetragon is running: Tetragon reports only processes it saw start, so an
+# app older than the Tetragon pod (VM reboot, overhead-run.sh) is silently unmonitored (7 October 2026). It
+# also gives Confine's start-up trace a real start to record.
+kubectl -n "$NAMESPACE" rollout restart "deploy/$DEPLOY" >/dev/null
 kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout="${WAIT_S}s"
 STARTUP_BG=""
 if [ "$TRACE" = 1 ]; then
@@ -149,6 +153,12 @@ if [ "$TRACE" = 1 ]; then
   STARTUP_BG=$!
 fi
 ( source testbed/scenarios/lib.sh; ENVELOPE_TIMEOUT="$WAIT_S" wait_for_envelope )
+if ! scripts/probe-events.sh > "$LOGS/probe.log" 2>&1; then
+  echo "comparison-run: Tetragon does not report the demo app's own process (see $LOGS/probe.log):" >&2
+  echo "  restart Tetragon, wait a minute, then restart the app (kubectl -n $NAMESPACE rollout restart deploy/$DEPLOY)" >&2
+  exit 1
+fi
+echo "  Tetragon reports the app's own process: $(grep RESULT "$LOGS/probe.log")"
 python3 -m alerts.attribute --run "$PROVBIND_RUN" >/dev/null \
   || echo "Neo4j is not reachable: attribution uses the envelope's layer field"
 sleep 30

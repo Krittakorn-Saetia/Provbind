@@ -2,9 +2,13 @@
 # Does Tetragon report the demo app's OWN process? Sends 20 GET /cache (each makes the long-running
 # server process write a file under /tmp/app-cache) and counts the write events that come through the
 # stream for that path. Counts only.   scripts/probe-events.sh
+# Exit status 0 when at least MIN_HITS (default 10) of them arrived, else 1: the run scripts use it as a guard.
+# Why it is needed: Tetragon reports only processes it saw start (or found when it started). When Tetragon
+# is (re)started after the app, e.g. after a VM reboot or overhead-run.sh switching it off and on, the app's
+# own server process is silently unmonitored until the app is restarted (found 7 October 2026).
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-: "${NAMESPACE:=demo}"; : "${DEPLOY:=demo-app}"; : "${TETRAGON_CONTAINER:=export-stdout}"
+: "${NAMESPACE:=demo}"; : "${DEPLOY:=demo-app}"; : "${TETRAGON_CONTAINER:=export-stdout}"; : "${MIN_HITS:=10}"; export MIN_HITS
 OUT=$(mktemp); PF=""
 trap 'kill $LP $PF 2>/dev/null; rm -f "$OUT"' EXIT
 echo "== pods"
@@ -35,4 +39,6 @@ print("== events in those 30 s (namespace, binary, what): count")
 for k, v in sorted(c.items(), key=lambda x: -x[1])[:15]: print(f"  {v:>6}  {k}")
 hit = sum(v for k, v in c.items() if k[2] == "app-cache write")
 print(f"== RESULT: {hit} app-cache write events (expect about 20; 0 means Tetragon does not report the app process)")
+import os
+sys.exit(0 if hit >= int(os.environ["MIN_HITS"]) else 1)
 PY

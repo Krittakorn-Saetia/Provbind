@@ -115,9 +115,26 @@ restore() {
   fi
   ds_on kube-system tetragon || true
   ds_on falco falco || true
+  restart_app || true          # so the next run does not inherit an app Tetragon cannot see
 }
 trap restore EXIT
 
+# Tetragon reports only processes it saw start, and this script switches it off and on: after every switch
+# the app is restarted (in every configuration alike, so each starts from a fresh app process) and, with
+# Tetragon on, scripts/probe-events.sh checks that the app's own writes reach the event stream.
+restart_app() {
+  kubectl -n "$NAMESPACE" rollout restart "deploy/$DEPLOY" >/dev/null
+  kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout=180s >/dev/null
+  sleep 10
+}
+app_monitored() {
+  scripts/probe-events.sh >> "$LOGS/probe.log" 2>&1 && return 0
+  echo "  the app's events do not reach Tetragon's stream; restarting the app once more" >&2
+  restart_app
+  scripts/probe-events.sh >> "$LOGS/probe.log" 2>&1 && return 0
+  echo "overhead-run: Tetragon does not report the demo app's process (see $LOGS/probe.log)" >&2
+  return 1
+}
 configure() { # CONFIG
   provbind_stop
   case "$1" in
@@ -135,6 +152,8 @@ configure() { # CONFIG
               python3 -m alerts.run --run "$OUT_RUN" >> "$LOGS/alerts.out" 2>> "$LOGS/alerts.log" & PIDS+=($!)
               python3 -m alerts.trust --run "$OUT_RUN" --poll 2 >> "$LOGS/trust.out" 2>> "$LOGS/trust.log" & PIDS+=($!) ;;
   esac
+  restart_app
+  case "$1" in tetragon|provbind) app_monitored || exit 1 ;; esac
   sleep "$WARM_S"
 }
 

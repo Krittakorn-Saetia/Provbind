@@ -216,6 +216,22 @@ with the numbers.
 
 ## 4. Results (overhead run, 5 October 2026, demo VM)
 
+> **Correction, 7 October 2026: every overhead result below is invalid for the `tetragon` and `provbind`
+> configurations and must be re-measured.** Tetragon reports only processes it saw start (or found when it
+> started). `scripts/overhead-run.sh` switched Tetragon off and on between configurations while the demo
+> app kept running, so in those configurations Tetragon never reported the app's own server process: its
+> file writes and connections produced no events (the kernel hooks still ran). Found by
+> `scripts/probe-events.sh`: 0 of 20 app writes reported until the app was restarted after Tetragon, then
+> 20 of 20. Consequences:
+> - The overheads below understate the cost: no events from the app went to userspace, so the claim that
+>   "PROVBIND's userspace adds ~0% over Tetragon" is **withdrawn**; the remaining numbers are lower bounds.
+> - The optimised-policy detection check of 6 October (`run-opt-cmp`) ran after such a switch and missed
+>   everything the app process does (attack-2, ru-3, ...); it says nothing about the optimised policies.
+> - The 2 October comparison (detection, F1 0.87, 0 false alarms) is **not affected**: its recording holds
+>   the app's events (3,626 write events, 5 connections).
+> Fixed: both run scripts now restart the app after Tetragon and stop if the probe finds the app unmonitored.
+
+
 **Zero-day validity (Z1–Z7): all pass.** Specification compiled 2026-10-01 14:50Z, first scenario
 2026-10-02 00:24Z; no attack artefact declared; 220 ML-B windows, none after the first scenario or
 overlapping an attack; model and DeSFAM baseline written first; no advisory; Falco on default rules.
