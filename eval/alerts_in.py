@@ -9,7 +9,7 @@ from pathlib import Path
 
 from eval.compare import _in_window, _matches, alert_pod, parse_time
 
-FIELDS = ("class", "subclass", "bucket", "score", "binary", "path", "reason", "detail")
+FIELDS = ("class", "subclass", "bucket", "score", "pid", "violated_clause")
 
 
 def main(argv=None):
@@ -22,7 +22,11 @@ def main(argv=None):
         hits = [a for a in alerts if _matches(r, *alert_pod(a)) and _in_window(parse_time(a.get("time")), start, end)]
         print(f"{scenario} {r['start']}: {len(hits)} alert(s)")
         for a in hits:
-            print("   ", {k: a[k] for k in FIELDS if a.get(k) not in (None, "")})
+            row = {k: a[k] for k in FIELDS if a.get(k) not in (None, "")}
+            chain = (a.get("attribution") or {}).get("process_chain")
+            if chain:
+                row["process_chain"] = chain
+            print("   ", row)
     return 0
 
 
