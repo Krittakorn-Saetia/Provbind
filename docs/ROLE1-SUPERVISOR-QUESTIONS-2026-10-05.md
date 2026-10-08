@@ -269,6 +269,35 @@ What these show:
   what remains is the kernel hooks themselves. To be measured (opt5), with detection re-checked.
 - From opt5 on, CPU and memory are sampled over the application workloads only, not the micro-benchmark.
 
+**Result with the truncate fix (opt5, 8 October; optimised policies, the app probed and monitored in every
+Tetragon and PROVBIND configuration).** Medians of 3 repetitions, against no monitoring:
+
+| Metric | Falco | Tetragon only | PROVBIND |
+|---|---|---|---|
+| request latency p50 / p95, request mix | +3.2% / +4.7% | +0.4% / +0.3% | **−0.5% / −0.1%** |
+| throughput loss, request mix | 3.4% | 0.3% | **none (−0.4%)** |
+| request latency p50 / p95, file-writing requests | +8.2% / +7.7% | +9.7% / +7.7% | **+9.9% / +8.0%** |
+| throughput loss, file-writing requests | 7.1% | 7.1% | **7.5%** |
+| worst case: file write / process start | +5.1% / +15.8% | +1.7% / +127.2% | +5.2% / +118.6% |
+| monitor CPU (% of one core, request workloads) / memory | 8.2% / 119 MB | 0.2% / 155 MB | 0.2% / 409 MB |
+
+In absolute terms: file-writing requests p50 0.87 → 0.95 ms (+0.08 ms), p95 1.08 → 1.17 ms; the request mix
+is unchanged (p95 1.29 ms). Spreads are narrow (e.g. /cache p50 0.95–0.96 ms against 0.87 ms).
+
+- **Q4: within 20% on every application metric** (worst +9.9%, file-writing median latency), on par with
+  Falco (+8.2%). PROVBIND over Tetragon alone: at most +0.4% on the application metrics.
+- The requests now cause almost no events (each cache file's write and truncation are reported once a
+  minute), so Tetragon and PROVBIND use almost no CPU while serving them; what remains is the kernel hooks.
+- **The worst case is process start** (+119%, 0.41 → 0.91 ms per spawn): every new process still produces
+  its start and exit events, which no rate limit removes. Spawn-heavy workloads pay this; it is a bound,
+  not the application result. Memory is PROVBIND's other cost (409 MB against Falco's 119 MB).
+- **Detection with these policies (opt-cmp3, runtime scenarios, no admission):** every attack scenario as
+  on 2 October (35 of 45 runtime attack runs, the same scenarios caught and missed), but **2 false alarms
+  in 25 benign runs** (ph4-14), both from ML-B (`D_beh`, Medium). ML-B's model was trained on traffic
+  recorded under the original policies; it is to be retrained under the optimised ones
+  (`POLICY_SET=opt scripts/record-d2.sh`) before the final comparison. Until then the optimised policies'
+  accuracy is F1 0.85, false-alarm rate 0.08 (runtime scenarios), against 0.87 and 0 for the original ones.
+
 
 **Zero-day validity (Z1–Z7): all pass.** Specification compiled 2026-10-01 14:50Z, first scenario
 2026-10-02 00:24Z; no attack artefact declared; 220 ML-B windows, none after the first scenario or
