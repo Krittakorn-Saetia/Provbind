@@ -255,12 +255,15 @@ What these show:
   Tetragon-only setup, moving events from Tetragon to their reader (the export sidecar, containerd,
   kubelet, the API server, docker-proxy and `kubectl logs`) used about 1.2 cores, against 0.36 core for
   Tetragon itself; the app's own CPU fell from 74% to 50% of a core. Optimised: about 0.7 core.
-- **Events per request.** Original policies: every HTTP response written to a socket was a write event,
-  plus each file write and truncation. Optimised: socket writes stay in the kernel (`Prefix "/"`) and the
-  file write is rate-limited, so the request mix improved most (p95 +86% → +24%). But one event per
-  file-writing request was left: `open(path, "w")` on an existing file passes `security_file_truncate`, and
-  the truncate policy had no rate limit and a return probe. The micro-benchmark's file loop (one file,
-  reopened with `"w"`) and ph4-14's timeline (a truncation from round 2 on, when the file exists) show it.
+- **Events per request.** Only the file-writing request (`/cache`) causes events: the app sends its
+  responses with `send()`, which does not pass the write hook, and does not log requests. Original
+  policies: two events per `/cache` request (the file write and the truncation, each with a return probe).
+  Optimised: the write is rate-limited, but one event was left: `open(path, "w")` on an existing file passes
+  `security_file_truncate`, and the truncate policy had no rate limit and a return probe. The
+  micro-benchmark's file loop (one file, reopened with `"w"`) and ph4-14's timeline (a truncation from
+  round 2 on, when the file exists) show it. The request mix suffers too, although only 15% of its
+  requests write a file, because the demo app's server handles one request at a time: the other requests
+  wait behind a slow `/cache` (mix p95 +86% original, +24% optimised).
 - **Fixed (8 October):** the optimised truncate policy is rate-limited the same way and has no return
   probe. With that, a file-writing request should cause no event after the first per file and minute, and
   what remains is the kernel hooks themselves. To be measured (opt5), with detection re-checked.
@@ -357,8 +360,7 @@ What this run shows:
 - **On the ordinary request mix PROVBIND is within 20%** (+6.3%, close to Falco's +7.9%).
 - **All of the remaining cost is the sensor's file-write hook** on requests that write a file: Tetragon
   alone already adds 33–35% there. `write.yaml` hooks `security_file_permission` with no path filter
-  (ML-B needs every written file), and every write, including each HTTP response written to a socket,
-  becomes an event the node then throws away.
+  (ML-B needs every written file), and every write becomes an event.
 - So Q4's answer is now precise: **PROVBIND meets 20% on mixed traffic, not on write-heavy traffic, and
   the part over is the kernel hook, not the PROVBIND software.**
 

@@ -1,6 +1,6 @@
 # Optimised variant of ../write.yaml (see README.md): no return probe, an in-kernel rate limit per process,
-# and only paths starting with "/" leave the kernel (socket:[…] and pipe:[…] writes, which node/normalize.py
-# drops anyway, are every HTTP response the app sends).
+# and only paths starting with "/" leave the kernel: writes to pipes and sockets (socket:[…], pipe:[…], e.g. a
+# kubectl-exec'd command's output), which node/normalize.py drops anyway.
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicyNamespaced
 metadata:
