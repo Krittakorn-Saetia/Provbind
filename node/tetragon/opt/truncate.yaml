@@ -1,4 +1,7 @@
-# Optimised set: unchanged copy of ../truncate.yaml (rare events), renamed so the two sets never clash.
+# Optimised variant of ../truncate.yaml (see README.md): no return probes, an in-kernel rate limit per process.
+# Not rare after all: open(O_TRUNC) on an existing file passes security_file_truncate, so every request that
+# rewrites a file with open(path, "w") (the app's GET /cache, the micro-benchmark's file loop) was one event,
+# with a return probe on top (overhead runs of 7 October 2026).
 # D_write for truncation (Test Plan §8): `: > /etc/passwd` changes a file without a write call.
 #
 # truncate(2) goes through security_path_truncate. From kernel 6.2, ftruncate(2) and
@@ -15,19 +18,21 @@ spec:
   kprobes:
   - call: "security_path_truncate"
     syscall: false
-    return: true
     args:
     - index: 0
       type: "path"      # const struct path *
-    returnArg:
-      index: 0
-      type: "int"
+    selectors:
+    - matchActions:
+      - action: Post
+        rateLimit: "1m"
+        rateLimitScope: "process"
   - call: "security_file_truncate"
     syscall: false
-    return: true
     args:
     - index: 0
       type: "file"      # struct file *
-    returnArg:
-      index: 0
-      type: "int"
+    selectors:
+    - matchActions:
+      - action: Post
+        rateLimit: "1m"
+        rateLimitScope: "process"

@@ -48,6 +48,7 @@ PDIR=node/tetragon; [ "$POLICY_SET" = opt ] && PDIR=node/tetragon/opt
 : "${SPAWNS:=500}"
 : "${WARM_S:=20}"
 : "${THRESHOLD:=20}"
+: "${COMPARISON:=$PROVBIND_RUN/results/COMPARISON.json}"   # accuracy shown beside the cost: pass the comparison run of the SAME policy set
 : "${CONFIGS:=none falco tetragon provbind}"
 : "${STOP_NEO4J:=1}"                        # 1 = pause Neo4j while measuring (only offline attribution uses it)
 : "${SKIP_PREP:=0}"                         # 1 = skip steps 0, 0b, 0c (an ablation run reuses them)
@@ -262,10 +263,11 @@ for rep in $(seq 1 "$REPS"); do
     # A failed workload is recorded without numbers and the run goes on (the report skips it).
     { client "$MIX_S" mix || true; }      | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind mix
     { client "$CACHE_S" /cache || true; } | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind cache
-    { micro || true; }                    | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind micro
+    # CPU and memory over the application workloads only: the micro-benchmark's tight loops would inflate them.
     python3 -m eval.overhead sample > "$LOGS/after.json"
     python3 -m eval.overhead cpu --before "$LOGS/before.json" --after "$LOGS/after.json" \
       | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind cpu
+    { micro || true; }                    | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind micro
     tail -n 4 "$ROWS" | python3 -c "import sys,json
 for l in sys.stdin:
     d=json.loads(l); print('  ', d['kind'], {k: d[k] for k in ('p50_ms','p95_ms','rps','file_op_us','spawn_ms','monitor_cpu_pct') if k in d})"
@@ -282,7 +284,7 @@ if [ "$SKIP_PREP" != 1 ]; then
   cp "$RES/PREP.json" "$PROVBIND_RUN/results/" 2>/dev/null || true    # figure 1 reads it from the run folder
 fi
 python3 -m eval.overhead report --dir "$RES" --threshold "$THRESHOLD" \
-  --comparison "$PROVBIND_RUN/results/COMPARISON.json" --oh01 "$RES/OH-01.json"
+  --comparison "$COMPARISON" --oh01 "$RES/OH-01.json"
 # Deleted and waited for, so the next run never finds it half-gone.
 kubectl -n "$LOADNS" delete pod loadgen --ignore-not-found --wait=true --timeout=120s >/dev/null 2>&1 || true
 echo "overhead run done: $RES/OVERHEAD.md, $RES/PREP.md and $RES/ZERODAY.md"

@@ -27,6 +27,14 @@ def test_hot_hooks_are_rate_limited_in_the_kernel():
         assert not load(OPT / f"{name}.yaml")["spec"]["kprobes"][0].get("return")
 
 
+def test_truncate_hooks_are_rate_limited_without_return_probes():
+    # open(path, "w") on an existing file passes security_file_truncate: one event per rewrite otherwise
+    for kp in load(OPT / "truncate.yaml")["spec"]["kprobes"]:
+        actions = [a for sel in kp["selectors"] for a in sel.get("matchActions", [])]
+        assert actions == [{"action": "Post", "rateLimit": "1m", "rateLimitScope": "process"}]
+        assert not kp.get("return") and "returnArg" not in kp
+
+
 def test_an_event_without_return_value_is_kept():
     from node.normalize import Normalizer
     line = ('{"process_kprobe":{"function_name":"security_file_permission","process":{"pod":{"namespace":"demo"},'

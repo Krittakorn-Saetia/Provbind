@@ -231,6 +231,41 @@ with the numbers.
 >   the app's events (3,626 write events, 5 connections).
 > Fixed: both run scripts now restart the app after Tetragon and stop if the probe finds the app unmonitored.
 
+**Valid overhead results (orig4 and opt4, 7–8 October; the app's process probed and monitored in every
+configuration).** Medians of 3 repetitions, against no monitoring:
+
+| PROVBIND overhead | original policies (orig4) | optimised policies (opt4) |
+|---|---|---|
+| request latency p50 / p95, request mix | +31.1% / +86.0% | **+9.6% / +23.6%** |
+| throughput, request mix | −31.2% | **−12.0%** |
+| request latency p50 / p95, file-writing requests (/cache) | +151.8% / +377.5% | **+71.5% / +205.2%** |
+| throughput, file-writing requests | −66.1% | **−49.1%** |
+| worst case: file write / process start | +94.9% / +292.0% | +57.7% / +112.2% |
+| monitor CPU (% of one core) / memory | 97.9% / 478 MB | 56.1% / 424 MB |
+| Tetragon alone (same policies), worst application metric | +322.3% | +182.2% |
+| **PROVBIND over Tetragon alone**, worst application metric | **+13.1%** | **+8.2%** |
+| Falco (same run), worst application metric | +16.0% | +8.2% |
+
+In absolute terms (opt4): request mix p95 1.27 → 1.57 ms; /cache p50 0.87 → 1.49 ms, p95 1.08 → 3.28 ms.
+
+What these show:
+- **PROVBIND's own processing is not the problem**: over the runtime collection with the same policies
+  (the paper's evaluation-plan baseline) it adds at most 13.1% (original) and 8.2% (optimised).
+- **The cost is the number of events times the cost of moving each one to PROVBIND.** In orig4's
+  Tetragon-only setup, moving events from Tetragon to their reader (the export sidecar, containerd,
+  kubelet, the API server, docker-proxy and `kubectl logs`) used about 1.2 cores, against 0.36 core for
+  Tetragon itself; the app's own CPU fell from 74% to 50% of a core. Optimised: about 0.7 core.
+- **Events per request.** Original policies: every HTTP response written to a socket was a write event,
+  plus each file write and truncation. Optimised: socket writes stay in the kernel (`Prefix "/"`) and the
+  file write is rate-limited, so the request mix improved most (p95 +86% → +24%). But one event per
+  file-writing request was left: `open(path, "w")` on an existing file passes `security_file_truncate`, and
+  the truncate policy had no rate limit and a return probe. The micro-benchmark's file loop (one file,
+  reopened with `"w"`) and ph4-14's timeline (a truncation from round 2 on, when the file exists) show it.
+- **Fixed (8 October):** the optimised truncate policy is rate-limited the same way and has no return
+  probe. With that, a file-writing request should cause no event after the first per file and minute, and
+  what remains is the kernel hooks themselves. To be measured (opt5), with detection re-checked.
+- From opt5 on, CPU and memory are sampled over the application workloads only, not the micro-benchmark.
+
 
 **Zero-day validity (Z1–Z7): all pass.** Specification compiled 2026-10-01 14:50Z, first scenario
 2026-10-02 00:24Z; no attack artefact declared; 220 ML-B windows, none after the first scenario or
