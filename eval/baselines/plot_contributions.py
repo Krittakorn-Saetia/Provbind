@@ -1087,7 +1087,12 @@ def main(argv=None) -> int:
     ap.add_argument("--dpi", type=int, default=300)
     args = ap.parse_args(argv)
     if args.data:
-        d = load_data(args.data)
+        try:
+            d = load_data(args.data)
+        except (OSError, ValueError) as e:
+            print(f"plot_contributions: cannot read the figure data: {e} (Role 1 makes figures.json on the VM "
+                  "with --export: docs/FIGURES-HOWTO.md, section 4)", file=sys.stderr)
+            return 1
     else:
         d = load_run(args.run)
         if not d["rows"]:

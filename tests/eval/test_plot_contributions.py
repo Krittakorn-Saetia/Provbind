@@ -188,7 +188,10 @@ def test_export_then_draw_from_the_data_file_alone(tmp_path):
         assert (out / name).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
-def test_data_file_must_be_a_figure_data_file(tmp_path):
+def test_data_file_must_be_a_figure_data_file(tmp_path, capsys):
+    assert pc.main(["--data", str(tmp_path)]) == 1                 # no figures.json yet: a message, not a traceback
+    assert "figures.json" in capsys.readouterr().err
     (tmp_path / "figures.json").write_text(json.dumps({"schema": "something else"}))
     with pytest.raises(ValueError):
         pc.load_data(tmp_path)
+    assert pc.main(["--data", str(tmp_path)]) == 1

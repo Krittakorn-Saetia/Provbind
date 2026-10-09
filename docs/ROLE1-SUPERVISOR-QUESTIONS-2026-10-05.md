@@ -18,7 +18,9 @@ runtime cost (Section 4). Overhead figures reported before 7 October are withdra
 
 - **Q1.** Figures 1, 3 and 5 are redesigned; figure 1 shows each system's measured preparation time with
   exact package and file counts, and a second image breaks it into components for every system
-  (Section 5, `docs/FIGURES-HOWTO.md`). The final figures are drawn from `run-final`.
+  (Section 5, `docs/FIGURES-HOWTO.md`). Two new figures show the runtime cost (6) and how it came down
+  (7). The final figures are drawn from `run-final`'s numbers, which are in the repository
+  (`docs/figures/data/final-2026-10-09/`).
 - **Q2.** There is no single standard for "zero-day" evaluation, but there are recognised methods, and
   ours combines three of them (A, C and D in Section 2.1); one more step (Section 2.4) makes it fully
   traceable to a public standard. The leakage checks Z1–Z7 pass (Section 2.5).
@@ -515,6 +517,12 @@ What changed:
     and dynamic allow list, Eq. 1, Isolation Forest training), and Falco (no per-image component; its
     DaemonSet restart time).
   Without the file the figure falls back to the old drawing.
+- Two new figures answer questions 3 and 4: figure 6, PROVBIND's and Falco's runtime cost against no
+  monitoring on every application metric, with the 20% limit; figure 7, PROVBIND's p95 cost in the three
+  valid overhead runs (orig4, opt4, opt5), in the order the policies were optimised.
+- All eight figures can be drawn from the repository alone: `plot_contributions.py --export` writes their
+  numbers on the VM to `docs/figures/data/final-2026-10-09/figures.json`, and `--data` draws them anywhere
+  (`docs/FIGURES-HOWTO.md`).
 
 ## References
 

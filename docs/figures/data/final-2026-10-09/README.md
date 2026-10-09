@@ -1,8 +1,9 @@
 # Final numbers (9 October 2026), for plotting
 
-The final configuration's results as plain CSV, so anyone can plot them without the VM. All come from one
-configuration: the optimised Tetragon policies (`node/tetragon/opt/`) with ML-B retrained under them. They
-are copied from the run outputs on the demo VM; the per-scenario rows add up to the system totals.
+The final configuration's results as plain CSV, plus the paper figures' data file, so anyone can plot them
+without the VM. All come from one configuration: the optimised Tetragon policies (`node/tetragon/opt/`)
+with ML-B retrained under them. They are copied from the run outputs on the demo VM; the per-scenario rows
+add up to the system totals (checked by `tests/eval/test_final_data.py`).
 
 | File | What it holds | Source on the VM | Paper figure |
 |---|---|---|---|
@@ -12,6 +13,8 @@ are copied from the run outputs on the demo VM; the per-scenario rows add up to 
 | `overhead_history.csv` | overhead against no monitoring in the three valid runs: original policies (`orig4`), filters and rate limits (`opt4`), final (`opt5`) | `run-overhead-{orig4,opt4,opt5}/results/OVERHEAD.md` | "how the cost came down" |
 | `preparation_components.csv` | preparation per new image, split into components | `run-final/results/PREP.md` | figure 1b (components) |
 | `preparation_summary.csv` | preparation per new image, total and counts | `run-final/results/PREP.md` | figure 1 (time per system) |
+| `figures.json` | every paper figure's numbers, aggregates only (counts, rates, medians, timings; no alert, trace or pod detail) | `plot_contributions.py --export` on `run-final` and `run-overhead-{orig4,opt4,opt5}` | all eight paper figures, drawn with `--data` |
+| `plot_example.py` | a short pandas and matplotlib example that draws four charts from the CSV files | - | your own charts |
 
 Reading the numbers:
 
@@ -27,6 +30,11 @@ Reading the numbers:
 - DeSFAM-E and Confine-E are estimated from their published designs on recorded traces; Sig-only is derived
   from the admission records.
 
-To draw the paper figures exactly as designed, use `eval/baselines/plot_contributions.py` on the full run
-folder (`docs/FIGURES-HOWTO.md`): it also reads the alerts, envelopes and traces, which are not in this
-folder. These CSV files hold the same numbers for any other tool.
+How to draw (`docs/FIGURES-HOWTO.md` has the details):
+
+```bash
+# the eight paper figures, as designed
+python -m eval.baselines.plot_contributions --data docs/figures/data/final-2026-10-09 --out figures --dpi 300
+# four simple charts from the CSV files, as a starting point for your own
+python docs/figures/data/final-2026-10-09/plot_example.py --out my-figures
+```
