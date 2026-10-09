@@ -159,8 +159,9 @@ def c1_readiness_measured(prep):
     m = prep.get("PROVBIND + ML-B")
     if m and m.get("seconds"):
         parts = m.get("parts_s") or {}
-        rows.append({"system": "PROVBIND + ML-B", "seconds": m.get("seconds"), "how": "measured",
-                     "note": f"trained on {_count(m.get('n'), 'requests')}, {m.get('windows') or 0:,} windows"})
+        rows.append({"system": "PROVBIND + ML-B", "label": "PROVBIND + ML-B\n(optional)", "seconds": m.get("seconds"),
+                     "how": "measured", "train_s": parts.get("training"),
+                     "note": f"normal traffic recorded: {_count(m.get('n'), 'requests')}, {m.get('windows') or 0:,} windows"})
     f = prep.get("Falco")
     if f:
         rows.append({"system": "Falco", "seconds": None, "how": "none",
@@ -487,14 +488,17 @@ def fig1_c1_measured(d, path, dpi):
     a.minorticks_off()
     a.set_ylim(-0.8, len(ready) - 0.4)
     a.set_yticks(ys)
-    a.set_yticklabels([_tick(r["system"], KIND.get(r["system"], "measured")) for r in ready], fontsize=7)
+    a.set_yticklabels([_tick(r.get("label", r["system"]), KIND.get(r["system"], "measured")) for r in ready], fontsize=7)
     a.tick_params(axis="y", length=0)
     _grid(a, "x")
     a.set_title("Time until a new image is protected (measured)", loc="left", fontsize=8, color=INK, pad=6)
+    train = next((r.get("train_s") for r in ready if r.get("train_s")), None)
     _footer(fig, ["C1. Every time was measured on our VM. PROVBIND compiles its specification",
-                  "from signed build evidence once per image digest; PROVBIND + ML-B adds the",
-                  "benign recording ML-B learns from. * Confine-E and DeSFAM-E are estimated",
-                  "systems: their times are their preparation steps as we ran them, each timed."])
+                  "from signed build evidence once per image digest and protects the image from",
+                  "then on. The optional ML-B adds the normal traffic it learns from"
+                  + (f"; its training takes {_fmt_s(train)}." if train else "."),
+                  "* Confine-E and DeSFAM-E are estimated systems: their times are their",
+                  "preparation steps as we ran them, each timed."])
     return _save(plt, fig, path, dpi)
 
 
