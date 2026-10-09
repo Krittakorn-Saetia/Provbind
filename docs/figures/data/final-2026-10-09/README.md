@@ -9,8 +9,8 @@ add up to the system totals (checked by `tests/eval/test_final_data.py`).
 |---|---|---|---|
 | `detection_by_scenario.csv` | runs flagged per scenario and system (out of 5), with truth and the known/unknown label | `run-final/results/COMPARISON.md` | figure 5 (scenario × system), figure 4 (trust/admission rows) |
 | `detection_by_system.csv` | TP, FP, FN, TN, precision, recall, F1, false-positive rate, attribution level, known/unknown recall | `run-final/results/COMPARISON.md` | figure 2 (detection and false alarms) |
-| `overhead_opt5.csv` | runtime cost: median, min and max of 3 repetitions per metric and configuration, and the overhead against no monitoring; CPU and memory | `run-overhead-opt5/results/OVERHEAD.md` | a runtime-cost figure (questions 3 and 4) |
-| `overhead_history.csv` | overhead against no monitoring in the three valid runs: original policies (`orig4`), filters and rate limits (`opt4`), final (`opt5`) | `run-overhead-{orig4,opt4,opt5}/results/OVERHEAD.md` | "how the cost came down" |
+| `overhead_opt5.csv` | runtime cost: median, min and max of 3 repetitions per metric and configuration, and the overhead against no monitoring; CPU and memory | `run-overhead-opt5/results/OVERHEAD.md` | figure 6 (runtime cost, questions 3 and 4) |
+| `overhead_history.csv` | overhead against no monitoring in the three valid runs: original policies (`orig4`), filters and rate limits (`opt4`), final (`opt5`) | `run-overhead-{orig4,opt4,opt5}/results/OVERHEAD.md` | figure 7 (how the cost came down) |
 | `preparation_components.csv` | preparation per new image, split into components | `run-final/results/PREP.md` | figure 1b (components) |
 | `preparation_summary.csv` | preparation per new image, total and counts | `run-final/results/PREP.md` | figure 1 (time per system) |
 | `figures.json` | every paper figure's numbers, aggregates only (counts, rates, medians, timings; no alert, trace or pod detail) | `plot_contributions.py --export` on `run-final` and `run-overhead-{orig4,opt4,opt5}` | all eight paper figures, drawn with `--data` |

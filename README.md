@@ -6,12 +6,17 @@ PROVBIND signs an image's SBOM and provenance, compiles them into an **envelope*
 
 **Status, 27 September 2026:** 4-day prototype sprint plus capability testing. Aj Ohm's draft (`docs/reference/PROVBIND_AjOhmdraft.pdf`) is the reference version of the paper, and his instruction is to understand, check and update it.
 
+**Evaluation, 9 October 2026:** finished. The results are in `docs/ROLE1-SUPERVISOR-QUESTIONS-2026-10-05.md`;
+the paper figures and the numbers behind them are in `docs/FIGURES-HOWTO.md`.
+
 ## Start here
 
 | Read | Why |
 |---|---|
 | `docs/PROVBIND-Sprint-Handoff.md` (v1.1) | The team plan: roles, run folder, contracts, schedule |
-| `docs/PROVBIND-Capability-Test-Plan.md` (v1.1) | All 113 tests, the datasets (Section 12) and the update log |
+| `docs/PROVBIND-Capability-Test-Plan.md` (v1.2) | All 113 tests, the datasets (Section 12) and the update log, with a proposed Results section (Section 10.1) |
+| `docs/ROLE1-SUPERVISOR-QUESTIONS-2026-10-05.md` | The evaluation's final results: accuracy, runtime cost, the zero-day method, preparation time |
+| `docs/FIGURES-HOWTO.md` | How to draw the paper figures from the repository, and where the final numbers are |
 | `docs/ROLE2-HANDOFF.md` (v0.2) | Role 2 spec: evidence pipeline, envelope compiler, ML-A |
 | `docs/PROVBIND-Explanation-and-Review.md` | The design behind every phase, and the 31 fail points in the draft |
 | `docs/PROVBIND-Source-Answers.md` | Project questions answered from the documents, with sources |
@@ -63,3 +68,4 @@ Role 4's `controller/` and `alerts/` folders and Role 1's `testbed/demo-app/` ar
 | `python -m ml.dataset` | Join Role 1's `ml/data/labels.jsonl` (MLA-03) to the features by digest, into `ml/data/dataset.jsonl` |
 | `python -m ml.train --out ml/model` | Train ML-A on D1 (cross-validated by image). The compiler uses `ml/model/` when it exists; `PROVBIND_CAPS_MODEL=none` forces the allowlist |
 | `python -m eval.report --run $PROVBIND_RUN` | Capability test report, `run/results/REPORT.md` |
+| `python -m eval.baselines.plot_contributions --data docs/figures/data/final-2026-10-09 --out figures` | Draw the eight paper figures from the final results (`docs/FIGURES-HOWTO.md`) |

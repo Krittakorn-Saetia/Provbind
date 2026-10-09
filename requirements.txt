@@ -6,11 +6,10 @@ numpy>=1.26
 pandas>=2.2
 scikit-learn>=1.4
 lightgbm>=4.3
-matplotlib>=3.8          # paper figures (eval/baselines/plot_contributions.py)
+matplotlib>=3.8          # figures: eval/baselines/plot_contributions.py (paper) and eval/plots.py
 
 # Integration (controller, attribution); needed on the demo PC
 kubernetes>=29.0
 neo4j>=5.20
 pyyaml>=6.0
-matplotlib>=3.7   # eval/plots.py (figures); optional for everything else
 orjson>=3.9        # optional: faster JSON parsing in node/normalize.py (overhead work)
