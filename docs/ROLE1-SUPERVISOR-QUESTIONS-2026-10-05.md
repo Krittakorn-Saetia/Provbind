@@ -328,8 +328,24 @@ syscall traces for Confine-E and DeSFAM-E, and a real start-up trace for Confine
   (34 caught and 23 false alarms, against 35 and 25), because its traces are recorded anew in each run.
 - **So the optimisation costs no accuracy on this test set**, and the runtime result of `opt5` and this
   accuracy result describe the same configuration.
-- Zero-day checks on `run-final`: Z1–Z3 and Z5–Z7 pass; Z4 (model written first) needs a re-run with the
-  fixed check (it looked for the model under the data folder's name, which now ends in `-opt`).
+- **Zero-day checks on `run-final`: all seven pass** (Z4: model written 05:18Z, first scenario 13:22Z).
+
+**Preparation per new image, final configuration** (measured 9 October with `scripts/prep-run.sh`; this is
+figure 1 for the paper):
+
+| System | Time before a new image is protected | Made of | Counts |
+|---|---|---|---|
+| **PROVBIND** | **4.38 s** | compiling the envelope, median of 5 cold compiles (4.19–4.67 s) | 109 packages, 5,695 files |
+| PROVBIND + ML-B | 7 h (25,201 s) | 7 h of benign load, then 0.82 s of training | 4,544 requests, 232 windows |
+| Falco | 0 s | no per-image step (generic rules) | restart until ready: 25.7 s |
+| Confine-E | 32.8 s | 30 s start-up observation, 2.5 s export, 0.25 s import extraction | 31 ELF files from 8 packages (+21 outside any package), 1,319 imported functions |
+| DeSFAM-E | 30.5 min (1,832 s) | 30.5 min of profiling, then 1.2 s for the allow lists and training | 329 requests in 3 profiling runs, 6,946 system calls, 2,302 windows |
+
+Confine-E's start-up trace recorded no system calls, in this run and on 2 October: `record_trace.sh`
+stopped the timed trace from outside (`timeout`), which discards bpftrace's buffered output (fixed for
+future runs: bpftrace now stops itself). It does not change Confine-E's result: the trace only adds
+programs started during start-up, this app starts none besides its entrypoint, and the entrypoint is
+analysed anyway, with every library mapped into the running app.
 
 
 **Zero-day validity (Z1–Z7): all pass.** Specification compiled 2026-10-01 14:50Z, first scenario
