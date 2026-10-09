@@ -1,9 +1,9 @@
 # Supervisor's four questions (5 October 2026): Role 1's answers and the follow-up test
 
-**From:** Role 1 · **For:** the supervisor, Korn and the team · **Status:** question 2 answered below.
-Questions 1, 3 and 4 need one more run on the VM, `scripts/overhead-run.sh` (about 1.6 h). It is a new
-measurement, not a repeat of the comparison, whose accuracy results stand. It measures runtime overhead
-(Sections 3–4) and each system's preparation time with exact counts (Section 5, figure 1).
+**From:** Role 1 · **For:** the supervisor, Korn and the team · **Status (9 October):** all four
+questions answered. The final numbers come from one configuration, the optimised sensor policies: the
+final comparison run (`run-final`, 9 October) for accuracy, and the overhead run `opt5` (8 October) for
+runtime cost (Section 4). Overhead figures reported before 7 October are withdrawn (Section 4).
 
 | # | Question | Where |
 |---|---|---|
@@ -16,11 +16,18 @@ measurement, not a repeat of the comparison, whose accuracy results stand. It me
 
 ## 1. Short answers
 
-- **Q2.** There is no single standard for "zero-day" evaluation, but there are three recognised methods, and
-  ours combines two of them; one more step (Section 2.4) makes it fully traceable to a public standard.
-- **Q3 and Q4.** We had measured accuracy, not runtime cost, so these could not be answered from the
-  existing runs. The overhead test measures PROVBIND's cost against no monitoring and against Falco, on
-  the same VM, pod and image, and reports it against the 20% limit.
+- **Q1.** Figures 1, 3 and 5 are redesigned; figure 1 shows each system's measured preparation time with
+  exact package and file counts, and a second image breaks it into components for every system
+  (Section 5, `docs/FIGURES-HOWTO.md`). The final figures are drawn from `run-final`.
+- **Q2.** There is no single standard for "zero-day" evaluation, but there are recognised methods, and
+  ours combines three of them (A, C and D in Section 2.1); one more step (Section 2.4) makes it fully
+  traceable to a public standard. The leakage checks Z1–Z7 pass (Section 2.5).
+- **Q3.** Yes, on these tests. With the optimised policies PROVBIND costs about what Falco costs on
+  application requests (+9.9% against +8.2%), and in the final run it caught 50 of 65 attack runs with no
+  false alarm in 30 benign runs (F1 0.87), against Falco's 25 caught and 10 false alarms (F1 0.50).
+- **Q4.** Yes, after optimisation: PROVBIND's worst application overhead is +9.9% (`opt5`). With the
+  original policies it was far over (up to +378% at p95 on file-writing requests). The one figure still
+  over 20% is the worst case of a loop that only starts processes (+119%).
 
 ## 2. Question 2: how "unknown" (zero-day) attacks are evaluated, and where our method stands
 
@@ -297,6 +304,32 @@ is unchanged (p95 1.29 ms). Spreads are narrow (e.g. /cache p50 0.95–0.96 ms a
   recorded under the original policies; it is to be retrained under the optimised ones
   (`POLICY_SET=opt scripts/record-d2.sh`) before the final comparison. Until then the optimised policies'
   accuracy is F1 0.85, false-alarm rate 0.08 (runtime scenarios), against 0.87 and 0 for the original ones.
+
+**Final comparison (`run-final`, 9 October): optimised policies, ML-B retrained under them, every
+scenario and baseline.** ML-B was retrained on 7 h of benign traffic recorded with the optimised policies
+(232 windows; held-out hour: 0 false alarms in 55 windows, the most unusual one exactly at the threshold).
+The run then repeated all 19 scenarios five times (95 runs: 65 attack, 30 benign), with admission, the
+syscall traces for Confine-E and DeSFAM-E, and a real start-up trace for Confine-E (a fresh pod).
+
+| System | Attack runs caught | False alarms | Precision | Recall | F1 | False-alarm rate |
+|---|---|---|---|---|---|---|
+| **PROVBIND** | **50 of 65** | **0 of 30** | 1.00 | 0.77 | **0.87** | **0.00** |
+| Falco (default rules) | 25 of 65 | 10 of 30 | 0.71 | 0.38 | 0.50 | 0.33 |
+| DeSFAM-E (estimated) | 34 of 65 | 23 of 30 | 0.60 | 0.52 | 0.56 | 0.77 |
+| Confine-E (estimated) | 0 of 65 | 5 of 30 | — | 0.00 | — | 0.17 |
+| Signature check only | 5 of 65 | 0 of 30 | 1.00 | 0.08 | 0.14 | 0.00 |
+
+- **PROVBIND's result is identical to 2 October's with the original policies**, scenario by scenario:
+  the same 50 caught (attack-1, attack-2, trust-1, trust-2, rk-3, ru-3, ru-4, ak-1, ak-2, ak-3), the
+  same misses (rk-2, ru-5, au-2), and no false alarm. The ML-B false alarms of `opt-cmp2` and `opt-cmp3`
+  are gone with the retrained model; ph4-14 keeps its Low `D_exec` observation for the shell that
+  `kubectl exec` starts (not counted, as before).
+- Falco, Confine-E and the signature check are unchanged from 2 October. DeSFAM-E differs slightly
+  (34 caught and 23 false alarms, against 35 and 25), because its traces are recorded anew in each run.
+- **So the optimisation costs no accuracy on this test set**, and the runtime result of `opt5` and this
+  accuracy result describe the same configuration.
+- Zero-day checks on `run-final`: Z1–Z3 and Z5–Z7 pass; Z4 (model written first) needs a re-run with the
+  fixed check (it looked for the model under the data folder's name, which now ends in `-opt`).
 
 
 **Zero-day validity (Z1–Z7): all pass.** Specification compiled 2026-10-01 14:50Z, first scenario

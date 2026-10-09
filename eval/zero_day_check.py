@@ -120,7 +120,8 @@ def run_checks(run: Path, mlb_data: Path | None, egress: Path | None, helm=True,
                     overlap += 1
         rows.append(_row("Z3 ML-B never saw an attack", "pass" if n and not after and not overlap else "fail",
                          f"{n} training/validation windows; {after} end after the first scenario; {overlap} overlap an attack row"))
-        hexd = mlb_data.name
+        # The image digest names the model file; the data folder may carry a suffix (ml/data/mlb/<hex>-opt).
+        hexd = (digest or mlb_data.name).removeprefix("sha256:")
         model = run / "envelopes" / f"{hexd}.mlb" / "model.json"
         m = _mtime(model)
         rows.append(_row("Z4 ML-B model first", "skip" if m is None else ("pass" if m < first else "fail"),

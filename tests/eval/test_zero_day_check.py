@@ -54,3 +54,12 @@ def test_leaks_are_reported(tmp_path):
     assert rows["Z3"]["status"] == "fail" and "1 overlap an attack row" in rows["Z3"]["detail"]
     assert z.main(["--run", str(run), "--mlb-data", str(data), "--egress", str(egress), "--no-helm"]) == 1
     assert (run / "results" / "ZERODAY.md").exists()
+
+
+def test_model_found_by_digest_when_the_data_folder_has_a_suffix(tmp_path):
+    run, data, egress = make_run(tmp_path)
+    opt = data.rename(data.with_name(HEX + "-opt"))           # record-d2.sh POLICY_SET=opt
+    rows = {r["check"].split()[0]: r for r in z.run_checks(run, opt, egress, helm=False, digest=HEX)}
+    assert rows["Z4"]["status"] == "pass", rows["Z4"]
+    rows = {r["check"].split()[0]: r for r in z.run_checks(run, opt, egress, helm=False, digest="sha256:" + HEX)}
+    assert rows["Z4"]["status"] == "pass", rows["Z4"]

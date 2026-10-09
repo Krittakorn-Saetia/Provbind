@@ -17,20 +17,22 @@ pip install -r requirements.txt                            # includes matplotlib
 
 ## 2. Get the data
 
-1. **The comparison run (redo, 2 October):** unpack the results bundle (`provbind-results-redo-*.tgz`
-   from the team share). It holds a `run/` folder with `results/`, `ground_truth.csv`, `alerts.jsonl`,
-   `falco.jsonl`, `envelopes/` and `traces/baseline/`.
-2. **The measured preparation times (needed for figure 1):** `PREP.json`, from the overhead run
-   (`run-overhead/results/PREP.json` on the VM; the run also copies it into `run/results/`). Put it at:
+1. **The final comparison run (9 October, optimised policies):** unpack the results bundle
+   (`provbind-results-final.tgz` from the team share). It holds a `run-final/` folder with `results/`
+   (including `PREP.json`, the measured preparation times figure 1 needs), `ground_truth.csv`,
+   `alerts.jsonl`, `falco.jsonl`, `envelopes/` and `traces/baseline/`. On the VM it is made with:
    ```
-   run/results/PREP.json
+   tar czf provbind-results-final.tgz run-final/results run-final/ground_truth.csv run-final/alerts.jsonl \
+     run-final/falco.jsonl run-final/envelopes run-final/traces/baseline
    ```
+2. If `run-final/results/PREP.json` is missing, run `scripts/prep-run.sh` on the VM first (Role 1).
    Without it, figure 1 falls back to the old drawing with "by design" estimates.
+3. The 2 October redo (`run/`, original policies) still draws the same way, with `--run run`.
 
 ## 3. Draw
 
 ```bash
-python -m eval.baselines.plot_contributions --run run --out figures --dpi 300
+python -m eval.baselines.plot_contributions --run run-final --out figures --dpi 300
 ```
 
 It prints the paths it wrote. All are PNG, 300 dpi, sized for an IEEE page.
@@ -49,8 +51,8 @@ It prints the paths it wrote. All are PNG, 300 dpi, sized for an IEEE page.
 ## 5. Check before sending
 
 - Figure 1 says "(measured)" in its title. If it shows hatched bars with "≥", `PREP.json` was not found.
-- Figure 5's bottom row should match the comparison table (redo: PROVBIND 80/95, Falco 45, Confine-E
-  25, DeSFAM-E 40, Sig-only 35).
+- Figure 5's bottom row should match the comparison table (final run: PROVBIND 80/95, Falco 45,
+  Confine-E 25, DeSFAM-E 41, Sig-only 35; the 2 October redo: 80, 45, 25, 40, 35).
 - Figure 3's footer names how many PROVBIND alerts are about a file in the image.
 
 ## 6. If something fails
