@@ -1,0 +1,1053 @@
+{
+ "schema": "provbind.figures/v1",
+ "run": "run-final",
+ "prep": {
+  "PROVBIND": {
+   "system": "PROVBIND",
+   "what": "compile the envelope (cold, fresh run folder)",
+   "seconds": 4.38,
+   "seconds_all": [
+    4.19,
+    4.665,
+    4.383,
+    4.38,
+    4.263
+   ],
+   "n": 5,
+   "n_what": "compiles",
+   "files": 5695,
+   "packages": 109,
+   "steps_ms": {
+    "preflight": 11.0,
+    "evidence": 2251.7,
+    "fetch": 186.0,
+    "union": 698.1,
+    "canonicalise": 23.8,
+    "closure": 8.1,
+    "sbom": 0.8,
+    "owners": 31.3,
+    "caps": 115.1,
+    "validate": 137.9
+   }
+  },
+  "Confine-E": {
+   "system": "Confine-E",
+   "what": "start-up observation + export binaries + static analysis",
+   "seconds": 32.755,
+   "parts_s": {
+    "startup_observation": 30.0,
+    "export_binaries": 2.501,
+    "elf_import_extraction": 0.254,
+    "syscall_mapping": 0.0
+   },
+   "n": 31,
+   "n_what": "ELF files analysed",
+   "packages": 8,
+   "files_outside_packages": 21,
+   "imported_functions": 1319,
+   "allow_list": 194,
+   "startup_syscalls": 0,
+   "startup_trace_span_s": 0.0
+  },
+  "DeSFAM-E": {
+   "system": "DeSFAM-E",
+   "what": "benign profiling + allow list + Isolation Forest training",
+   "seconds": 1832.313,
+   "parts_s": {
+    "profiling": 1831.104,
+    "static_allow_list": 0.255,
+    "dynamic_allow_list": 0.008,
+    "combine_eq1": 0.0,
+    "isolation_forest_training": 0.946
+   },
+   "n": 329,
+   "n_what": "benign requests during profiling",
+   "packages": 8,
+   "files_outside_packages": 21,
+   "elf_files": 31,
+   "profiling_runs": 3,
+   "syscalls": 6946,
+   "windows": 2302,
+   "allow_list": 194
+  },
+  "PROVBIND + ML-B": {
+   "system": "PROVBIND + ML-B",
+   "what": "benign load for D2 + model training",
+   "seconds": 25200.82,
+   "parts_s": {
+    "benign_load": 25200.0,
+    "training": 0.82
+   },
+   "n": 4544,
+   "n_what": "benign requests during D2",
+   "windows": 232
+  },
+  "Falco": {
+   "system": "Falco",
+   "what": "no per-image step (generic rules)",
+   "seconds": 0.0,
+   "n": 0,
+   "n_what": "per-image steps",
+   "restart_ready_s": 25.719,
+   "restart_ready_all": [
+    25.719
+   ],
+   "restarts": 1
+  }
+ },
+ "desfam": {
+  "published_reference": {
+   "recall": 0.9,
+   "false_positive_rate": 0.016,
+   "precision": 0.94
+  }
+ },
+ "systems_table": {
+  "PROVBIND": {
+   "kind": "measured",
+   "attribution_level": 3,
+   "TP": 50,
+   "FP": 0,
+   "FN": 15,
+   "TN": 30,
+   "precision": 1.0,
+   "recall": 0.7692,
+   "f1": 0.8695,
+   "fpr": 0.0,
+   "accuracy": 0.8421
+  },
+  "Falco": {
+   "kind": "measured",
+   "attribution_level": 1,
+   "TP": 25,
+   "FP": 10,
+   "FN": 40,
+   "TN": 20,
+   "precision": 0.7143,
+   "recall": 0.3846,
+   "f1": 0.5,
+   "fpr": 0.3333,
+   "accuracy": 0.4737
+  },
+  "Confine-E": {
+   "kind": "estimated",
+   "attribution_level": 0,
+   "TP": 0,
+   "FP": 5,
+   "FN": 65,
+   "TN": 25,
+   "precision": 0.0,
+   "recall": 0.0,
+   "f1": null,
+   "fpr": 0.1667,
+   "accuracy": 0.2632
+  },
+  "DeSFAM-E": {
+   "kind": "estimated",
+   "attribution_level": 1,
+   "TP": 34,
+   "FP": 23,
+   "FN": 31,
+   "TN": 7,
+   "precision": 0.5965,
+   "recall": 0.5231,
+   "f1": 0.5574,
+   "fpr": 0.7667,
+   "accuracy": 0.4316
+  },
+  "Sig-only": {
+   "kind": "derived",
+   "attribution_level": 0,
+   "TP": 5,
+   "FP": 0,
+   "FN": 60,
+   "TN": 30,
+   "precision": 1.0,
+   "recall": 0.0769,
+   "f1": 0.1428,
+   "fpr": 0.0,
+   "accuracy": 0.3684
+  }
+ },
+ "c1_steps": {
+  "steps": [
+   [
+    "evidence",
+    2195.15
+   ],
+   [
+    "union",
+    763.25
+   ],
+   [
+    "validate",
+    137.85000000000002
+   ],
+   [
+    "caps",
+    116.94999999999999
+   ],
+   [
+    "fetch",
+    44.900000000000006
+   ],
+   [
+    "owners",
+    30.55
+   ],
+   [
+    "canonicalise",
+    24.15
+   ],
+   [
+    "preflight",
+    10.7
+   ],
+   [
+    "closure",
+    8.05
+   ],
+   [
+    "sbom",
+    0.7
+   ]
+  ],
+  "total_s": 3.33,
+  "images": 12,
+  "files": 5696,
+  "index_ms": 2.385,
+  "index_kb_per_1000_files": 401.47265625
+ },
+ "c2_metrics": [
+  {
+   "system": "PROVBIND",
+   "kind": "measured",
+   "recall": 0.625,
+   "fpr": 0.0,
+   "attack_runs": 40,
+   "benign_runs": 30
+  },
+  {
+   "system": "Falco",
+   "kind": "measured",
+   "recall": 0.25,
+   "fpr": 0.3333,
+   "attack_runs": 40,
+   "benign_runs": 30
+  },
+  {
+   "system": "Confine-E",
+   "kind": "estimated",
+   "recall": 0.0,
+   "fpr": 0.1667,
+   "attack_runs": 40,
+   "benign_runs": 30
+  },
+  {
+   "system": "DeSFAM-E",
+   "kind": "estimated",
+   "recall": 0.85,
+   "fpr": 0.7667,
+   "attack_runs": 40,
+   "benign_runs": 30
+  }
+ ],
+ "c2_latency": {
+  "p50_us": 2.048,
+  "p99_us": 9.056,
+  "events": 3264,
+  "short": true
+ },
+ "c3_attribution": {
+  "fields": [
+   "Container / pod",
+   "Process",
+   "Rule / clause / technique",
+   "Package",
+   "Image layer",
+   "Dependency path"
+  ],
+  "systems": [
+   "PROVBIND",
+   "Falco",
+   "Confine-E",
+   "DeSFAM-E"
+  ],
+  "share": {
+   "PROVBIND": [
+    1.0,
+    1.0,
+    1.0,
+    0.20408163265306123,
+    0.30612244897959184,
+    0.20408163265306123
+   ],
+   "Falco": [
+    1.0,
+    1.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "Confine-E": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "DeSFAM-E": [
+    1.0,
+    1.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "n": {
+   "PROVBIND": 49,
+   "Falco": 55,
+   "Confine-E": null,
+   "DeSFAM-E": null
+  },
+  "how": {
+   "PROVBIND": "measured",
+   "Falco": "measured",
+   "Confine-E": "by design",
+   "DeSFAM-E": "by design"
+  },
+  "counts": {
+   "PROVBIND": [
+    [
+     49,
+     49
+    ],
+    [
+     49,
+     49
+    ],
+    [
+     49,
+     49
+    ],
+    [
+     10,
+     15
+    ],
+    [
+     15,
+     15
+    ],
+    [
+     10,
+     15
+    ]
+   ],
+   "Falco": [
+    [
+     55,
+     55
+    ],
+    [
+     55,
+     55
+    ],
+    [
+     55,
+     55
+    ],
+    [
+     0,
+     55
+    ],
+    [
+     0,
+     55
+    ],
+    [
+     0,
+     55
+    ]
+   ]
+  },
+  "n_image": 15
+ },
+ "c4_matrix": [
+  [
+   "PROVBIND",
+   "Falco",
+   "Confine-E",
+   "DeSFAM-E",
+   "Sig-only"
+  ],
+  [
+   {
+    "scenario": "ak-1",
+    "label": "A-K1  advisory before deploy",
+    "runs": 5,
+    "caught": [
+     5,
+     5,
+     0,
+     0,
+     0
+    ],
+    "provbind_stage": "trust"
+   },
+   {
+    "scenario": "ak-2",
+    "label": "A-K2  unsigned image",
+    "runs": 5,
+    "caught": [
+     5,
+     5,
+     0,
+     0,
+     5
+    ],
+    "provbind_stage": "admission"
+   },
+   {
+    "scenario": "ak-3",
+    "label": "A-K3  key revoked before deploy",
+    "runs": 5,
+    "caught": [
+     5,
+     5,
+     0,
+     0,
+     0
+    ],
+    "provbind_stage": "admission"
+   },
+   {
+    "scenario": "trust-1",
+    "label": "R-K1  advisory while running",
+    "runs": 5,
+    "caught": [
+     5,
+     0,
+     0,
+     0,
+     0
+    ],
+    "provbind_stage": "trust"
+   },
+   {
+    "scenario": "trust-2",
+    "label": "key revoked while running",
+    "runs": 5,
+    "caught": [
+     5,
+     0,
+     0,
+     0,
+     0
+    ],
+    "provbind_stage": "trust"
+   }
+  ]
+ ],
+ "c4_trust_latency": {
+  "Key revoked": [
+   1.736,
+   0.4,
+   0.353,
+   0.4,
+   1.292,
+   1.194,
+   1.013,
+   1.103,
+   1.116,
+   1.858
+  ],
+  "Advisory\n(component)": [
+   1.596,
+   0.168,
+   0.169,
+   0.015,
+   1.096,
+   1.818,
+   1.833,
+   11.893,
+   1.669,
+   1.684,
+   13.756,
+   1.674,
+   1.691,
+   13.763,
+   1.736,
+   13.786,
+   0.478,
+   12.541
+  ]
+ },
+ "heatmap": [
+  [
+   "PROVBIND",
+   "Falco",
+   "Confine-E",
+   "DeSFAM-E",
+   "Sig-only"
+  ],
+  [
+   {
+    "scenario": "ak-1",
+    "label": "A-K1  ak-1",
+    "cell": "Admission, known",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "5/5",
+     "0/5",
+     "0/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "ak-2",
+    "label": "A-K2  ak-2",
+    "cell": "Admission, known",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     1.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "counts": [
+     "5/5",
+     "5/5",
+     "0/5",
+     "0/5",
+     "5/5"
+    ]
+   },
+   {
+    "scenario": "ak-3",
+    "label": "A-K3  ak-3",
+    "cell": "Admission, known",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "5/5",
+     "0/5",
+     "0/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "au-2",
+    "label": "A-U2  au-2",
+    "cell": "Admission, unknown",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "0/5",
+     "0/5",
+     "0/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "trust-1",
+    "label": "R-K1  trust-1",
+    "cell": "Runtime, known",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "0/5",
+     "0/5",
+     "0/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "trust-2",
+    "label": "trust-2",
+    "cell": "Runtime, known",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "0/5",
+     "0/5",
+     "0/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "rk-2",
+    "label": "R-K2  rk-2",
+    "cell": "Runtime, known",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "0/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "rk-3",
+    "label": "R-K3  rk-3",
+    "cell": "Runtime, known",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "0/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "attack-1",
+    "label": "R-U1  attack-1",
+    "cell": "Runtime, unknown",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     1.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "5/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "attack-2",
+    "label": "R-U2  attack-2",
+    "cell": "Runtime, unknown",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "0/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "ru-3",
+    "label": "R-U3  ru-3",
+    "cell": "Runtime, unknown",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     0.0,
+     0.0,
+     0.8,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "0/5",
+     "0/5",
+     "4/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "ru-4",
+    "label": "R-U4  ru-4",
+    "cell": "Runtime, unknown",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     1.0,
+     1.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "5/5",
+     "5/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "ru-5",
+    "label": "R-U5  ru-5",
+    "cell": "Runtime, unknown",
+    "truth": "malicious",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "0/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "benign-1",
+    "label": "B1  benign-1",
+    "cell": "Benign",
+    "truth": "benign",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     1.0,
+     1.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "5/5",
+     "5/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "benign-traffic",
+    "label": "B2  benign-traffic",
+    "cell": "Benign",
+    "truth": "benign",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "0/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "ph4-14",
+    "label": "B3  ph4-14",
+    "cell": "Benign",
+    "truth": "benign",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     0.0,
+     0.0,
+     0.6,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "0/5",
+     "0/5",
+     "3/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "benign-3",
+    "label": "B4  benign-3",
+    "cell": "Benign",
+    "truth": "benign",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "0/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "benign-4",
+    "label": "B5  benign-4",
+    "cell": "Benign",
+    "truth": "benign",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "0/5",
+     "0/5",
+     "5/5",
+     "0/5"
+    ]
+   },
+   {
+    "scenario": "ab-1",
+    "label": "A-B1  ab-1",
+    "cell": "Benign",
+    "truth": "benign",
+    "runs": 5,
+    "fraction": [
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     "0/5",
+     "5/5",
+     "0/5",
+     "0/5",
+     "0/5"
+    ]
+   }
+  ]
+ ],
+ "overhead": {
+  "threshold_pct": 20.0,
+  "repetitions": {
+   "none": 3,
+   "falco": 3,
+   "tetragon": 3,
+   "provbind": 3
+  },
+  "final": [
+   {
+    "kind": "mix",
+    "field": "p50_ms",
+    "label": "Request mix: median latency",
+    "overhead_pct": {
+     "falco": 3.2,
+     "tetragon": 0.4,
+     "provbind": -0.5
+    }
+   },
+   {
+    "kind": "mix",
+    "field": "p95_ms",
+    "label": "Request mix: p95 latency",
+    "overhead_pct": {
+     "falco": 4.7,
+     "tetragon": 0.3,
+     "provbind": -0.1
+    }
+   },
+   {
+    "kind": "mix",
+    "field": "rps",
+    "label": "Request mix: throughput loss",
+    "overhead_pct": {
+     "falco": 3.4,
+     "tetragon": 0.3,
+     "provbind": -0.4
+    }
+   },
+   {
+    "kind": "cache",
+    "field": "p50_ms",
+    "label": "File-writing requests: median latency",
+    "overhead_pct": {
+     "falco": 8.2,
+     "tetragon": 9.7,
+     "provbind": 9.9
+    }
+   },
+   {
+    "kind": "cache",
+    "field": "p95_ms",
+    "label": "File-writing requests: p95 latency",
+    "overhead_pct": {
+     "falco": 7.7,
+     "tetragon": 7.7,
+     "provbind": 8.0
+    }
+   },
+   {
+    "kind": "cache",
+    "field": "rps",
+    "label": "File-writing requests: throughput loss",
+    "overhead_pct": {
+     "falco": 7.1,
+     "tetragon": 7.1,
+     "provbind": 7.5
+    }
+   },
+   {
+    "kind": "micro",
+    "field": "file_op_us",
+    "label": "Loop of file writes",
+    "overhead_pct": {
+     "falco": 5.1,
+     "tetragon": 1.7,
+     "provbind": 5.2
+    }
+   },
+   {
+    "kind": "micro",
+    "field": "spawn_ms",
+    "label": "Loop of process starts",
+    "overhead_pct": {
+     "falco": 15.8,
+     "tetragon": 127.2,
+     "provbind": 118.6
+    }
+   }
+  ],
+  "provbind_over_tetragon_max_pct": 0.4,
+  "cpu": {
+   "none": {
+    "monitor_cpu_pct": 0.0,
+    "monitor_rss_mb": 20.7,
+    "host_busy_pct": 52.2
+   },
+   "falco": {
+    "monitor_cpu_pct": 8.17,
+    "monitor_rss_mb": 118.9,
+    "host_busy_pct": 53.76
+   },
+   "tetragon": {
+    "monitor_cpu_pct": 0.15,
+    "monitor_rss_mb": 155.1,
+    "host_busy_pct": 51.31
+   },
+   "provbind": {
+    "monitor_cpu_pct": 0.23,
+    "monitor_rss_mb": 409.0,
+    "host_busy_pct": 51.24
+   }
+  },
+  "history": [
+   {
+    "run": "Original policies",
+    "overhead_pct": {
+     "mix/p50_ms": 31.1,
+     "mix/p95_ms": 86.0,
+     "mix/rps": 31.2,
+     "cache/p50_ms": 151.8,
+     "cache/p95_ms": 377.5,
+     "cache/rps": 66.1,
+     "micro/file_op_us": 94.9,
+     "micro/spawn_ms": 292.0
+    }
+   },
+   {
+    "run": "Filters and rate limits",
+    "overhead_pct": {
+     "mix/p50_ms": 9.6,
+     "mix/p95_ms": 23.6,
+     "mix/rps": 12.0,
+     "cache/p50_ms": 71.5,
+     "cache/p95_ms": 205.2,
+     "cache/rps": 49.1,
+     "micro/file_op_us": 57.7,
+     "micro/spawn_ms": 112.2
+    }
+   },
+   {
+    "run": "Plus truncation rate limit",
+    "overhead_pct": {
+     "mix/p50_ms": -0.5,
+     "mix/p95_ms": -0.1,
+     "mix/rps": -0.4,
+     "cache/p50_ms": 9.9,
+     "cache/p95_ms": 8.0,
+     "cache/rps": 7.5,
+     "micro/file_op_us": 5.2,
+     "micro/spawn_ms": 118.6
+    }
+   }
+  ]
+ }
+}
