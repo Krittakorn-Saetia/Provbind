@@ -1,6 +1,7 @@
 # How to make the graphs
 
-Everything needed is in the repository: no VM, no results bundle. There are two ways:
+For whoever draws the figures. Everything needed is in the repository: no VM, no results bundle. There are
+two ways:
 
 - **A. The paper figures**: one command draws the eight figures as designed after the supervisor's
   feedback (5 October 2026).
@@ -92,28 +93,12 @@ Reading the numbers:
 - **Preparation**: the time from a new image to the system being ready to protect it. Falco has no
   per-image step (0 s); PROVBIND + ML-B includes 7 hours of recorded benign traffic.
 
-## 4. For Role 1: making the figure data on the VM
+## 4. Where the figure data comes from
 
-The paper figures read `figures.json`, which holds every figure's numbers. It is made once on the VM, where
-the run folders are, and pushed to the repository. It holds aggregates only (counts, rates, medians,
-timings): no alert, trace, pod detail or key leaves the VM.
-
-```bash
-cd ~/Provbind && source .venv/bin/activate
-python -m eval.baselines.plot_contributions --run run-final --overhead run-overhead-opt5 \
-  --history "Original policies=run-overhead-orig4" "Filters and rate limits=run-overhead-opt4" \
-            "Plus truncation rate limit=run-overhead-opt5" \
-  --export docs/figures/data/final-2026-10-09/figures.json
-git add docs/figures/data/final-2026-10-09/figures.json      # this one file only: never git add -A,
-git commit -m "Final figure data (figures.json)"             # the run folders are not git-ignored
-git push
-```
-
-- `--run`: the comparison run (accuracy, attribution, trust, preparation from `results/PREP.json`).
-- `--overhead`: the final overhead run (figure 6). `--history`: the overhead runs in order, final last
-  (figure 7).
-- To draw straight from the run folders on the VM instead, replace `--export ...` with `--out figures`.
-- After a new run, export again to the same path (or a new dated folder) and push.
+You don't need this to plot. `figures.json` is made once on the demo VM, where the test runs are, by
+Role 1, with `plot_contributions.py --export` (the command is in the script's help text). It holds
+aggregates only (counts, rates, medians, timings): no alert, trace, pod detail or key leaves the VM.
+After a new test run it is exported again.
 
 ## 5. If something fails
 
@@ -121,5 +106,5 @@ git push
 |---|---|
 | `No module named 'matplotlib'` (or `pandas`) | `pip install matplotlib pandas` in the active environment |
 | `No module named 'eval'` | run from the repository's top folder |
-| `cannot read the figure data: ... figures.json` | the figure data has not been pushed yet (section 4); `git pull`, or use the CSV route meanwhile |
+| `cannot read the figure data: ... figures.json` | the figure data is not in the repository yet: `git pull` later, or ask Role 1; the CSV charts (section 3) work meanwhile |
 | anything else | send the last 20 lines of the output to Role 1 |
