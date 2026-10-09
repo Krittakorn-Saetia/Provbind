@@ -3,7 +3,7 @@
 **From:** Role 1 · **For:** the supervisor, Korn and the team · **Status (9 October):** all four
 questions answered. The final numbers come from one configuration, the optimised sensor policies: the
 final comparison run (`run-final`, 9 October) for accuracy, and the overhead run `opt5` (8 October) for
-runtime cost (Section 4). Overhead figures reported before 7 October are withdrawn (Section 4).
+runtime cost (Section 4.2). Overhead figures reported before 7 October are withdrawn (Section 4.3).
 
 | # | Question | Where |
 |---|---|---|
@@ -18,7 +18,9 @@ runtime cost (Section 4). Overhead figures reported before 7 October are withdra
 
 - **Q1.** Figures 1, 3 and 5 are redesigned; figure 1 shows each system's measured preparation time with
   exact package and file counts, and a second image breaks it into components for every system
-  (Section 5, `docs/FIGURES-HOWTO.md`). The final figures are drawn from `run-final`.
+  (Section 5, `docs/FIGURES-HOWTO.md`). Two new figures show the runtime cost (6) and how it came down
+  (7). The final figures are drawn from `run-final`'s numbers, which are in the repository
+  (`docs/figures/data/final-2026-10-09/`).
 - **Q2.** There is no single standard for "zero-day" evaluation, but there are recognised methods, and
   ours combines three of them (A, C and D in Section 2.1); one more step (Section 2.4) makes it fully
   traceable to a public standard. The leakage checks Z1–Z7 pass (Section 2.5).
@@ -221,10 +223,10 @@ and DeSFAM-E's own preparation. ML-B's 7 h is far longer than DeSFAM-E's 30 min 
 obvious candidate for optimisation (more requests per hour, or fewer windows); Section 4 will state it
 with the numbers.
 
-## 4. Results (overhead run, 5 October 2026, demo VM)
+## 4. Results (demo VM, 5–9 October 2026)
 
-> **Correction, 7 October 2026: every overhead result below is invalid for the `tetragon` and `provbind`
-> configurations and must be re-measured.** Tetragon reports only processes it saw start (or found when it
+> **Correction, 7 October 2026: every overhead result from before 7 October (Section 4.3) is invalid for the
+> `tetragon` and `provbind` configurations; Sections 4.1 and 4.2 hold the re-measured results.** Tetragon reports only processes it saw start (or found when it
 > started). `scripts/overhead-run.sh` switched Tetragon off and on between configurations while the demo
 > app kept running, so in those configurations Tetragon never reported the app's own server process: its
 > file writes and connections produced no events (the kernel hooks still ran). Found by
@@ -237,6 +239,8 @@ with the numbers.
 > - The 2 October comparison (detection, F1 0.87, 0 false alarms) is **not affected**: its recording holds
 >   the app's events (3,626 write events, 5 connections).
 > Fixed: both run scripts now restart the app after Tetragon and stop if the probe finds the app unmonitored.
+
+### 4.1 Re-measured overhead: original and optimised policies (7–8 October)
 
 **Valid overhead results (orig4 and opt4, 7–8 October; the app's process probed and monitored in every
 configuration).** Medians of 3 repetitions, against no monitoring:
@@ -276,6 +280,8 @@ What these show:
   what remains is the kernel hooks themselves. To be measured (opt5), with detection re-checked.
 - From opt5 on, CPU and memory are sampled over the application workloads only, not the micro-benchmark.
 
+### 4.2 The final configuration: overhead, detection, preparation (8–9 October)
+
 **Result with the truncate fix (opt5, 8 October; optimised policies, the app probed and monitored in every
 Tetragon and PROVBIND configuration).** Medians of 3 repetitions, against no monitoring:
 
@@ -301,9 +307,10 @@ is unchanged (p95 1.29 ms). Spreads are narrow (e.g. /cache p50 0.95–0.96 ms a
 - **Detection with these policies (opt-cmp3, runtime scenarios, no admission):** every attack scenario as
   on 2 October (35 of 45 runtime attack runs, the same scenarios caught and missed), but **2 false alarms
   in 25 benign runs** (ph4-14), both from ML-B (`D_beh`, Medium). ML-B's model was trained on traffic
-  recorded under the original policies; it is to be retrained under the optimised ones
-  (`POLICY_SET=opt scripts/record-d2.sh`) before the final comparison. Until then the optimised policies'
-  accuracy is F1 0.85, false-alarm rate 0.08 (runtime scenarios), against 0.87 and 0 for the original ones.
+  recorded under the original policies, so it was retrained under the optimised ones
+  (`POLICY_SET=opt scripts/record-d2.sh`). Before the retrain the optimised policies' accuracy was F1 0.85,
+  false-alarm rate 0.08 (runtime scenarios); the final comparison below, with ML-B retrained, is back to
+  0.87 and no false alarm.
 
 **Final comparison (`run-final`, 9 October): optimised policies, ML-B retrained under them, every
 scenario and baseline.** ML-B was retrained on 7 h of benign traffic recorded with the optimised policies
@@ -347,12 +354,16 @@ future runs: bpftrace now stops itself). It does not change Confine-E's result: 
 programs started during start-up, this app starts none besides its entrypoint, and the entrypoint is
 analysed anyway, with every library mapped into the running app.
 
+### 4.3 History: the runs of 5–6 October (overhead numbers withdrawn)
 
-**Zero-day validity (Z1–Z7): all pass.** Specification compiled 2026-10-01 14:50Z, first scenario
+Kept for the record. These runs used the 2 October run folder: their zero-day checks and preparation times
+stand, but their overhead numbers for `tetragon` and `provbind` are withdrawn (see the correction above).
+
+**Zero-day validity (Z1–Z7) on the 2 October run: all pass.** Specification compiled 2026-10-01 14:50Z, first scenario
 2026-10-02 00:24Z; no attack artefact declared; 220 ML-B windows, none after the first scenario or
 overlapping an attack; model and DeSFAM baseline written first; no advisory; Falco on default rules.
 
-**Preparation time per new image (measured):** PROVBIND 5.34 s (median of 5 cold compiles; 109 packages,
+**Preparation time per new image (measured on the 2 October run, original policies):** PROVBIND 5.34 s (median of 5 cold compiles; 109 packages,
 5,695 files); PROVBIND + ML-B 7 h (4,532 requests, 220 windows; training 0.8 s); Falco 0 s (no per-image
 step); Confine-E 30 s start-up window + 2.2 s (export 1.9 s, analysis 0.24 s; 27 ELF files from 8 packages,
 +17 outside packages); DeSFAM-E 30.4 min (profiling; training 0.8 s; 320 requests, 2,297 windows).
@@ -454,7 +465,8 @@ when it is terminating or not running, checked before every configuration, and d
 the end; failed workloads are now listed in the report instead of showing as "OVER 20%". The optimised
 write policy also drops socket and pipe writes in the kernel (`Prefix "/"`; the node dropped them anyway).
 
-**Optimised policies, valid rerun (opt3, 6 October; `POLICY_SET=opt`, events through `kubectl logs`):**
+**Optimised policies, rerun with working clients (opt3, 6 October; withdrawn on 7 October like the runs
+above; `POLICY_SET=opt`, events through `kubectl logs`):**
 
 | Metric (median of 3, against no monitoring) | Falco | Tetragon only | PROVBIND | orig2 PROVBIND |
 |---|---|---|---|---|
@@ -515,6 +527,12 @@ What changed:
     and dynamic allow list, Eq. 1, Isolation Forest training), and Falco (no per-image component; its
     DaemonSet restart time).
   Without the file the figure falls back to the old drawing.
+- Two new figures answer questions 3 and 4: figure 6, PROVBIND's and Falco's runtime cost against no
+  monitoring on every application metric, with the 20% limit; figure 7, PROVBIND's p95 cost in the three
+  valid overhead runs (orig4, opt4, opt5), in the order the policies were optimised.
+- All eight figures can be drawn from the repository alone: `plot_contributions.py --export` writes their
+  numbers on the VM to `docs/figures/data/final-2026-10-09/figures.json`, and `--data` draws them anywhere
+  (`docs/FIGURES-HOWTO.md`).
 
 ## References
 

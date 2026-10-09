@@ -549,8 +549,9 @@ scenario, to the run of 2 October with the original policies, so the optimisatio
 | monitor memory | 119 MB | 409 MB |
 
 Relative to the runtime collection alone (Tetragon with the same policies), the baseline Section IV names,
-PROVBIND adds at most 0.4% on the application metrics. Per-event verification takes 1.9 µs at p50 and
-6.7 µs at p99 (OH-01, replay of the 2 October recording). Preparation per new image: PROVBIND 4.38 s
+PROVBIND adds at most 0.4% on the application metrics. Per-event verification takes 2.0 µs at p50 and
+9.1 µs at p99 on the final run's recording (OH-01, 3,264 events, figure 2b; the longer 2 October recording
+gave 1.9 and 6.7 µs). Preparation per new image: PROVBIND 4.38 s
 (envelope compile, 109 packages, 5,695 files); with ML-B, 7 h of benign traffic plus 0.82 s of training;
 Falco none; Confine-E 32.8 s; DeSFAM-E 30.5 min of profiling.
 
@@ -574,12 +575,12 @@ checks that its events arrive before every measurement.
 
 | Where in the draft | Add | Why |
 |---|---|---|
-| Section IV, "not containerised [?]" | University of Glasgow, "SynthChain: A synthetic benchmark and forensic analysis of advanced and stealthy software supply chain attacks," arXiv:2603.16694, 2026 | the reference our DS2 draft has in this place (`synthchain2026`); it is missing from the new bibliography |
-| Section IV, the unknown-attack method and the container testbed | M. Grimmer et al., "A Modern and Sophisticated Host Based Intrusion Detection Data Set," BSI IT-Sicherheitskongress, 2019; M. Grimmer et al., "Dataset Report: LID-DS 2021," CRITIS 2022, LNCS 13723, 2023; G. Creech and J. Hu, "Generation of a new IDS test dataset: Time to retire the KDD collection," IEEE WCNC, 2013 (ADFA-LD); W. Haider et al., Future Internet 8(3):29, 2016 | normal-only training and a container testbed with kernel-level recording, the methods our evaluation adapts |
+| Section IV, "not containerised [?]" | Z. Tan et al., "An Empirical Study of Observability Limits in Advanced Software Supply Chain Attacks," ACM CCS 2026 (accepted); preprint arXiv:2603.16694, first titled "SynthChain: A Synthetic Benchmark and Forensic Analysis of Advanced and Stealthy Software Supply Chain Attacks" | the reference our DS2 draft has in this place (`synthchain2026`); it is missing from the new bibliography. Cite the CCS version once the proceedings are out |
+| Section IV, the unknown-attack method and the container testbed | M. Grimmer, T. Kaelble, F. Nirsberger, E. Schulze, T. Rucks, J. Hoffmann, E. Rahm, "Dataset Report: LID-DS 2021," CRITIS 2022, LNCS 13723, Springer, 2023, pp. 63–73, doi:10.1007/978-3-031-35190-7_6; S. Zehra, H. J. Syed, F. Samad, U. Faseeha, "DeSFAM: An Adaptive eBPF and AI-Driven Framework for Securing Cloud Containers in Real Time," IEEE Access, vol. 13, pp. 139203–139224, 2025 | normal-only training and a container testbed with kernel-level recording, the methods our evaluation adapts; both from 2020 or later, as in Role 1's report. DeSFAM is also a comparator; confirm its DOI on IEEE Xplore |
 | Section IV, "attack semantics are extracted and re-instantiated" | DataDog, malicious-software-packages-dataset (GitHub); M. Ohm et al., "Backstabber's Knife Collection," DIMVA 2020 | the source of the behaviours the scenarios re-create, and the taxonomy they follow |
 | Section IV comparators; the architecture table ("Tetragon") | The Falco Project (falco.org); Cilium Tetragon (tetragon.io) | tools the draft uses and names without a reference |
-| Related work or Section IV | A. A. Syairozi and Arizal, "Comparative Analysis of eBPF-Based Runtime Security Monitoring Tools in Monitoring and Threat Detection on Kubernetes," RITECH 2025, SciTePress, pp. 136–141 | a recent comparison of eBPF runtime monitors on Kubernetes, the setting we evaluate in |
-| Optional | A. V. Kozachok et al., "From CVE to CWE: Syscall-Based HIDS Generalisation," arXiv:2606.22581, 2026 | newer work testing detection of unseen attacks the same way |
+| Related work or Section IV | A. A. Syairozi and Arizal, "Comparative Analysis of eBPF-Based Runtime Security Monitoring Tools in Monitoring and Threat Detection on Kubernetes," RITECH 2025, SciTePress, pp. 136–141, doi:10.5220/0014272700004928 | a recent comparison of eBPF runtime monitors on Kubernetes, the setting we evaluate in. Read the full text before citing (checked from the abstract) |
+| Optional | A. V. Kozachok, S. G. Vyugov, S. G. Magomedov, "From CVE to CWE: Syscall-Based HIDS Generalisation," arXiv preprint arXiv:2606.22581, 2026 | newer work testing detection of unseen attacks the same way. A preprint, not yet peer-reviewed; read the full text before citing |
 
 ---
 
@@ -681,4 +682,4 @@ Take every citation's exact form from its source; do not reconstruct one from me
 |---|---|---|
 | 1.0 | 27 Sep 2026 | First version |
 | 1.1 | 27 Sep 2026 | Section 12 added: every dataset (D1–D8) with source, access, risk and tests, plus handling rules for real malicious samples. ML-B benign run lengthened to at least 3 hours, with a threshold rule for small validation sets |
-| 1.2 | 9 Oct 2026 | Section 10: results of the final evaluation filled in (Event hooks, Evaluation plan, Results), with the proposed Results section (10.1) and citations (10.2) |
+| 1.2 | 9 Oct 2026 | Section 10: results of the final evaluation filled in (Event hooks, Evaluation plan, Results), with the proposed Results section (10.1) and citations (10.2). The citations were then checked against their publishers' listings: only sources from 2020 on, full author lists and DOIs, SynthChain under its ACM CCS 2026 title, Kozachok et al. marked as a preprint |
