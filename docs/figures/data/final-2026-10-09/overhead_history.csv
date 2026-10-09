@@ -1,0 +1,73 @@
+run,policy_set,configuration,metric,overhead_pct
+orig4,original policies,falco,"request latency p50, mix",13.4
+orig4,original policies,falco,"request latency p95, mix",16.0
+orig4,original policies,falco,"throughput, mix",12.2
+orig4,original policies,falco,"request latency p50, /cache",9.0
+orig4,original policies,falco,"request latency p95, /cache",7.8
+orig4,original policies,falco,"throughput, /cache",7.6
+orig4,original policies,falco,"file write, worst case",5.4
+orig4,original policies,falco,"process spawn, worst case",5.7
+orig4,original policies,tetragon,"request latency p50, mix",28.7
+orig4,original policies,tetragon,"request latency p95, mix",72.4
+orig4,original policies,tetragon,"throughput, mix",28.3
+orig4,original policies,tetragon,"request latency p50, /cache",148.2
+orig4,original policies,tetragon,"request latency p95, /cache",322.3
+orig4,original policies,tetragon,"throughput, /cache",63.6
+orig4,original policies,tetragon,"file write, worst case",75.4
+orig4,original policies,tetragon,"process spawn, worst case",296.4
+orig4,original policies,provbind,"request latency p50, mix",31.1
+orig4,original policies,provbind,"request latency p95, mix",86.0
+orig4,original policies,provbind,"throughput, mix",31.2
+orig4,original policies,provbind,"request latency p50, /cache",151.8
+orig4,original policies,provbind,"request latency p95, /cache",377.5
+orig4,original policies,provbind,"throughput, /cache",66.1
+orig4,original policies,provbind,"file write, worst case",94.9
+orig4,original policies,provbind,"process spawn, worst case",292.0
+opt4,filters and rate limits,falco,"request latency p50, mix",4.6
+opt4,filters and rate limits,falco,"request latency p95, mix",6.2
+opt4,filters and rate limits,falco,"throughput, mix",4.8
+opt4,filters and rate limits,falco,"request latency p50, /cache",8.2
+opt4,filters and rate limits,falco,"request latency p95, /cache",6.9
+opt4,filters and rate limits,falco,"throughput, /cache",6.9
+opt4,filters and rate limits,falco,"file write, worst case",4.0
+opt4,filters and rate limits,falco,"process spawn, worst case",17.2
+opt4,filters and rate limits,tetragon,"request latency p50, mix",11.3
+opt4,filters and rate limits,tetragon,"request latency p95, mix",23.2
+opt4,filters and rate limits,tetragon,"throughput, mix",12.4
+opt4,filters and rate limits,tetragon,"request latency p50, /cache",69.1
+opt4,filters and rate limits,tetragon,"request latency p95, /cache",182.2
+opt4,filters and rate limits,tetragon,"throughput, /cache",46.4
+opt4,filters and rate limits,tetragon,"file write, worst case",64.4
+opt4,filters and rate limits,tetragon,"process spawn, worst case",136.8
+opt4,filters and rate limits,provbind,"request latency p50, mix",9.6
+opt4,filters and rate limits,provbind,"request latency p95, mix",23.6
+opt4,filters and rate limits,provbind,"throughput, mix",12.0
+opt4,filters and rate limits,provbind,"request latency p50, /cache",71.5
+opt4,filters and rate limits,provbind,"request latency p95, /cache",205.2
+opt4,filters and rate limits,provbind,"throughput, /cache",49.1
+opt4,filters and rate limits,provbind,"file write, worst case",57.7
+opt4,filters and rate limits,provbind,"process spawn, worst case",112.2
+opt5,plus the truncation rate limit (final),falco,"request latency p50, mix",3.2
+opt5,plus the truncation rate limit (final),falco,"request latency p95, mix",4.7
+opt5,plus the truncation rate limit (final),falco,"throughput, mix",3.4
+opt5,plus the truncation rate limit (final),falco,"request latency p50, /cache",8.2
+opt5,plus the truncation rate limit (final),falco,"request latency p95, /cache",7.7
+opt5,plus the truncation rate limit (final),falco,"throughput, /cache",7.1
+opt5,plus the truncation rate limit (final),falco,"file write, worst case",5.1
+opt5,plus the truncation rate limit (final),falco,"process spawn, worst case",15.8
+opt5,plus the truncation rate limit (final),tetragon,"request latency p50, mix",0.4
+opt5,plus the truncation rate limit (final),tetragon,"request latency p95, mix",0.3
+opt5,plus the truncation rate limit (final),tetragon,"throughput, mix",0.3
+opt5,plus the truncation rate limit (final),tetragon,"request latency p50, /cache",9.7
+opt5,plus the truncation rate limit (final),tetragon,"request latency p95, /cache",7.7
+opt5,plus the truncation rate limit (final),tetragon,"throughput, /cache",7.1
+opt5,plus the truncation rate limit (final),tetragon,"file write, worst case",1.7
+opt5,plus the truncation rate limit (final),tetragon,"process spawn, worst case",127.2
+opt5,plus the truncation rate limit (final),provbind,"request latency p50, mix",-0.5
+opt5,plus the truncation rate limit (final),provbind,"request latency p95, mix",-0.1
+opt5,plus the truncation rate limit (final),provbind,"throughput, mix",-0.4
+opt5,plus the truncation rate limit (final),provbind,"request latency p50, /cache",9.9
+opt5,plus the truncation rate limit (final),provbind,"request latency p95, /cache",8.0
+opt5,plus the truncation rate limit (final),provbind,"throughput, /cache",7.5
+opt5,plus the truncation rate limit (final),provbind,"file write, worst case",5.2
+opt5,plus the truncation rate limit (final),provbind,"process spawn, worst case",118.6

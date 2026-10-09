@@ -29,6 +29,10 @@ pip install -r requirements.txt                            # includes matplotlib
    Without it, figure 1 falls back to the old drawing with "by design" estimates.
 3. The 2 October redo (`run/`, original policies) still draws the same way, with `--run run`.
 
+**Just the numbers:** `docs/figures/data/final-2026-10-09/` in the repository holds the final results as
+CSV files (detection per scenario and per system, runtime cost, preparation time), for plotting with any
+tool. Its README says which file feeds which figure.
+
 ## 3. Draw
 
 ```bash
