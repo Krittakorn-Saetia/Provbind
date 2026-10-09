@@ -549,8 +549,9 @@ scenario, to the run of 2 October with the original policies, so the optimisatio
 | monitor memory | 119 MB | 409 MB |
 
 Relative to the runtime collection alone (Tetragon with the same policies), the baseline Section IV names,
-PROVBIND adds at most 0.4% on the application metrics. Per-event verification takes 1.9 µs at p50 and
-6.7 µs at p99 (OH-01, replay of the 2 October recording). Preparation per new image: PROVBIND 4.38 s
+PROVBIND adds at most 0.4% on the application metrics. Per-event verification takes 2.0 µs at p50 and
+9.1 µs at p99 on the final run's recording (OH-01, 3,264 events, figure 2b; the longer 2 October recording
+gave 1.9 and 6.7 µs). Preparation per new image: PROVBIND 4.38 s
 (envelope compile, 109 packages, 5,695 files); with ML-B, 7 h of benign traffic plus 0.82 s of training;
 Falco none; Confine-E 32.8 s; DeSFAM-E 30.5 min of profiling.
 

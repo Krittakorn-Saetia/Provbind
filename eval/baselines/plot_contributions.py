@@ -537,7 +537,8 @@ def fig1b_c1(d, path, dpi):
         ax.set_axis_off()
         ax.text(0, 0.5, "Falco: no per-image component (generic rules)."
                 + (f"\nIts DaemonSet is ready {_fmt_exact(f['restart_ready_s'])} after a restart "
-                   f"(median of {f.get('restarts')} restarts)." if f.get("restart_ready_s") is not None else ""),
+                   + ("(measured once)." if f.get("restarts") == 1 else f"(median of {f.get('restarts')} restarts).")
+                   if f.get("restart_ready_s") is not None else ""),
                 transform=ax.transAxes, fontsize=6.3, color=INK2, va="center")
     _footer(fig, ["Preparation time per component, measured on our VM. Each panel has its own scale.",
                   "* Estimated systems: their preparation steps as we ran them, each timed."])
@@ -672,7 +673,7 @@ def fig2_c2(d, path, dpi):
             "scenarios are in Figure 4. PROVBIND checks events against its signed specification instead of a learned baseline."]
     if pub:
         foot.append(f"* Estimated systems. DeSFAM's own published operating point (its data, not ours): detection "
-                    f"{pub.get('recall')}, false-positive rate {pub.get('fpr')}.")
+                    f"{pub.get('recall')}, false-positive rate {pub.get('fpr', pub.get('false_positive_rate'))}.")
     _footer(fig, foot)
     return _save(plt, fig, path, dpi)
 
@@ -1014,7 +1015,7 @@ def fig7_cost_history(d, path, dpi):
         ax.text(len(vals) - 0.62, th, f"{th:.0f}% limit", ha="left", va="center", fontsize=6.3, color=INK, zorder=4,
                 bbox=dict(boxstyle="square,pad=0.15", facecolor=SURFACE, edgecolor="none"))
         ax.set_xticks(range(len(hist)))
-        ax.set_xticklabels([textwrap.fill(h["run"], 16) for h in hist], fontsize=6.5)
+        ax.set_xticklabels([textwrap.fill(h["run"], 15) for h in hist], fontsize=6.5)
         ax.tick_params(axis="x", length=0)
         ax.set_xlim(-0.6, len(hist) + 0.25)
         ax.set_ylim(0, top * 1.2)
