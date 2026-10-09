@@ -2,6 +2,15 @@
 folder. PNG at 300 dpi, sized for the IEEE page (7.16 in across two columns, 3.5 in for one).
 
     python -m eval.baselines.plot_contributions --run "$PROVBIND_RUN" [--out <run>/results/figures] [--dpi 300]
+        [--overhead <overhead run> [--history LABEL=<overhead run> ...]]
+
+Two steps when the run folder lives on another machine (docs/FIGURES-HOWTO.md):
+
+    # where the run folder is (the demo VM), once: every figure's numbers into one data file
+    python -m eval.baselines.plot_contributions --run run-final --overhead run-overhead-opt5 \
+        --history "Original policies=run-overhead-orig4" ... --export docs/figures/data/<dated>/figures.json
+    # anywhere, from the repository alone
+    python -m eval.baselines.plot_contributions --data docs/figures/data/<dated> --out figures
 
 | File | Contribution | (a) comparison | (b) PROVBIND's cost |
 |---|---|---|---|
@@ -11,6 +20,8 @@ folder. PNG at 300 dpi, sized for the IEEE page (7.16 in across two columns, 3.5
 | fig3_c3_attribution.png | C3 attribution | share of each system's detections that name container, process, rule, package, layer, dependency path | - |
 | fig4_c4_trust.png | C4 trust re-evaluation | admission and trust scenarios: runs caught per system, Sig-only included | trust-loop reaction time |
 | fig5_scenarios.png | detail | every scenario x system: runs flagged / runs | - |
+| fig6_runtime_cost.png | runtime cost | PROVBIND and Falco against no monitoring, per application metric, with the 20% limit | - |
+| fig7_cost_history.png | runtime cost | PROVBIND's overhead in each overhead run given with --history | - |
 
 Measured, estimated, by design. PROVBIND and Falco are measured from the run's files. Confine-E and
 DeSFAM-E are estimated (their published design applied to our traces) and marked *; Sig-only is derived
@@ -111,6 +122,12 @@ def load_run(run):
             "desfam": _json(run / "results" / "desfam.json") or {},
             "prep": _json(run / "results" / "PREP.json") or {},          # eval/prep_time.py (overhead run)
             "results": {i: _json(run / "results" / f"{i}.json") for i in ("OH-01", "OH-04", "OH-05")}}
+
+
+def _pre(d, key, compute):
+    """A figure's data: from the data file when drawing with --data, else computed from the run folder."""
+    pre = d.get("precomputed")
+    return pre[key] if pre is not None and key in pre else compute(d)
 
 
 def _real(result):
@@ -488,7 +505,7 @@ def fig1b_c1(d, path, dpi):
     prep = d.get("prep") or {}
     comps = c1_components(prep)
     if not comps:                                       # no PREP.json: PROVBIND's steps from the envelopes
-        st = c1_steps(d)
+        st = _pre(d, "c1_steps", c1_steps)
         if st["steps"]:
             comps = [("PROVBIND", st["total_s"], [(k, v / 1000) for k, v in st["steps"]])]
     if not comps:
@@ -569,7 +586,7 @@ def fig1_c1(d, path, dpi):
                           Patch(facecolor=S1, edgecolor=SURFACE, hatch="///", label="by design (minimum the method needs)")],
                  loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=2, fontsize=6.5)
 
-    st = c1_steps(d)
+    st = _pre(d, "c1_steps", c1_steps)
     if not st["steps"]:
         _empty(b, "Not measured: no envelope in this run folder.")
     else:
@@ -605,7 +622,7 @@ def fig2_c2(d, path, dpi):
     plt = _plt()
     from matplotlib.patches import Patch
     fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 2.5), gridspec_kw={"width_ratios": [2.2, 1]})
-    data = c2_metrics(d["rows"])
+    data = _pre(d, "c2_metrics", lambda d: c2_metrics(d["rows"]))
     w = 0.36
     for i, m in enumerate(data):
         hatch = "///" if m["kind"] != "measured" else None
@@ -629,7 +646,7 @@ def fig2_c2(d, path, dpi):
                       Patch(facecolor="#d9d8d3", edgecolor=SURFACE, hatch="///", label="* estimated system")],
              loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3, fontsize=6.5)
 
-    lat = c2_latency(d)
+    lat = _pre(d, "c2_latency", c2_latency)
     if lat is None:
         _empty(b, "(b)  Per-event check latency\n\nNot measured.\nRun OH-01 on this run's rec.jsonl\n"
                   "(comparison-run.sh does it).")
@@ -664,7 +681,7 @@ def fig3_c3(d, path, dpi):
     """Figure 3: what each system's alerts name. Measured columns give "named / alerts"; the estimated
     systems are not run live, so their columns say what their design records (yes / no), in grey."""
     plt = _plt()
-    att = c3_attribution(d)
+    att = _pre(d, "c3_attribution", c3_attribution)
     fields, systems = att["fields"], att["systems"]
     cmap = _cmap(BLUE_RAMP, "blue")
     groups = (("Where", ("Container / pod", "Process")), ("Why", ("Rule / clause / technique",)),
@@ -721,7 +738,7 @@ def fig4_c4(d, path, dpi):
     plt = _plt()
     import numpy as np
     fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 2.4), gridspec_kw={"width_ratios": [1.6, 1]})
-    systems, rows = c4_matrix(d["rows"])
+    systems, rows = _pre(d, "c4_matrix", lambda d: c4_matrix(d["rows"]))
     if not rows:
         _empty(a, "(a)  Admission and trust scenarios\n\nNo A-K or trust rows in this run.")
     else:
@@ -750,7 +767,7 @@ def fig4_c4(d, path, dpi):
         a.tick_params(which="minor", length=0)
         a.set_title("(a)  Threats that live in trust, not behaviour: runs caught", loc="left", fontsize=8, pad=24)
 
-    lat = c4_trust_latency(d["alerts"])
+    lat = _pre(d, "c4_trust_latency", lambda d: c4_trust_latency(d["alerts"]))
     if not lat:
         _empty(b, "(b)  Trust-loop reaction time\n\nNot measured: no trust alert\nwith latency_s in this run.")
     else:
@@ -812,7 +829,7 @@ def fig5_scenarios(d, path, dpi):
     activity left alone) or WRONG (attack missed, false alarm); grey where a system has no check at that
     stage. One rule for every row, a symbol beside every word, and a total per system at the bottom."""
     plt = _plt()
-    names, rows = heatmap(d["tables"])
+    names, rows = _pre(d, "heatmap", lambda d: heatmap(d["tables"]))
     if not rows:
         raise ValueError("no scenario rows in COMPARISON.json")
     fill = {"right": "#256abf", "wrong": "#eb6834", "partial": "#f6b090", "na": "#efeeea"}
@@ -867,30 +884,232 @@ def fig5_scenarios(d, path, dpi):
     return _save(plt, fig, path, dpi)
 
 
+# --- runtime cost (supervisor's questions 3 and 4), from eval/overhead.py's OVERHEAD.json ---------------
+
+APP_METRICS = (("mix", "p50_ms", "Request mix: median latency"), ("mix", "p95_ms", "Request mix: p95 latency"),
+               ("mix", "rps", "Request mix: throughput loss"),
+               ("cache", "p50_ms", "File-writing requests: median latency"),
+               ("cache", "p95_ms", "File-writing requests: p95 latency"),
+               ("cache", "rps", "File-writing requests: throughput loss"))
+MICRO_METRICS = (("micro", "file_op_us", "Loop of file writes"), ("micro", "spawn_ms", "Loop of process starts"))
+
+
+def _overhead_doc(path):
+    p = Path(path)
+    for f in (p, p / "OVERHEAD.json", p / "results" / "OVERHEAD.json"):
+        if f.is_file():
+            return json.loads(f.read_text(encoding="utf-8"))
+    raise FileNotFoundError(f"no OVERHEAD.json in {path} (eval/overhead.py writes <run>/results/OVERHEAD.json)")
+
+
+def _overhead_pct(doc, kind, field, config):
+    e = next((e for e in doc.get("table") or [] if e.get("kind") == kind and e.get("field") == field), None)
+    return None if e is None else (e.get("overhead_pct") or {}).get(config)
+
+
+def overhead_data(final, history=()):
+    """Figures 6 and 7: the final overhead run's change against no monitoring per metric and configuration,
+    and PROVBIND's change in each run of `history`, (label, path) pairs in the order to draw them."""
+    doc = _overhead_doc(final)
+    configs = [c for c in doc.get("configs") or [] if c != "none"]
+    app = {e["metric"] for e in doc.get("table") or [] if e.get("kind") in ("mix", "cache")}
+    over_t = [v for k, v in (doc.get("provbind_over_tetragon") or {}).items() if k in app and v is not None]
+    return {"threshold_pct": doc.get("threshold_pct", 20.0), "repetitions": doc.get("repetitions") or {},
+            "final": [{"kind": k, "field": f, "label": lab,
+                       "overhead_pct": {c: _overhead_pct(doc, k, f, c) for c in configs}}
+                      for k, f, lab in APP_METRICS + MICRO_METRICS],
+            "provbind_over_tetragon_max_pct": max(over_t) if over_t else None,
+            "cpu": {c: {k: v for k, v in (m or {}).items() if k != "top"} for c, m in (doc.get("cpu") or {}).items()},
+            "history": [{"run": label, "overhead_pct": {f"{k}/{f}": _overhead_pct(_overhead_doc(path), k, f, "provbind")
+                                                        for k, f, _ in APP_METRICS + MICRO_METRICS}}
+                        for label, path in history]}
+
+
+def _limit_line(ax, th, vertical=True):
+    style = dict(color=INK, linewidth=0.9, linestyle=(0, (4, 3)), zorder=2)
+    (ax.axvline if vertical else ax.axhline)(th, **style)
+
+
+def fig6_runtime_cost(d, path, dpi):
+    """Figure 6: runtime cost of PROVBIND and Falco against no monitoring, per application metric, with the
+    20% limit (supervisor's question 4) and the worst cases in the footer."""
+    plt = _plt()
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    ov = _pre(d, "overhead", lambda d: d.get("overhead"))
+    if not ov:
+        fig, ax = plt.subplots(figsize=(5.2, 1.2))
+        _empty(ax, "Not measured: give --overhead <overhead run>, or draw from a data file that has one.")
+        return _save(plt, fig, path, dpi)
+    th = ov.get("threshold_pct") or 20.0
+    rows = [m for m in ov["final"] if m["kind"] in ("mix", "cache")]
+    series = (("provbind", "PROVBIND", S1), ("falco", "Falco (default rules)", S2))
+    vals = [v for m in rows for c, _, _ in series for v in [m["overhead_pct"].get(c)] if v is not None]
+    top = max([th] + vals)
+    fig, ax = plt.subplots(figsize=(5.2, 3.0))
+    h = 0.36
+    ys = list(range(len(rows)))[::-1]
+    for y, m in zip(ys, rows):
+        for off, (c, _, col) in zip((h / 2, -h / 2), series):
+            v = m["overhead_pct"].get(c)
+            if v is None:
+                ax.text(top * 0.01, y + off, "not measured", va="center", fontsize=6, color=MUTED)
+                continue
+            ax.barh(y + off, max(v, 0), height=h, color=col, edgecolor=SURFACE, linewidth=1, zorder=3)
+            ax.text(max(v, 0) + top * 0.015, y + off, f"{v:+.1f}%", va="center", fontsize=6.3, color=INK)
+    _limit_line(ax, th)
+    ax.set_yticks(ys)
+    ax.set_yticklabels([m["label"] for m in rows], fontsize=6.8)
+    ax.tick_params(axis="y", length=0)
+    ax.set_xlim(0, top * 1.22)
+    ax.set_xlabel("change against no monitoring (%); for throughput, the loss", fontsize=6.5)
+    _grid(ax, "x")
+    ax.set_title("Runtime cost against no monitoring", loc="left", fontsize=8, color=INK, pad=18)
+    ax.legend(handles=[Patch(color=S1, label="PROVBIND"), Patch(color=S2, label="Falco (default rules)"),
+                       Line2D([0], [0], color=INK, linewidth=0.9, linestyle=(0, (4, 3)), label=f"{th:.0f}% limit")],
+              loc="lower left", bbox_to_anchor=(-0.01, 1.0), ncol=3, fontsize=6.5, frameon=False,
+              handlelength=1.6, columnspacing=1.4, borderaxespad=0.2)
+    micro = {m["field"]: m["overhead_pct"] for m in ov["final"] if m["kind"] == "micro"}
+    fmt = lambda v: "n/a" if v is None else f"{v:+.1f}%"
+    reps = sorted(set((ov.get("repetitions") or {}).values()))
+    foot = [f"Medians of {'/'.join(str(r) for r in reps) or '?'} repetitions in shuffled order, the same app with no monitor as the "
+            "baseline. A value at or below 0 is within the noise.",
+            "Worst cases, not drawn: a tight loop of file writes, PROVBIND "
+            f"{fmt(micro.get('file_op_us', {}).get('provbind'))} and Falco {fmt(micro.get('file_op_us', {}).get('falco'))}; "
+            f"of process starts, PROVBIND {fmt(micro.get('spawn_ms', {}).get('provbind'))} and Falco "
+            f"{fmt(micro.get('spawn_ms', {}).get('falco'))}."]
+    if ov.get("provbind_over_tetragon_max_pct") is not None:
+        foot.append("PROVBIND over its sensor alone (Tetragon with the same policies): at most "
+                    f"{ov['provbind_over_tetragon_max_pct']:+.1f}% on these metrics.")
+    _footer(fig, foot)
+    return _save(plt, fig, path, dpi)
+
+
+def fig7_cost_history(d, path, dpi):
+    """Figure 7: how PROVBIND's runtime cost came down over the overhead runs given with --history, on the
+    two metrics that moved most, with the 20% limit."""
+    import textwrap
+    plt = _plt()
+    ov = _pre(d, "overhead", lambda d: d.get("overhead"))
+    hist = (ov or {}).get("history") or []
+    if not hist:
+        fig, ax = plt.subplots(figsize=(5.2, 1.2))
+        _empty(ax, "Not measured: give the overhead runs with --history LABEL=<run> ..., in order.")
+        return _save(plt, fig, path, dpi)
+    th = ov.get("threshold_pct") or 20.0
+    panels = (("cache/p95_ms", "File-writing requests, p95 latency"), ("mix/p95_ms", "Request mix, p95 latency"))
+    fig, axes = plt.subplots(1, 2, figsize=(7.16, 2.5))
+    for ax, (key, title), letter in zip(axes, panels, "ab"):
+        vals = [h["overhead_pct"].get(key) for h in hist]
+        top = max([th] + [v for v in vals if v is not None])
+        for x, v in enumerate(vals):
+            if v is None:
+                ax.text(x, top * 0.02, "not measured", ha="center", va="bottom", fontsize=6, color=MUTED, rotation=90)
+                continue
+            ax.bar(x, max(v, 0), 0.55, color=S1, edgecolor=SURFACE, linewidth=1, zorder=3)
+            ax.text(x, max(v, 0) + top * 0.02, f"{v:+.1f}%", ha="center", va="bottom", fontsize=6.8, color=INK,
+                    zorder=4, bbox=dict(boxstyle="square,pad=0.15", facecolor=SURFACE, edgecolor="none"))
+        _limit_line(ax, th, vertical=False)
+        # the limit's label gets a column of its own, right of the last bar, so no value label can cover it
+        ax.text(len(vals) - 0.62, th, f"{th:.0f}% limit", ha="left", va="center", fontsize=6.3, color=INK, zorder=4,
+                bbox=dict(boxstyle="square,pad=0.15", facecolor=SURFACE, edgecolor="none"))
+        ax.set_xticks(range(len(hist)))
+        ax.set_xticklabels([textwrap.fill(h["run"], 16) for h in hist], fontsize=6.5)
+        ax.tick_params(axis="x", length=0)
+        ax.set_xlim(-0.6, len(hist) + 0.25)
+        ax.set_ylim(0, top * 1.2)
+        ax.set_ylabel("PROVBIND, change against\nno monitoring (%)", fontsize=6.5)
+        _grid(ax, "y")
+        _panel(ax, letter, title)
+    fig.tight_layout(w_pad=2.5)
+    _footer(fig, ["Each bar is one overhead run (median of the repetitions, against the same app with no monitor), in the order "
+                  "the sensor policies were optimised.",
+                  "The cost is roughly the number of sensor events per request times the cost of moving each event to PROVBIND: "
+                  "each step drops, in the kernel, events that carry nothing new."])
+    return _save(plt, fig, path, dpi)
+
+
 FIGURES = (("fig1_c1_specification.png", fig1_c1), ("fig1b_c1_components.png", fig1b_c1),
            ("fig2_c2_verification.png", fig2_c2),
            ("fig3_c3_attribution.png", fig3_c3), ("fig4_c4_trust.png", fig4_c4),
-           ("fig5_scenarios.png", fig5_scenarios))
+           ("fig5_scenarios.png", fig5_scenarios),
+           ("fig6_runtime_cost.png", fig6_runtime_cost), ("fig7_cost_history.png", fig7_cost_history))
+
+DATA_SCHEMA = "provbind.figures/v1"
+
+
+def figure_data(d):
+    """Every figure's numbers from a run folder (and its overhead runs), JSON-ready: what --export writes
+    and --data draws from. Aggregates only: no alert, trace or pod detail leaves the run folder."""
+    systems, c4rows = c4_matrix(d["rows"])
+    names, hrows = heatmap(d["tables"])
+    return {"schema": DATA_SCHEMA, "run": Path(d["run"]).name if d.get("run") else None,
+            "prep": d.get("prep") or {},
+            "desfam": {"published_reference": (d.get("desfam") or {}).get("published_reference")},
+            "systems_table": (d.get("tables") or {}).get("systems"),
+            "c1_steps": c1_steps(d), "c2_metrics": c2_metrics(d["rows"]), "c2_latency": c2_latency(d),
+            "c3_attribution": c3_attribution(d), "c4_matrix": [list(systems), c4rows],
+            "c4_trust_latency": c4_trust_latency(d["alerts"]), "heatmap": [names, hrows],
+            "overhead": d.get("overhead")}
+
+
+def load_data(path):
+    """The figure inputs from a data file written by --export (a figures.json, or a folder that holds one)."""
+    p = Path(path)
+    f = p / "figures.json" if p.is_dir() else p
+    data = json.loads(f.read_text(encoding="utf-8"))
+    if data.get("schema") != DATA_SCHEMA:
+        raise ValueError(f"{f} is not a figure data file ({DATA_SCHEMA})")
+    return {"precomputed": data, "prep": data.get("prep") or {}, "desfam": data.get("desfam") or {},
+            "rows": [], "tables": {}, "alerts": [], "falco": [], "gt": [], "envelopes": [], "profile_s": 0,
+            "results": {}, "overhead": data.get("overhead"), "run": None}
+
+
+def _history(items):
+    out = []
+    for it in items:
+        label, sep, path = it.partition("=")
+        out.append((label, path) if sep else (Path(it).name, it))
+    return out
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m eval.baselines.plot_contributions", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"))
-    ap.add_argument("--out", help="output directory (default <run>/results/figures)")
+    ap.add_argument("--data", help="draw from a data file written by --export (figures.json, or its folder); "
+                                   "no run folder needed")
+    ap.add_argument("--export", metavar="FILE", help="write every figure's numbers to FILE instead of drawing")
+    ap.add_argument("--overhead", metavar="RUN", help="the final overhead run (its results/OVERHEAD.json): figure 6")
+    ap.add_argument("--history", nargs="*", default=[], metavar="LABEL=RUN",
+                    help="overhead runs in order, for figure 7 (the final one last)")
+    ap.add_argument("--out", help="output directory (default <run>/results/figures; with --data, ./figures)")
     ap.add_argument("--dpi", type=int, default=300)
     args = ap.parse_args(argv)
-    d = load_run(args.run)
-    if not d["rows"]:
-        print(f"plot_contributions: no rows in {args.run}/results/COMPARISON.json "
-              "(run eval.baselines.aggregate --write first)", file=sys.stderr)
-        return 1
+    if args.data:
+        d = load_data(args.data)
+    else:
+        d = load_run(args.run)
+        if not d["rows"]:
+            print(f"plot_contributions: no rows in {args.run}/results/COMPARISON.json "
+                  "(run eval.baselines.aggregate --write first)", file=sys.stderr)
+            return 1
+        if args.overhead:
+            d["overhead"] = overhead_data(args.overhead, _history(args.history))
+        if args.export:
+            target = Path(args.export)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_name(target.name + ".tmp")          # whole-file output: temp, then rename
+            tmp.write_text(json.dumps(figure_data(d), indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+            os.replace(tmp, target)
+            print(target)
+            return 0
     try:
         import matplotlib  # noqa: F401
     except ImportError:
         print("plot_contributions: matplotlib is not installed (pip install -r requirements.txt)", file=sys.stderr)
         return 3
-    out = Path(args.out or Path(args.run) / "results" / "figures")
+    out = Path(args.out or ("figures" if args.data else Path(args.run) / "results" / "figures"))
     out.mkdir(parents=True, exist_ok=True)
     for name, fn in FIGURES:
         print(fn(d, out / name, args.dpi))

@@ -137,3 +137,58 @@ def test_scenario_outcome_is_right_wrong_or_na():
     assert pc.scenario_outcome("ak-1", "malicious", "Confine-E", 0, 5) == ("na", "n/a")   # runtime-only system
     assert pc.scenario_outcome("trust-1", "malicious", "Sig-only", 0, 5) == ("na", "n/a")  # admission-only
     assert pc.scenario_outcome("ph4-14", "benign", "DeSFAM-E", 3, 5)[0] == "partial"
+
+
+def _overhead_run(path, provbind, falco):
+    """A minimal results/OVERHEAD.json (eval/overhead.py's shape) with the given overheads per metric."""
+    from eval import overhead
+    table = [{"metric": label, "kind": kind, "field": field, "values": {}, "spread": {},
+              "overhead_pct": {"none": 0.0, "falco": f, "tetragon": 0.0, "provbind": p}}
+             for (kind, field, label, _), p, f in zip(overhead.METRICS, provbind, falco)]
+    doc = {"threshold_pct": 20.0, "configs": ["none", "falco", "tetragon", "provbind"],
+           "repetitions": {"none": 3, "falco": 3, "tetragon": 3, "provbind": 3}, "table": table,
+           "cpu": {"provbind": {"monitor_cpu_pct": 0.23, "top": [["app", 75.0]]}},
+           "provbind_over_tetragon": {e["metric"]: v for e, v in zip(table, (-0.9, -0.4, -0.7, 0.2, 0.3, 0.4, 3.5, -3.8))}}
+    (path / "results").mkdir(parents=True)
+    (path / "results" / "OVERHEAD.json").write_text(json.dumps(doc))
+    return path
+
+
+def test_overhead_data_final_and_history(tmp_path):
+    orig = _overhead_run(tmp_path / "orig", (31.1, 86.0, 31.2, 151.8, 377.5, 66.1, 94.9, 292.0), (13.4,) * 8)
+    final = _overhead_run(tmp_path / "final", (-0.5, -0.1, -0.4, 9.9, 8.0, 7.5, 5.2, 118.6),
+                          (3.2, 4.7, 3.4, 8.2, 7.7, 7.1, 5.1, 15.8))
+    ov = pc.overhead_data(final, [("Original policies", orig), ("Final", final)])
+    by = {(m["kind"], m["field"]): m["overhead_pct"] for m in ov["final"]}
+    assert by[("cache", "p50_ms")] == {"falco": 8.2, "tetragon": 0.0, "provbind": 9.9}
+    assert by[("micro", "spawn_ms")]["provbind"] == 118.6
+    assert ov["provbind_over_tetragon_max_pct"] == 0.4          # application metrics only, not the micro loop
+    assert "top" not in ov["cpu"]["provbind"]
+    assert [h["run"] for h in ov["history"]] == ["Original policies", "Final"]
+    assert ov["history"][0]["overhead_pct"]["cache/p95_ms"] == 377.5
+
+
+def test_export_then_draw_from_the_data_file_alone(tmp_path):
+    run = _run(tmp_path / "run")
+    final = _overhead_run(tmp_path / "opt5", (-0.5, -0.1, -0.4, 9.9, 8.0, 7.5, 5.2, 118.6), (3.2,) * 8)
+    data_dir = tmp_path / "data"
+    assert pc.main(["--run", str(run), "--overhead", str(final), "--history", f"Final={final}",
+                    "--export", str(data_dir / "figures.json")]) == 0
+    data = json.loads((data_dir / "figures.json").read_text())
+    rows = json.loads((run / "results" / "COMPARISON.json").read_text())["rows"]
+    assert data["schema"] == pc.DATA_SCHEMA
+    assert data["c2_metrics"] == json.loads(json.dumps(pc.c2_metrics(rows)))
+    assert data["c3_attribution"]["counts"]["PROVBIND"][3] == [1, 1]   # package named, over in-image alerts
+    assert data["overhead"]["history"][0]["run"] == "Final"
+    assert "alerts" not in data and "rows" not in data                 # aggregates only
+    pytest.importorskip("matplotlib")
+    out = tmp_path / "figs"
+    assert pc.main(["--data", str(data_dir), "--out", str(out), "--dpi", "60"]) == 0
+    for name, _ in pc.FIGURES:
+        assert (out / name).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_data_file_must_be_a_figure_data_file(tmp_path):
+    (tmp_path / "figures.json").write_text(json.dumps({"schema": "something else"}))
+    with pytest.raises(ValueError):
+        pc.load_data(tmp_path)
