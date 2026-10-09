@@ -1,0 +1,27 @@
+# Optimised variant of ../load.yaml (see README.md): no return probe, an in-kernel rate limit across processes.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-opt-load
+  namespace: demo
+spec:
+  kprobes:
+  - call: "security_mmap_file"
+    syscall: false
+    args:
+    - index: 0
+      type: "file"      # struct file *; NULL for an anonymous mapping
+    - index: 1
+      type: "uint32"    # prot: PROT_EXEC 0x04
+    - index: 2
+      type: "nop"       # flags
+    selectors:
+    - matchArgs:
+      - index: 1
+        operator: "Mask"
+        values:
+        - "4"           # PROT_EXEC
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+        rateLimitScope: "global"

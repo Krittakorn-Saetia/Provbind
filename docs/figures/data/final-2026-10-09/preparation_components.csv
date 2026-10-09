@@ -1,0 +1,14 @@
+system,component,seconds
+PROVBIND,compile the envelope (median of 5 cold compiles),4.38
+PROVBIND + ML-B,benign load for D2,25200.0
+PROVBIND + ML-B,model training,0.82
+Falco,no per-image step,0.0
+Confine-E,start-up observation,30.0
+Confine-E,export binaries,2.5
+Confine-E,ELF import extraction,0.25
+Confine-E,system-call mapping,0.0
+DeSFAM-E,profiling,1831.0
+DeSFAM-E,static allow list,0.26
+DeSFAM-E,dynamic allow list,0.01
+DeSFAM-E,combine (Eq. 1),0.0
+DeSFAM-E,isolation forest training,0.95

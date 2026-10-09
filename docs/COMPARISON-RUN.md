@@ -69,6 +69,7 @@ trace file names and the tables.
 
 | Grid ID | Cell | Ground-truth name | `make` target | Re-creates (harmless) | PROVBIND expected |
 |---|---|---|---|---|---|
+| A-B1 | Admission, benign | `ab-1` | `ab1` | a clean, signed image deployed normally (added 1 October: the admission cell's benign control) | nothing above Low |
 | A-K1 | Admission, known | `ak-1` | `ak1` | advisory for our test package exists before deploy | trust alert |
 | A-K2 | Admission, known | `ak-2` | `ak2` | unsigned image | binding failure |
 | A-K3 | Admission, known | `ak-3` | `ak3` | signing key revoked before deploy | not verified (v_trust) |
@@ -100,7 +101,7 @@ benign) and whether the system flagged that run.
 | PROVBIND | measured | `alerts.jsonl` | an alert above Low in the row's pod and time window |
 | Falco | measured | `falco.jsonl` | any Falco rule in the row's pod and time window |
 | Confine-E | estimated | `traces/<scenario>-<k>.txt` → `results/confine.json` | the trace uses a system call outside the static allow list |
-| DeSFAM-E | estimated | the same trace → `results/desfam.json` | a 15-call window scores above the benign threshold (or a call outside its allow list) |
+| DeSFAM-E | estimated | the same trace → `results/desfam.json` | a call outside its allow list, or a share of anomalous 15-call windows above the benign baseline's (§5, "Only the analysis") |
 | Sig-only | derived | `bindings.json` + `results/admission-bindings.jsonl` | the pod's binding failed for a signature or attestation reason; a revoked key is a miss |
 
 **The trace naming is a contract:** `traces/<scenario>-<k>.txt` is the k-th run of that scenario and must
@@ -179,7 +180,22 @@ Zip these from `run/` and send them to Korn: `results/`, `ground_truth.csv`, `al
 `falco.jsonl` and `logs/`. Keep `traces/` (it is large) until asked. Never send `pipeline/keys/cosign.key`
 or the key's password.
 
+### Again, with attack-2 (R-U2): `scripts/redo-comparison.sh`
+ML-B's model is tied to the image digest, so attack-2 needs a model for *this* image first.
+`scripts/redo-comparison.sh` runs, unattended (about 12.5 h, overnight), in a fresh run folder:
+`scripts/record-d2.sh` (D2 for the demo image, recorded with the same policies, volume and egress list as
+the comparison: 7 h of `make loadgen`, a 1 h gap, a 1 h held-out run; then `node.mlb split`, `train`,
+`evaluate`; then it deletes the deployment), and then `ATTACK2=1 scripts/comparison-run.sh`, whose node
+runs with `--mlb` (`MLB` follows `ATTACK2`; the script stops if the model is missing). The sudo password
+is asked once at the start and kept fresh. Export `COSIGN_PASSWORD` in your own terminal first.
+
 ### Only the analysis (any PC, after the run)
+`scripts/rerun-estimators.sh` does the three commands below over every saved trace; with
+`EXPORT=1 DEMO_REF=<ref@digest>` it first re-exports the binaries from the running demo pod (closure plus
+every file mapped into the pod's processes, so Python's extension modules are included).
+Both estimators ignore the container runtime's own calls (`runc:[…]`, which runs before the seccomp
+filter is installed). DeSFAM-E's Phase 2 verdict per trace compares the fraction of anomalous windows
+with the benign baseline's own (leave-one-out); `--trace-rule window` gives the raw any-window rule.
 ```bash
 python -m eval.baselines.confine_estimate --binaries run/traces/binaries --trace run/traces/rk-2-1.txt ... --out run/results/confine.json
 python -m eval.baselines.desfam_estimate  --binaries run/traces/binaries --benign 'run/traces/baseline/benign-*.txt' \
@@ -246,7 +262,12 @@ per_system = pd.DataFrame.from_dict(doc["tables"]["systems"], orient="index")
 
 ## 8. Open items
 
-1. **A-K1 may be scored wrongly.** The trust loop alerts once per *image*, and A-K1 deploys the same
+1. **A-K1 (decided: option C, 1 October).** The dry run confirmed the problem: PROVBIND raised the trust
+   alert at ak-1's start, but named the long-lived demo pod, which shares the image, so the row scored 0/1.
+   `deploy-advisory-first.sh` now builds and signs its own variant each round (a per-round marker file,
+   so a fresh digest and trust state), and the alert can only name ak-1's pod. It needs `COSIGN_PASSWORD`,
+   like A-U2, and adds a build per round. The original note:
+   **A-K1 may be scored wrongly.** The trust loop alerts once per *image*, and A-K1 deploys the same
    image as the running demo pod, so the short-lived pod may get no alert of its own. The dry run
    (§5) shows it: the `ak-1` row must read PROVBIND `1/1`. If it does not, the fix is a decision for the
    team: stop the main demo pod during the admission phase, or give A-K1 its own signed image.

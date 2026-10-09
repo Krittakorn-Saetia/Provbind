@@ -1,0 +1,261 @@
+{
+ "source": "docs/ROLE1-COMPARISON-2026-10-01.md, Section 10 (the redo with attack-2, 2 October)",
+ "label": "+ attack-2\n2 Oct, 95 runs",
+ "tables": {
+  "per_scenario": [
+   {
+    "scenario": "benign-1",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 5,
+    "Confine-E": 5,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "benign-traffic",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ph4-14",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "attack-1",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "attack-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "trust-1",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "trust-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "rk-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "rk-3",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ru-3",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ru-4",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ru-5",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "benign-3",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "benign-4",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ab-1",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ak-1",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ak-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 5
+   },
+   {
+    "scenario": "ak-3",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "au-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   }
+  ],
+  "systems": {
+   "PROVBIND": {
+    "kind": "measured",
+    "TP": 50,
+    "FP": 0,
+    "FN": 15,
+    "TN": 30,
+    "precision": 1.0,
+    "recall": 0.769,
+    "f1": 0.87,
+    "fpr": 0.0,
+    "attribution_level": 3
+   },
+   "Falco": {
+    "kind": "measured",
+    "TP": 25,
+    "FP": 10,
+    "FN": 40,
+    "TN": 20,
+    "precision": 0.714,
+    "recall": 0.385,
+    "f1": 0.5,
+    "fpr": 0.333,
+    "attribution_level": 1
+   },
+   "Confine-E": {
+    "kind": "estimated",
+    "TP": 0,
+    "FP": 5,
+    "FN": 65,
+    "TN": 25,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": null,
+    "fpr": 0.167,
+    "attribution_level": 0
+   },
+   "DeSFAM-E": {
+    "kind": "estimated",
+    "TP": 35,
+    "FP": 25,
+    "FN": 30,
+    "TN": 5,
+    "precision": 0.583,
+    "recall": 0.538,
+    "f1": 0.56,
+    "fpr": 0.833,
+    "attribution_level": 1
+   },
+   "Sig-only": {
+    "kind": "derived",
+    "TP": 5,
+    "FP": 0,
+    "FN": 60,
+    "TN": 30,
+    "precision": 1.0,
+    "recall": 0.077,
+    "f1": 0.143,
+    "fpr": 0.0,
+    "attribution_level": 0
+   }
+  },
+  "runs": 95
+ }
+}

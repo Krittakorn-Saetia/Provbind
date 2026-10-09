@@ -5,7 +5,8 @@ folder. PNG at 300 dpi, sized for the IEEE page (7.16 in across two columns, 3.5
 
 | File | Contribution | (a) comparison | (b) PROVBIND's cost |
 |---|---|---|---|
-| fig1_c1_specification.png | C1 specification compilation | time until each system can protect a new image | compile time per step; runtime index |
+| fig1_c1_specification.png | C1 specification compilation | time until each system can protect a new image (exact, measured, with package counts, when results/PREP.json exists) | compile time per step; runtime index (without PREP.json) |
+| fig1b_c1_components.png | C1, optional | each system's preparation split into its timed components | - |
 | fig2_c2_verification.png | C2 runtime verification | detection rate and false-positive rate (runtime and benign scenarios) | per-event check latency (OH-01) |
 | fig3_c3_attribution.png | C3 attribution | share of each system's detections that name container, process, rule, package, layer, dependency path | - |
 | fig4_c4_trust.png | C4 trust re-evaluation | admission and trust scenarios: runs caught per system, Sig-only included | trust-loop reaction time |
@@ -37,7 +38,7 @@ from eval.compare import alert_pod, confusion, falco_pod, load_ground_truth, loa
 
 # --- what is compared ---------------------------------------------------------------------------------
 SYSTEMS = ("PROVBIND", "Falco", "Confine-E", "DeSFAM-E")           # figures 1-3; figure 4 adds Sig-only
-KIND = {"PROVBIND": "measured", "Falco": "measured", "Confine-E": "estimated", "DeSFAM-E": "estimated",
+KIND = {"PROVBIND": "measured", "PROVBIND + ML-B": "measured", "Falco": "measured", "Confine-E": "estimated", "DeSFAM-E": "estimated",
         "Sig-only": "derived"}
 MARK = {"measured": "", "estimated": "*", "derived": "†"}
 NOT_DETECTION = {"tamper-1"}                    # a log-integrity check, not a detection run
@@ -62,7 +63,7 @@ SCENARIOS = {
     "ru-3": ("R-U3", "Runtime, unknown"), "ru-4": ("R-U4", "Runtime, unknown"),
     "ru-5": ("R-U5", "Runtime, unknown"),
     "benign-1": ("B1", "Benign"), "benign-traffic": ("B2", "Benign"), "ph4-14": ("B3", "Benign"),
-    "benign-3": ("B4", "Benign"), "benign-4": ("B5", "Benign"),
+    "benign-3": ("B4", "Benign"), "benign-4": ("B5", "Benign"), "ab-1": ("A-B1", "Benign"),
 }
 CELLS = ("Admission, known", "Admission, unknown", "Runtime, known", "Runtime, unknown", "Benign", "Other")
 
@@ -108,6 +109,7 @@ def load_run(run):
             "alerts": load_jsonl(run / "alerts.jsonl"), "falco": load_jsonl(run / "falco.jsonl"),
             "envelopes": envs, "profile_s": profile,
             "desfam": _json(run / "results" / "desfam.json") or {},
+            "prep": _json(run / "results" / "PREP.json") or {},          # eval/prep_time.py (overhead run)
             "results": {i: _json(run / "results" / f"{i}.json") for i in ("OH-01", "OH-04", "OH-05")}}
 
 
@@ -125,8 +127,49 @@ def compile_seconds(env):
     return round(sum(v for v in t.values() if isinstance(v, (int, float))) / 1000, 2) if t else None
 
 
+def _count(n, what):
+    return f"n = {n:,} {what}" if isinstance(n, int) else ""
+
+
+def c1_readiness_measured(prep):
+    """Figure 1a from eval/prep_time.py: every system's preparation time measured on the VM, with counts."""
+    rows = []
+    p = prep.get("PROVBIND")
+    if p:
+        rows.append({"system": "PROVBIND", "seconds": p.get("seconds"), "how": "measured",
+                     "note": f"{p.get('packages') or 0:,} packages, {p.get('files') or 0:,} files; "
+                             f"median of {_count(p.get('n'), 'cold compiles')}"})
+    m = prep.get("PROVBIND + ML-B")
+    if m and m.get("seconds"):
+        parts = m.get("parts_s") or {}
+        rows.append({"system": "PROVBIND + ML-B", "seconds": m.get("seconds"), "how": "measured",
+                     "note": f"trained on {_count(m.get('n'), 'requests')}, {m.get('windows') or 0:,} windows"})
+    f = prep.get("Falco")
+    if f:
+        rows.append({"system": "Falco", "seconds": None, "how": "none",
+                     "note": "0 s: no per-image step (generic rules)"
+                             + (f"\nDaemonSet restart {f['restart_ready_s']:.0f} s, n = {f.get('restarts')} restarts"
+                                if f.get("restart_ready_s") is not None else "")})
+    c = prep.get("Confine-E")
+    if c:
+        parts = c.get("parts_s") or {}
+        rows.append({"system": "Confine-E", "seconds": c.get("seconds"), "how": "measured",
+                     "note": f"{c.get('packages') or 0:,} packages ({c.get('n') or 0:,} ELF files"
+                             + (f", +{c['files_outside_packages']} outside packages" if c.get("files_outside_packages") else "")
+                             + ")"})
+    s_ = prep.get("DeSFAM-E")
+    if s_:
+        parts = s_.get("parts_s") or {}
+        rows.append({"system": "DeSFAM-E", "seconds": s_.get("seconds"), "how": "measured",
+                     "note": f"{s_.get('packages') or 0:,} packages; profiled on {_count(s_.get('n'), 'requests')}, "
+                             f"{s_.get('windows') or 0:,} windows"})
+    return rows
+
+
 def c1_readiness(d):
-    """Figure 1a: time until each system can protect a new image."""
+    """Figure 1a: time until each system can protect a new image (measured when PREP.json exists)."""
+    if d.get("prep"):
+        return c1_readiness_measured(d["prep"])
     comp = [s for s in (compile_seconds(e) for e in d["envelopes"]) if s]
     profile = d["profile_s"] or DEFAULT_PROFILE_S
     return [
@@ -212,20 +255,36 @@ def _falco_fields(line):
             bool(line.get("rule")), False, False, False)
 
 
+ORIGIN_FIELDS = ("Package", "Image layer", "Dependency path")    # exist only for a file that is in the image
+NO_FILE_IN_IMAGE = ("undeclared", "anomalous_window")          # a dropped file, or a behaviour window
+
+
+def _in_image(a):
+    """Whether a PROVBIND alert is about a file that is in the image (so it has a package, layer, path)."""
+    return str(a.get("class", "")) in ("D_exec", "D_load", "D_write", "D_cap", "D_hash") \
+        and str(a.get("subclass", "")) not in NO_FILE_IN_IMAGE
+
+
 def c3_attribution(d):
-    """Figure 3: share of each system's runtime detections in attack runs that name each field."""
+    """Figure 3: share of each system's runtime detections in attack runs that name each field. `counts`
+    gives (named, out of) per field: the origin fields count only alerts about a file in the image."""
     w = _attack_windows(d["gt"])
     prov = [a for a in d["alerts"] if str(a.get("class", "")).startswith("D_")
             and str(a.get("bucket", "")).lower() in ("critical", "high", "medium")
             and _in_any(w, *alert_pod(a), parse_time(a.get("time")))]
     falco = [x for x in d["falco"] if _in_any(w, *falco_pod(x), parse_time(x.get("time")))]
-    share, n, how = {}, {}, {}
+    share, n, how, counts = {}, {}, {}, {}
     for name, items, fn in (("PROVBIND", prov, _prov_fields), ("Falco", falco, _falco_fields)):
         n[name], how[name] = len(items), "measured"
         share[name] = [sum(fn(x)[i] for x in items) / len(items) for i in range(len(FIELDS))] if items else None
+        in_image = [x for x in items if _in_image(x)] if name == "PROVBIND" else items
+        counts[name] = [(sum(fn(x)[i] for x in (in_image if f in ORIGIN_FIELDS else items)),
+                         len(in_image) if f in ORIGIN_FIELDS else len(items)) for i, f in enumerate(FIELDS)]
     for name, flags in BY_DESIGN_FIELDS.items():
         n[name], how[name], share[name] = None, "by design", [float(v) for v in flags]
-    return {"fields": FIELDS, "systems": SYSTEMS, "share": share, "n": n, "how": how}
+    n_image = sum(1 for x in prov if _in_image(x))
+    return {"fields": FIELDS, "systems": SYSTEMS, "share": share, "n": n, "how": how, "counts": counts,
+            "n_image": n_image}
 
 
 def c4_matrix(rows):
@@ -344,11 +403,139 @@ def _note_below(ax, text, y=-0.36):
     ax.text(0.0, y, text, transform=ax.transAxes, ha="left", va="top", fontsize=6.3, color=INK2)
 
 
+LABELS = {"startup_observation": "start-up recording", "export_binaries": "export binaries from the pod",
+          "elf_import_extraction": "read ELF imports", "syscall_mapping": "map imports to system calls",
+          "static_analysis": "static analysis", "profiling": "benign profiling",
+          "static_allow_list": "static allow list", "dynamic_allow_list": "dynamic allow list",
+          "combine_eq1": "combine (Eq. 1)", "isolation_forest_training": "Isolation Forest training",
+          "allow_list": "allow list", "training": "model training", "benign_load": "benign load (D2)"}
+
+
+def c1_components(prep, keep=5):
+    """Figure 1b: each system's preparation split into its timed components (seconds)."""
+    out = []
+    p = prep.get("PROVBIND")
+    if p and p.get("steps_ms"):
+        steps = sorted(((k, v / 1000) for k, v in p["steps_ms"].items()), key=lambda kv: -kv[1])
+        head, tail = steps[:keep], steps[keep:]
+        if tail:
+            head.append((f"other {len(tail)} steps", sum(v for _, v in tail)))
+        out.append(("PROVBIND", p.get("seconds"), head))
+    for name in ("PROVBIND + ML-B", "Confine-E", "DeSFAM-E"):
+        r = prep.get(name)
+        if r and r.get("parts_s"):
+            parts = [(LABELS.get(k, k.replace("_", " ")), v) for k, v in r["parts_s"].items() if v is not None]
+            out.append((name, r.get("seconds"), parts))
+    return out
+
+
+def _fmt_exact(s):
+    if s is None:
+        return "—"
+    if s < 1:
+        return f"{s * 1000:.0f} ms"
+    if s < 60:
+        return f"{s:.2f} s"
+    if s < 3600:
+        return f"{s:,.0f} s ({s / 60:.1f} min)"
+    return f"{s:,.0f} s ({s / 3600:.2f} h)"
+
+
+def fig1_c1_measured(d, path, dpi):
+    """Figure 1 when every system's preparation was measured (results/PREP.json from eval/prep_time.py):
+    the time until a new image is protected, exact, with the packages and repetitions behind it. The
+    component breakdown is a separate image (fig1b_c1_components.png)."""
+    plt = _plt()
+    ready = c1_readiness_measured(d["prep"])
+    fig, a = plt.subplots(figsize=(3.6, 0.62 * len(ready) + 0.9))
+    ys = list(range(len(ready)))[::-1]
+    vals = [r["seconds"] for r in ready if r["seconds"]]
+    lo, hi = (min(vals) / 3 if vals else 1), (max(vals) * 40 if vals else 3600)
+    for y, r in zip(ys, ready):
+        if r["seconds"] is None:
+            a.text(lo * 1.15, y + 0.08, "0 s: no per-image step (generic rules)", va="center", fontsize=6.8,
+                   color=INK2, style="italic")
+            a.text(lo * 1.15, y - 0.3, "0 packages analysed", va="center", fontsize=6, color=INK2)
+            continue
+        a.barh(y, r["seconds"] - lo, height=0.45, left=lo, color=S1, edgecolor=SURFACE, linewidth=1)
+        a.text(r["seconds"] * 1.12, y + 0.04, _fmt_exact(r["seconds"]), va="center", fontsize=6.8, color=INK)
+        a.text(lo * 1.15, y - 0.36, r["note"], va="center", fontsize=6, color=INK2)
+    a.set_xscale("log")
+    a.set_xlim(lo, hi)
+    ticks = [t for t in (1, 10, 60, 600, 3600, 36000) if lo <= t <= hi]
+    a.set_xticks(ticks)
+    a.set_xticklabels([{1: "1 s", 10: "10 s", 60: "1 min", 600: "10 min", 3600: "1 h", 36000: "10 h"}[t] for t in ticks],
+                      fontsize=6.5)
+    a.set_xlabel("seconds, log scale", fontsize=6.5)
+    a.minorticks_off()
+    a.set_ylim(-0.8, len(ready) - 0.4)
+    a.set_yticks(ys)
+    a.set_yticklabels([_tick(r["system"], KIND.get(r["system"], "measured")) for r in ready], fontsize=7)
+    a.tick_params(axis="y", length=0)
+    _grid(a, "x")
+    a.set_title("Time until a new image is protected (measured)", loc="left", fontsize=8, color=INK, pad=6)
+    _footer(fig, ["C1. Every time was measured on our VM. PROVBIND compiles its specification",
+                  "from signed build evidence once per image digest; PROVBIND + ML-B adds the",
+                  "benign recording ML-B learns from. * Confine-E and DeSFAM-E are estimated",
+                  "systems: their times are their preparation steps as we ran them, each timed."])
+    return _save(plt, fig, path, dpi)
+
+
+def fig1b_c1(d, path, dpi):
+    """Figure 1b (optional): each system's preparation split into its timed components, one small panel
+    per system on its own scale. Needs results/PREP.json; without it, PROVBIND's compile steps only."""
+    plt = _plt()
+    prep = d.get("prep") or {}
+    comps = c1_components(prep)
+    if not comps:                                       # no PREP.json: PROVBIND's steps from the envelopes
+        st = c1_steps(d)
+        if st["steps"]:
+            comps = [("PROVBIND", st["total_s"], [(k, v / 1000) for k, v in st["steps"]])]
+    if not comps:
+        fig, ax = plt.subplots(figsize=(3.6, 1.2))
+        _empty(ax, "Not measured: no PREP.json and no envelope in this run folder.")
+        return _save(plt, fig, path, dpi)
+    heights = [max(2, len(c[2])) + 1.2 for c in comps] + ([1.4] if prep.get("Falco") else [])
+    fig = plt.figure(figsize=(3.8, 0.21 * sum(heights) + 0.2))
+    gs = fig.add_gridspec(len(heights), 1, height_ratios=heights, hspace=1.1)
+    for i, (name, total, parts) in enumerate(comps):
+        ax = fig.add_subplot(gs[i, 0])
+        names = [k for k, _ in parts][::-1]
+        secs = [v for _, v in parts][::-1]
+        top = max(secs) if secs else 1
+        ax.barh(range(len(secs)), secs, height=0.6, color=S1, edgecolor=SURFACE, linewidth=1)
+        for j, v in enumerate(secs):
+            ax.text(v + top * 0.02, j, _fmt_exact(v), va="center", fontsize=5.8, color=INK)
+        ax.set_yticks(range(len(secs)))
+        ax.set_yticklabels(names, fontsize=6)
+        ax.tick_params(axis="y", length=0)
+        ax.tick_params(axis="x", labelsize=5.5)
+        ax.set_xlim(0, top * 1.45)
+        _grid(ax, "x")
+        ax.set_title(f"{_tick(name, KIND.get(name, 'measured'))}: {_fmt_exact(total)}", loc="left", fontsize=7,
+                     color=INK, pad=3)
+    f = prep.get("Falco")
+    if f:
+        ax = fig.add_subplot(gs[len(comps), 0])
+        ax.set_axis_off()
+        ax.text(0, 0.5, "Falco: no per-image component (generic rules)."
+                + (f"\nIts DaemonSet is ready {_fmt_exact(f['restart_ready_s'])} after a restart "
+                   f"(median of {f.get('restarts')} restarts)." if f.get("restart_ready_s") is not None else ""),
+                transform=ax.transAxes, fontsize=6.3, color=INK2, va="center")
+    _footer(fig, ["Preparation time per component, measured on our VM. Each panel has its own scale.",
+                  "* Estimated systems: their preparation steps as we ran them, each timed."])
+    return _save(plt, fig, path, dpi)
+
+
 def fig1_c1(d, path, dpi):
+    if d.get("prep"):
+        return fig1_c1_measured(d, path, dpi)
     plt = _plt()
     from matplotlib.patches import Patch
-    fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 2.5), gridspec_kw={"width_ratios": [1.1, 1]})
     ready = c1_readiness(d)
+    measured_all = all(r["how"] in ("measured", "none") for r in ready)
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 3.0 if measured_all else 2.5),
+                               gridspec_kw={"width_ratios": [1.5, 1] if measured_all else [1.1, 1]})
     ys = list(range(len(ready)))[::-1]
     vals = [r["seconds"] for r in ready if r["seconds"]]
     lo, hi = (min(vals) / 3 if vals else 1), (max(vals) * 6 if vals else 3600)
@@ -359,8 +546,11 @@ def fig1_c1(d, path, dpi):
             continue
         a.barh(y, r["seconds"] - lo, height=0.5, left=lo, color=S1, edgecolor=SURFACE, linewidth=1,
                hatch="///" if r["how"] == "by design" else None)        # from the axis edge to the value
-        label = ("≥ " if r["how"] == "by design" else "") + _fmt_s(r["seconds"])
+        label = ("≥ " if r["how"] == "by design" else "") + (f"{r['seconds']:.1f} s" if r["seconds"] < 60
+                                                           else f"{r['seconds']:.0f} s = {_fmt_s(r['seconds'])}")
         a.text(r["seconds"] * 1.12, y, label, va="center", fontsize=7, color=INK)
+        if measured_all and r.get("note"):                                    # the exact count behind the bar
+            a.text(lo * 1.15, y - 0.36, r["note"], va="center", fontsize=5.6, color=INK2)
     a.set_xscale("log")
     a.set_xlim(lo, hi)
     ticks = [t for t in (1, 10, 60, 600, 3600, 36000) if lo <= t <= hi]
@@ -371,10 +561,13 @@ def fig1_c1(d, path, dpi):
     a.set_yticklabels([_tick(r["system"], KIND[r["system"]]) for r in ready])
     a.tick_params(axis="y", length=0)
     _grid(a, "x")
-    _panel(a, "a", "Time until a new image is protected")
-    a.legend(handles=[Patch(facecolor=S1, edgecolor=SURFACE, label="measured in this run"),
-                      Patch(facecolor=S1, edgecolor=SURFACE, hatch="///", label="by design (minimum the method needs)")],
-             loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=2, fontsize=6.5)
+    if measured_all:
+        _panel(a, "a", "Time until a new image is protected (measured)")
+    else:
+        _panel(a, "a", "Time until a new image is protected")
+        a.legend(handles=[Patch(facecolor=S1, edgecolor=SURFACE, label="measured in this run"),
+                          Patch(facecolor=S1, edgecolor=SURFACE, hatch="///", label="by design (minimum the method needs)")],
+                 loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=2, fontsize=6.5)
 
     st = c1_steps(d)
     if not st["steps"]:
@@ -400,8 +593,11 @@ def fig1_c1(d, path, dpi):
     fig.tight_layout(w_pad=2.5)
     _footer(fig, ["C1. PROVBIND's specification is compiled from signed build evidence, so it exists before the workload runs; "
                   "the compile is paid once per image digest, not per pod.",
-                  "Falco uses hand-written generic rules. * Confine-E and DeSFAM-E: estimated systems; their bars are the "
-                  "observation their published design needs before it can protect a new image."])
+                  ("Falco uses hand-written generic rules. * Confine-E and DeSFAM-E: estimated systems; their bars are their "
+                   "preparation as run on our VM (start-up or profiling recording + analysis or training), timed."
+                   if measured_all else
+                   "Falco uses hand-written generic rules. * Confine-E and DeSFAM-E: estimated systems; their bars are the "
+                   "observation their published design needs before it can protect a new image.")])
     return _save(plt, fig, path, dpi)
 
 
@@ -465,45 +661,59 @@ def fig2_c2(d, path, dpi):
 
 
 def fig3_c3(d, path, dpi):
+    """Figure 3: what each system's alerts name. Measured columns give "named / alerts"; the estimated
+    systems are not run live, so their columns say what their design records (yes / no), in grey."""
     plt = _plt()
-    import numpy as np
     att = c3_attribution(d)
-    systems, fields = att["systems"], att["fields"]
+    fields, systems = att["fields"], att["systems"]
     cmap = _cmap(BLUE_RAMP, "blue")
-    grid = np.full((len(fields), len(systems)), np.nan)
-    for j, s in enumerate(systems):
-        if att["share"][s] is not None:
-            grid[:, j] = att["share"][s]
-    fig, ax = plt.subplots(figsize=(3.5, 2.55))
-    shown = np.where(np.isnan(grid), 0, grid)
-    rgba = cmap(0.06 + 0.86 * shown)
-    rgba[np.isnan(grid)] = (0.94, 0.94, 0.93, 1)
-    ax.imshow(rgba, aspect="auto")
-    for i in range(len(fields)):
-        for j in range(len(systems)):
-            v = grid[i, j]
-            txt = "n/a" if np.isnan(v) else f"{v * 100:.0f}%"
-            ax.text(j, i, txt, ha="center", va="center", fontsize=6.8,
-                    color=SURFACE if (not np.isnan(v) and v > 0.55) else INK)
-    labels = []
-    for s in systems:
-        sub = f"n = {att['n'][s]}" if att["how"][s] == "measured" else "by design"
-        labels.append(f"{_tick(s, KIND[s])}\n{sub}")
-    ax.set_xticks(range(len(systems)))
-    ax.set_xticklabels(labels, fontsize=6.8)
+    groups = (("Where", ("Container / pod", "Process")), ("Why", ("Rule / clause / technique",)),
+              ("Supply-chain origin", ORIGIN_FIELDS))
+    fig, ax = plt.subplots(figsize=(5.2, 3.1))
+    xs = {s: j + (0.35 if j >= 2 else 0) for j, s in enumerate(systems)}       # a gap before estimated systems
+    for i, f in enumerate(fields):
+        y = i
+        for s in systems:
+            x = xs[s]
+            if att["how"][s] == "measured" and att["counts"].get(s):
+                k, n = att["counts"][s][i]
+                frac = k / n if n else 0
+                ax.add_patch(plt.Rectangle((x + 0.04, y + 0.06), 0.92, 0.88, color=cmap(0.06 + 0.86 * frac), lw=0))
+                txt = f"{k} / {n}\n{frac * 100:.0f}%" if n else "no alert\nof this kind"
+                ax.text(x + 0.5, y + 0.5, txt, ha="center", va="center", fontsize=6.3, linespacing=1.15,
+                        color=SURFACE if frac > 0.55 else INK)
+            else:
+                ax.add_patch(plt.Rectangle((x + 0.04, y + 0.06), 0.92, 0.88, color="#efeeea", lw=0))
+                if s == "Confine-E":
+                    txt = "no alert"
+                else:
+                    flag = (BY_DESIGN_FIELDS.get(s) or (0,) * len(fields))[i]
+                    txt = "yes" if flag else "no"
+                ax.text(x + 0.5, y + 0.5, txt, ha="center", va="center", fontsize=6.3, color=INK2, style="italic")
+    ax.set_xlim(0, xs[systems[-1]] + 1)
+    ax.set_ylim(len(fields), 0)
+    head = {"PROVBIND": f"PROVBIND\n{att['n'].get('PROVBIND') or 0} alerts", "Falco": f"Falco\n{att['n'].get('Falco') or 0} alerts",
+            "Confine-E": "Confine-E*\nby design", "DeSFAM-E": "DeSFAM-E*\nby design"}
+    ax.set_xticks([xs[s] + 0.5 for s in systems])
+    ax.set_xticklabels([head.get(s, s) for s in systems], fontsize=6.8)
     ax.xaxis.tick_top()
-    ax.set_yticks(range(len(fields)))
-    ax.set_yticklabels(fields)
+    ax.set_yticks([i + 0.5 for i in range(len(fields))])
+    ax.set_yticklabels(fields, fontsize=6.8)
     ax.tick_params(length=0)
     for sp in ax.spines.values():
         sp.set_visible(False)
-    ax.set_xticks(np.arange(-0.5, len(systems)), minor=True)
-    ax.set_yticks(np.arange(-0.5, len(fields)), minor=True)
-    ax.grid(which="minor", color=SURFACE, linewidth=2)
-    ax.tick_params(which="minor", length=0)
-    _footer(fig, ["C3. Share of each system's runtime detections in attack runs that name each item.",
-                  "PROVBIND and Falco: measured from their alert files (n = detections).",
-                  "* Confine-E, DeSFAM-E: estimated systems; their published design."])
+    row = 0
+    for g, members in groups:                                                   # group labels and rules
+        if row:
+            ax.axhline(row, color=INK2, linewidth=0.7, xmax=0.97)
+        ax.text(-1.9, row + len(members) / 2, g, rotation=90, ha="center", va="center", fontsize=6.3,
+                color=INK2, style="italic", clip_on=False)
+        row += len(members)
+    _footer(fig, ["C3. What each system's alerts in attack runs name. PROVBIND and Falco: measured from their alert files,",
+                  f"shown as named / alerts. Supply-chain origin rows count only PROVBIND alerts about a file that is in the image",
+                  f"({att['n_image']} of {att['n'].get('PROVBIND') or 0}); a dropped file, a connection or a behaviour window has no package or layer to name.",
+                  "* Confine-E and DeSFAM-E are estimated, not run live: grey cells say what their design records. Confine-E",
+                  "raises no alert at all (seccomp blocks the call silently)."])
     return _save(plt, fig, path, dpi)
 
 
@@ -570,50 +780,95 @@ def fig4_c4(d, path, dpi):
     return _save(plt, fig, path, dpi)
 
 
+NICE = {"ak-1": "Advisory exists before deploy", "ak-2": "Unsigned image", "ak-3": "Signing key revoked before deploy",
+        "au-2": "Undeclared program added at build", "trust-1": "Advisory published while running",
+        "trust-2": "Signing key revoked while running", "rk-2": "Kernel-CVE call pattern (replay only)",
+        "rk-3": "Library injection", "attack-1": "New program dropped and run", "attack-2": "Burst of new files",
+        "ru-3": "Connection to an unlisted address", "ru-4": "Declared program replaced",
+        "ru-5": "Credential file read", "benign-1": "Interactive shell", "benign-traffic": "Normal web requests",
+        "ph4-14": "New temporary file", "benign-3": "DNS lookups", "benign-4": "Writes to a mounted volume",
+        "ab-1": "Clean signed image deployed"}
+ADMISSION = {"ak-1", "ak-2", "ak-3", "au-2", "ab-1"}
+STAGES = {"Confine-E": "runtime", "DeSFAM-E": "runtime", "Sig-only": "admission"}   # stages a system covers
+
+
+def scenario_outcome(scenario, truth, system, flagged, runs):
+    """(kind, text) for one cell of figure 5: right / wrong / partial, or n/a when the system has no check
+    at that stage (scored as missed or as no alarm in the tables)."""
+    stage = "admission" if scenario in ADMISSION else "runtime"
+    if STAGES.get(system, stage) != stage:
+        return "na", "n/a"
+    right = flagged if truth == "malicious" else runs - flagged
+    if truth == "malicious":
+        text = "caught" if flagged == runs else ("missed" if flagged == 0 else f"{flagged}/{runs} caught")
+    else:
+        text = "no alarm" if flagged == 0 else ("false alarm" if flagged == runs else f"{flagged}/{runs} false alarm")
+    kind = "right" if right == runs else ("wrong" if right == 0 else "partial")
+    return kind, text
+
+
 def fig5_scenarios(d, path, dpi):
+    """Figure 5: every scenario x system, coloured by whether the outcome was RIGHT (attack caught, benign
+    activity left alone) or WRONG (attack missed, false alarm); grey where a system has no check at that
+    stage. One rule for every row, a symbol beside every word, and a total per system at the bottom."""
     plt = _plt()
-    import numpy as np
     names, rows = heatmap(d["tables"])
     if not rows:
         raise ValueError("no scenario rows in COMPARISON.json")
-    blues, oranges = _cmap(BLUE_RAMP, "blue"), _cmap(ORANGE_RAMP, "orange")
-    rgba = np.zeros((len(rows), len(names), 4))
+    fill = {"right": "#256abf", "wrong": "#eb6834", "partial": "#f6b090", "na": "#efeeea"}
+    ink = {"right": SURFACE, "wrong": INK, "partial": INK, "na": INK2}
+    mark = {"right": "\u2713 ", "wrong": "\u2717 ", "partial": "~ ", "na": ""}
+    totals = {n: [0, 0] for n in names}
+    fig, ax = plt.subplots(figsize=(6.2, 0.24 * (len(rows) + 1) + 0.7))
     for i, r in enumerate(rows):
-        cm = oranges if r["truth"] == "benign" else blues
-        for j, f in enumerate(r["fraction"]):
-            rgba[i, j] = cm(0.06 + 0.86 * f)
-    fig, ax = plt.subplots(figsize=(3.5, 0.2 * len(rows) + 0.9))
-    ax.imshow(rgba, aspect="auto")
-    for i, r in enumerate(rows):
-        for j, (f, c) in enumerate(zip(r["fraction"], r["counts"])):
-            ax.text(j, i, c, ha="center", va="center", fontsize=6, color=SURFACE if f > 0.55 else INK)
-    ax.set_xticks(range(len(names)))
-    ax.set_xticklabels([_tick(n, KIND.get(n, "measured")) for n in names], rotation=30, ha="left", fontsize=6.8)
+        for j, m in enumerate(names):
+            flagged = int(round(r["fraction"][j] * r["runs"]))
+            kind, text = scenario_outcome(r["scenario"], r["truth"], m, flagged, r["runs"])
+            right = flagged if r["truth"] == "malicious" else r["runs"] - flagged
+            totals[m][0] += right                      # as the tables score it: n/a = missed, or no alarm
+            totals[m][1] += r["runs"]
+            ax.add_patch(plt.Rectangle((j + 0.03, i + 0.07), 0.94, 0.86, color=fill[kind], lw=0))
+            ax.text(j + 0.5, i + 0.5, mark[kind] + text, ha="center", va="center", fontsize=5.9, color=ink[kind])
+    y = len(rows) + 0.25
+    for j, m in enumerate(names):
+        k, n = totals[m]
+        ax.text(j + 0.5, y + 0.5, f"{k} / {n} right", ha="center", va="center", fontsize=6.3, color=INK,
+                fontweight="bold")
+    ax.axhline(len(rows) + 0.12, color=INK2, linewidth=0.8)
+    ax.set_xlim(0, len(names))
+    ax.set_ylim(len(rows) + 1.3, 0)
+    ax.set_xticks([j + 0.5 for j in range(len(names))])
+    ax.set_xticklabels([_tick(n, KIND.get(n, "measured")) for n in names], fontsize=6.8)
     ax.xaxis.tick_top()
-    ax.set_yticks(range(len(rows)))
-    ax.set_yticklabels([r["label"] for r in rows], fontsize=6.8)
+    labels = [f"{NICE.get(r['scenario'], r['scenario'])}" + (f" ({SCENARIOS[r['scenario']][0]})"
+              if SCENARIOS.get(r["scenario"], ("",))[0] else "") for r in rows]
+    ax.set_yticks([i + 0.5 for i in range(len(rows))] + [y + 0.5])
+    ax.set_yticklabels(labels + ["Runs judged right"], fontsize=6.3)
     ax.tick_params(length=0)
     for sp in ax.spines.values():
         sp.set_visible(False)
-    ax.set_xticks(np.arange(-0.5, len(names)), minor=True)
-    ax.set_yticks(np.arange(-0.5, len(rows)), minor=True)
-    ax.grid(which="minor", color=SURFACE, linewidth=1.5)
-    ax.tick_params(which="minor", length=0)
     spans = {}
     for i, r in enumerate(rows):
         spans.setdefault(r["cell"], [i, i])[1] = i
-    for cell, (s, e) in spans.items():
-        if s:
-            ax.axhline(s - 0.5, color=INK2, linewidth=0.8)
-        ax.text(len(names) - 0.35, (s + e) / 2, cell, va="center", ha="left", fontsize=6.3, color=INK2,
+    for cell, (s0, e) in spans.items():
+        if s0:
+            ax.axhline(s0, color=INK2, linewidth=0.8)
+        ax.text(len(names) + 0.1, (s0 + e + 1) / 2, cell, va="center", ha="left", fontsize=6.0, color=INK2,
                 style="italic", clip_on=False)
-    _footer(fig, ["Cell: runs flagged / runs. Blue rows: attacks (flagged = detected).",
-                  "Orange rows: benign (flagged = false alarm).",
-                  "* estimated systems; † Sig-only, derived from binding records."])
+    from matplotlib.patches import Patch
+    ax.legend(handles=[Patch(color=fill["right"], label="\u2713 right: attack caught, or normal activity left alone"),
+                       Patch(color=fill["wrong"], label="\u2717 wrong: attack missed, or false alarm"),
+                       Patch(color=fill["na"], label="n/a: the system has no check at this stage (scored as missed, or as no alarm)")],
+              loc="upper left", bbox_to_anchor=(-0.02, 1.13), ncol=3, fontsize=5.6, frameon=False,
+              handlelength=1.2, columnspacing=1.0)
+    _footer(fig, ["Each cell is 5 runs. Falco's admission 'catches' come from rules that fire on every pod start: it also alarms on the clean",
+                  "deploy (A-B1). The bottom row counts every run as the comparison tables do (true positives + true negatives).",
+                  "* Confine-E, DeSFAM-E: estimated systems (runtime only).  \u2020 Sig-only: a signature check at admission only."])
     return _save(plt, fig, path, dpi)
 
 
-FIGURES = (("fig1_c1_specification.png", fig1_c1), ("fig2_c2_verification.png", fig2_c2),
+FIGURES = (("fig1_c1_specification.png", fig1_c1), ("fig1b_c1_components.png", fig1b_c1),
+           ("fig2_c2_verification.png", fig2_c2),
            ("fig3_c3_attribution.png", fig3_c3), ("fig4_c4_trust.png", fig4_c4),
            ("fig5_scenarios.png", fig5_scenarios))
 

@@ -1,6 +1,6 @@
 # PROVBIND Capability Test Plan
 
-**Version 1.1 · 27 September 2026 · Reference: Aj Ohm's draft (`PROVBIND_AjOhmdraft.pdf`)**
+**Version 1.2 · 9 October 2026 · Reference: Aj Ohm's draft (`PROVBIND_AjOhmdraft.pdf`)**
 
 Aj Ohm gave us his draft and asked us to **understand, check and update** it. This plan is the "check" step: every capability the draft claims gets at least one test, and every result either confirms the draft or produces a specific update to it (Section 10).
 
@@ -504,12 +504,82 @@ Each row names a part of the draft, the tests that decide it, and the update if 
 | Egress N̂_I | PH4-16, MLA-08 | Define N̂_I (M8) | |
 | Declared capabilities 𝒞^decl | MLA-01 | Name their source; use CONFIGURED for pod-spec values (M9) | |
 | Writes under mounts | PH4-13 | Add the mount exclusion (M10) | |
-| Event hooks | PH4-02a, PH4-02b | Name the hooks (M11) | |
+| Event hooks | PH4-02a, PH4-02b | Name the hooks (M11) | Name the final configuration's hooks and in-kernel filters (Section 10.1, "Collection"): the original set cost up to +378% at p95 on file-writing requests, the filtered set at most +9.9% (9 Oct 2026). |
 | Decision order | PH4-18 | State the order (M12) | |
-| Evaluation plan | EV-01 to 07 | Extend it with ablations, the adversarial case and ML-A (M13) | |
+| Evaluation plan | EV-01 to 07 | Extend it with ablations, the adversarial case and ML-A (M13) | Baselines and cost done (final run `run-final`, 9 Oct 2026; overhead `opt5`, 8 Oct). Update Section IV to what was run: four comparators (Falco, DeSFAM-E, signature verification alone, and Confine-E, the last three estimated or derived); the testbed (19 scenarios × 5 runs, known/unknown split); overhead against an unmonitored host as well as against collection alone. The kernel ring-buffer drop rate under burst load was not measured: measure it or drop it. Fix the "[?]" (Section 10.2). Ablations, the adversarial case and ML-A stay open (M13). |
 | Cuckoo filter | CF-01 to 06, OH-05 | Keep it with numbers, or replace it with a hash-table index (M15) | |
 | ML-A details | MLA-01 to 08 | Define Ω_I, the label set, the metrics and θ_C | |
-| Results | All | Add a Results section; the draft has only an Evaluation Plan | |
+| Results | All | Add a Results section; the draft has only an Evaluation Plan | Final numbers ready: Section 10.1 (proposed text and tables), citations in Section 10.2. |
+
+### 10.1 Proposed Results section (final numbers, 9 October 2026)
+
+All numbers come from one configuration: the optimised Tetragon policies (`node/tetragon/opt/`) with ML-B
+trained under them. Accuracy is from the final comparison run (`run-final`, 9 October), runtime cost from
+the overhead run `opt5` (8 October), on the demo VM (VirtualBox, Ubuntu 24.04, kernel 7.0, kind, Tetragon
+1.7.1). Details and the history of the measurements: `docs/ROLE1-SUPERVISOR-QUESTIONS-2026-10-05.md`.
+
+**Testbed.** One demo image (Python web app), 19 scenarios run 5 times each: 95 runs, 65 attack runs and
+30 benign runs. The attack scenarios re-create, harmlessly, behaviours reported for real malicious
+packages; 35 attack runs are known attacks (an advisory, signature or rule could describe them), 30 are
+unknown. Every detector is built before the first attack: PROVBIND's envelope from signed build metadata,
+ML-B from 7 h of benign traffic; seven leakage checks (Section 2.5 of the Role 1 doc) pass.
+
+**Detection.**
+
+| System | Kind | Caught | False alarms | Precision | Recall | F1 | FPR | Known | Unknown |
+|---|---|---|---|---|---|---|---|---|---|
+| **PROVBIND** | measured | 50/65 | 0/30 | 1.00 | 0.77 | **0.87** | **0.00** | 30/35 | 20/30 |
+| Falco (default rules) | measured | 25/65 | 10/30 | 0.71 | 0.38 | 0.50 | 0.33 | 15/35 | 10/30 |
+| DeSFAM-E | estimated | 34/65 | 23/30 | 0.60 | 0.52 | 0.56 | 0.77 | 10/35 | 24/30 |
+| Confine-E | estimated | 0/65 | 5/30 | — | 0.00 | — | 0.17 | 0/35 | 0/30 |
+| Signature verification only | derived | 5/65 | 0/30 | 1.00 | 0.08 | 0.14 | 0.00 | 5/35 | 0/30 |
+
+PROVBIND misses only rk-2, ru-5 and au-2, its documented limits. The result is identical, scenario by
+scenario, to the run of 2 October with the original policies, so the optimisation cost no accuracy here.
+
+**Runtime cost** (medians of 3 repetitions, change against an unmonitored host):
+
+| Metric | Falco | PROVBIND |
+|---|---|---|
+| request mix, p50 / p95 latency | +3.2% / +4.7% | −0.5% / −0.1% |
+| request mix, throughput loss | 3.4% | none |
+| file-writing requests, p50 / p95 latency | +8.2% / +7.7% | +9.9% / +8.0% |
+| file-writing requests, throughput loss | 7.1% | 7.5% |
+| worst case: file write / process start | +5.1% / +15.8% | +5.2% / +119% |
+| monitor memory | 119 MB | 409 MB |
+
+Relative to the runtime collection alone (Tetragon with the same policies), the baseline Section IV names,
+PROVBIND adds at most 0.4% on the application metrics. Per-event verification takes 1.9 µs at p50 and
+6.7 µs at p99 (OH-01, replay of the 2 October recording). Preparation per new image: PROVBIND 4.38 s
+(envelope compile, 109 packages, 5,695 files); with ML-B, 7 h of benign traffic plus 0.82 s of training;
+Falco none; Confine-E 32.8 s; DeSFAM-E 30.5 min of profiling.
+
+**Collection.** The cost is the number of sensor events per request times the cost of moving each event to
+the verifier. The final hooks: `security_file_permission` for writes (only paths beginning with `/` leave
+the kernel), `security_path_truncate` and `security_file_truncate`, `cap_capable`, `security_mmap_file`
+with `PROT_EXEC`, and `tcp_connect`, in the monitored namespace only. A repeated identical event is
+reported once a minute (per process; across processes for library loads), and return probes are dropped
+where the verifier does not use them. With the original, unfiltered set the same test cost +86% (request
+mix, p95) and +378% (file-writing requests, p95).
+
+**Limits.** One image on one VM; 5 runs per scenario (0/30 false alarms bounds the rate at about 10% with
+95% confidence); harmless re-creations, not real samples; DeSFAM-E and Confine-E are estimated from their
+published designs on recorded traces. The rate limit compares the first 40 bytes of each argument, which
+for a path is its length and first 32 characters: two different paths that share both are reported once
+a minute. Every new process still costs its start and exit events. A sensor restarted while the workload
+runs stops reporting that workload's existing processes; the testbed restarts the app after the sensor and
+checks that its events arrive before every measurement.
+
+### 10.2 Proposed citations
+
+| Where in the draft | Add | Why |
+|---|---|---|
+| Section IV, "not containerised [?]" | University of Glasgow, "SynthChain: A synthetic benchmark and forensic analysis of advanced and stealthy software supply chain attacks," arXiv:2603.16694, 2026 | the reference our DS2 draft has in this place (`synthchain2026`); it is missing from the new bibliography |
+| Section IV, the unknown-attack method and the container testbed | M. Grimmer et al., "A Modern and Sophisticated Host Based Intrusion Detection Data Set," BSI IT-Sicherheitskongress, 2019; M. Grimmer et al., "Dataset Report: LID-DS 2021," CRITIS 2022, LNCS 13723, 2023; G. Creech and J. Hu, "Generation of a new IDS test dataset: Time to retire the KDD collection," IEEE WCNC, 2013 (ADFA-LD); W. Haider et al., Future Internet 8(3):29, 2016 | normal-only training and a container testbed with kernel-level recording, the methods our evaluation adapts |
+| Section IV, "attack semantics are extracted and re-instantiated" | DataDog, malicious-software-packages-dataset (GitHub); M. Ohm et al., "Backstabber's Knife Collection," DIMVA 2020 | the source of the behaviours the scenarios re-create, and the taxonomy they follow |
+| Section IV comparators; the architecture table ("Tetragon") | The Falco Project (falco.org); Cilium Tetragon (tetragon.io) | tools the draft uses and names without a reference |
+| Related work or Section IV | A. A. Syairozi and Arizal, "Comparative Analysis of eBPF-Based Runtime Security Monitoring Tools in Monitoring and Threat Detection on Kubernetes," RITECH 2025, SciTePress, pp. 136–141 | a recent comparison of eBPF runtime monitors on Kubernetes, the setting we evaluate in |
+| Optional | A. V. Kozachok et al., "From CVE to CWE: Syscall-Based HIDS Generalisation," arXiv:2606.22581, 2026 | newer work testing detection of unseen attacks the same way |
 
 ---
 
@@ -611,3 +681,4 @@ Take every citation's exact form from its source; do not reconstruct one from me
 |---|---|---|
 | 1.0 | 27 Sep 2026 | First version |
 | 1.1 | 27 Sep 2026 | Section 12 added: every dataset (D1–D8) with source, access, risk and tests, plus handling rules for real malicious samples. ML-B benign run lengthened to at least 3 hours, with a threshold rule for small validation sets |
+| 1.2 | 9 Oct 2026 | Section 10: results of the final evaluation filled in (Event hooks, Evaluation plan, Results), with the proposed Results section (10.1) and citations (10.2) |

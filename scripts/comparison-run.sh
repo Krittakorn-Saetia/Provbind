@@ -5,7 +5,8 @@
 #   2. deploys the signed demo app with an emptyDir at /data (for B5), and waits for its envelope;
 #   3. records the pod's system calls for the estimated baselines: a start-up trace, a benign baseline,
 #      and one trace per scenario run, named run/traces/<scenario>-<k>.txt (what the aggregator wants);
-#   4. runs every Tier 1 + Tier 2 runtime/benign scenario ROUNDS times, then the admission scenarios;
+#   4. runs every Tier 1 + Tier 2 runtime/benign scenario ROUNDS times, then the admission scenarios
+#      (A-B1, a clean signed deploy, is the admission cell's benign control);
 #   5. applies Confine-E and DeSFAM-E to the traces and builds the four-system tables (aggregate),
 #      plus the PROVBIND-vs-Falco scoring matrix and the time-to-alert summary.
 #
@@ -27,12 +28,21 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${DEMO_REF:?set DEMO_REF to the signed ref@digest that make demo-app printed}"
 : "${PROVBIND_KEY:=pipeline/keys/cosign.pub}"
 : "${TETRAGON_CONTAINER:=export-stdout}"
-: "${POLICIES:=node/tetragon/write.yaml node/tetragon/truncate.yaml node/tetragon/cap.yaml}"
+# load.yaml (D_load, R-K3) and connect.yaml (D_net, R-U3) are on here: without them PROVBIND cannot see
+# those two scenarios at all. They change ML-B's input, so with ATTACK2=1 keep D2 recorded the same way.
+: "${POLICY_SET:=orig}"       # orig = node/tetragon/*.yaml; opt = the rate-limited variant in node/tetragon/opt/
+: "${EVENT_SOURCE:=kubectl}"  # kubectl = kubectl logs; file = Tetragon's export file in the kind node (docker exec)
+: "${KIND_NODE:=kind-control-plane}"
+: "${TETRAGON_LOG:=/var/run/cilium/tetragon/tetragon.log}"
+PDIR=node/tetragon; [ "$POLICY_SET" = opt ] && PDIR=node/tetragon/opt
+: "${POLICIES:=$PDIR/write.yaml $PDIR/truncate.yaml $PDIR/cap.yaml $PDIR/load.yaml $PDIR/connect.yaml}"
+: "${EGRESS:=testbed/egress.json}"   # D_net needs an egress allow list (node --egress); empty turns D_net off
 : "${ROUNDS:=5}"              # docs/COMPARISON-RUN.md: every scenario at least 5 times
 : "${GAP:=10}"
 : "${WAIT_S:=120}"
 : "${TRACE:=1}"              # 0 = no bpftrace; PROVBIND vs Falco only, estimators skipped
 : "${ATTACK2:=0}"           # 1 = also R-U2 (needs an ML-B model; off by default)
+: "${MLB:=$ATTACK2}"         # 1 = the node scores ML-B windows (--mlb); on whenever attack-2 runs
 : "${ADMISSION:=1}"         # 1 = also the A-K1/A-K2/A-K3/A-U2 admission scenarios
 : "${BASELINE_SECONDS:=600}"   # DeSFAM baseline: 3 x 10 min of loadgen by default
 : "${BASELINE_CYCLES:=3}"
@@ -53,6 +63,10 @@ if [ "$TRACE" = 1 ] && ! command -v bpftrace >/dev/null; then
   exit 1
 fi
 
+if [ "$MLB" = 1 ] && [ ! -f "$PROVBIND_RUN/envelopes/${DEMO_REF##*@sha256:}.mlb/model.json" ]; then
+  echo "comparison-run: MLB=1 but there is no ML-B model for this image; run scripts/record-d2.sh first" >&2
+  exit 1
+fi
 if [ "$(id -u)" = 0 ]; then
   echo "comparison-run: run as your normal user, not under sudo (see the header)" >&2
   exit 1
@@ -102,13 +116,19 @@ run_traced() {    # SCENARIO K TARGET [REST]
   sleep "$GAP"
 }
 
-step "0. background: controller, node, alerts, trust loop, Falco"
+step "0. background: controller, node, alerts, trust loop, Falco (policies: $POLICY_SET, events: $EVENT_SOURCE)"
+OTHER=node/tetragon/opt; [ "$POLICY_SET" = opt ] && OTHER=node/tetragon
+for f in write truncate cap load connect; do kubectl delete -f "$OTHER/$f.yaml" --ignore-not-found >/dev/null 2>&1 || true; done
 for policy in $POLICIES; do kubectl apply -f "$policy" >/dev/null; done
+events() {
+  if [ "$EVENT_SOURCE" = file ]; then docker exec "$KIND_NODE" tail -n 0 -F "$TETRAGON_LOG"
+  else kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0; fi
+}
 python3 -m controller.watch --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --key "$PROVBIND_KEY" \
   > "$LOGS/controller.out" 2> "$LOGS/controller.log" & PIDS+=($!)
-( kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" -f --tail=0 \
+( events \
     | tee "$PROVBIND_RUN/rec.jsonl" \
-    | python3 -m node.run --run "$PROVBIND_RUN" ) > "$LOGS/node.out" 2> "$LOGS/node.log" & PIDS+=($!)
+    | python3 -m node.run --run "$PROVBIND_RUN" ${EGRESS:+--egress "$EGRESS"} $([ "$MLB" = 1 ] && echo --mlb) ) > "$LOGS/node.out" 2> "$LOGS/node.log" & PIDS+=($!)
 python3 -m alerts.run --run "$PROVBIND_RUN" > "$LOGS/alerts.out" 2> "$LOGS/alerts.log" & PIDS+=($!)
 python3 -m alerts.trust --run "$PROVBIND_RUN" --poll 2 > "$LOGS/trust.out" 2> "$LOGS/trust.log" & PIDS+=($!)
 ./eval/capture_falco.sh > "$LOGS/falco.out" 2> "$LOGS/falco.log" & PIDS+=($!)
@@ -118,6 +138,10 @@ step "1. deploy the signed demo app by digest, with an emptyDir at /data (B5)"
 kubectl -n "$NAMESPACE" create deployment "$DEPLOY" --image="$DEMO_REF" --port=8080 \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "$NAMESPACE" patch deployment "$DEPLOY" --patch-file testbed/demo-app/volume-patch.yaml >/dev/null
+# Always a fresh pod, started while Tetragon is running: Tetragon reports only processes it saw start, so an
+# app older than the Tetragon pod (VM reboot, overhead-run.sh) is silently unmonitored (7 October 2026). It
+# also gives Confine's start-up trace a real start to record.
+kubectl -n "$NAMESPACE" rollout restart "deploy/$DEPLOY" >/dev/null
 kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout="${WAIT_S}s"
 STARTUP_BG=""
 if [ "$TRACE" = 1 ]; then
@@ -129,6 +153,12 @@ if [ "$TRACE" = 1 ]; then
   STARTUP_BG=$!
 fi
 ( source testbed/scenarios/lib.sh; ENVELOPE_TIMEOUT="$WAIT_S" wait_for_envelope )
+if ! scripts/probe-events.sh > "$LOGS/probe.log" 2>&1; then
+  echo "comparison-run: Tetragon does not report the demo app's own process (see $LOGS/probe.log):" >&2
+  echo "  restart Tetragon, wait a minute, then restart the app (kubectl -n $NAMESPACE rollout restart deploy/$DEPLOY)" >&2
+  exit 1
+fi
+echo "  Tetragon reports the app's own process: $(grep RESULT "$LOGS/probe.log")"
 python3 -m alerts.attribute --run "$PROVBIND_RUN" >/dev/null \
   || echo "Neo4j is not reachable: attribution uses the envelope's layer field"
 sleep 30
@@ -169,6 +199,7 @@ done
 if [ "$ADMISSION" = 1 ]; then
   step "4. admission scenarios (own short-lived deployments; not syscall-traced)"
   for k in $(seq 1 "$ROUNDS"); do
+    step "round $k: A-B1 benign deploy";  make --no-print-directory ab1 || true; sleep "$GAP"
     step "round $k: A-K1 advisory-first"; make --no-print-directory ak1 || true; sleep "$GAP"
     step "round $k: A-K2 unsigned";       make --no-print-directory ak2 || true; sleep "$GAP"
     step "round $k: A-K3 revoked key";    make --no-print-directory ak3 || true; sleep "$GAP"

@@ -1,0 +1,6 @@
+system,total_seconds,counts
+PROVBIND,4.38,"5 compiles (4.19, 4.665, 4.383, 4.38, 4.263 s); 109 packages, 5695 files per image"
+PROVBIND + ML-B,25201,"4544 benign requests during D2, 232 windows"
+Falco,0.0,no per-image step; DaemonSet ready 25.72 s after a restart
+Confine-E,32.76,"31 ELF files from 8 packages (+21 outside any package), 1319 imported functions"
+DeSFAM-E,1832,"329 benign requests in 3 profiling runs, 6946 system calls, 2302 windows"

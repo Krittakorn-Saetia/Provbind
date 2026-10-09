@@ -1,0 +1,451 @@
+{
+ "source": "docs/ROLE1-COMPARISON-2026-10-01.md",
+ "tables": {
+  "per_scenario": [
+   {
+    "scenario": "benign-1",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 5,
+    "Confine-E": 5,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "benign-traffic",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ph4-14",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 3,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "attack-1",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "trust-1",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "trust-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "rk-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "rk-3",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ru-3",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ru-4",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ru-5",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "benign-3",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "benign-4",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 5,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ab-1",
+    "label": "benign",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ak-1",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "ak-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 5
+   },
+   {
+    "scenario": "ak-3",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 5,
+    "Falco": 5,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   },
+   {
+    "scenario": "au-2",
+    "label": "malicious",
+    "runs": 5,
+    "PROVBIND": 0,
+    "Falco": 0,
+    "Confine-E": 0,
+    "DeSFAM-E": 0,
+    "Sig-only": 0
+   }
+  ],
+  "systems": {
+   "PROVBIND": {
+    "kind": "measured",
+    "TP": 45,
+    "FP": 0,
+    "FN": 15,
+    "TN": 30,
+    "precision": 1.0,
+    "recall": 0.75,
+    "f1": 0.857,
+    "fpr": 0.0,
+    "attribution_level": 3
+   },
+   "Falco": {
+    "kind": "measured",
+    "TP": 25,
+    "FP": 10,
+    "FN": 35,
+    "TN": 20,
+    "precision": 0.714,
+    "recall": 0.417,
+    "f1": 0.526,
+    "fpr": 0.333,
+    "attribution_level": 1
+   },
+   "Confine-E": {
+    "kind": "estimated",
+    "TP": 0,
+    "FP": 5,
+    "FN": 60,
+    "TN": 25,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": null,
+    "fpr": 0.167,
+    "attribution_level": 0
+   },
+   "DeSFAM-E": {
+    "kind": "estimated",
+    "TP": 30,
+    "FP": 23,
+    "FN": 30,
+    "TN": 7,
+    "precision": 0.566,
+    "recall": 0.5,
+    "f1": 0.531,
+    "fpr": 0.767,
+    "attribution_level": 1
+   },
+   "Sig-only": {
+    "kind": "derived",
+    "TP": 5,
+    "FP": 0,
+    "FN": 55,
+    "TN": 30,
+    "precision": 1.0,
+    "recall": 0.083,
+    "f1": 0.154,
+    "fpr": 0.0,
+    "attribution_level": 0
+   }
+  },
+  "runs": 90
+ },
+ "desfam": {
+  "trace_threshold": 0.0099,
+  "results": {
+   "attack-1-1.txt": {
+    "phase2_fraction": 0.0303
+   },
+   "attack-1-2.txt": {
+    "phase2_fraction": 0.0323
+   },
+   "attack-1-3.txt": {
+    "phase2_fraction": 0.0323
+   },
+   "attack-1-4.txt": {
+    "phase2_fraction": 0.0323
+   },
+   "attack-1-5.txt": {
+    "phase2_fraction": 0.0323
+   },
+   "benign-1-1.txt": {
+    "phase2_fraction": 0.0769
+   },
+   "benign-1-2.txt": {
+    "phase2_fraction": 0.0769
+   },
+   "benign-1-3.txt": {
+    "phase2_fraction": 0.0923
+   },
+   "benign-1-4.txt": {
+    "phase2_fraction": 0.1
+   },
+   "benign-1-5.txt": {
+    "phase2_fraction": 0.1
+   },
+   "benign-3-1.txt": {
+    "phase2_fraction": 0.2875
+   },
+   "benign-3-2.txt": {
+    "phase2_fraction": 0.3077
+   },
+   "benign-3-3.txt": {
+    "phase2_fraction": 0.2987
+   },
+   "benign-3-4.txt": {
+    "phase2_fraction": 0.3974
+   },
+   "benign-3-5.txt": {
+    "phase2_fraction": 0.3117
+   },
+   "benign-4-1.txt": {
+    "phase2_fraction": 0.1579
+   },
+   "benign-4-2.txt": {
+    "phase2_fraction": 0.1579
+   },
+   "benign-4-3.txt": {
+    "phase2_fraction": 0.1579
+   },
+   "benign-4-4.txt": {
+    "phase2_fraction": 0.1053
+   },
+   "benign-4-5.txt": {
+    "phase2_fraction": 0.1579
+   },
+   "benign-traffic-1.txt": {
+    "phase2_fraction": 0.2598
+   },
+   "benign-traffic-2.txt": {
+    "phase2_fraction": 0.252
+   },
+   "benign-traffic-3.txt": {
+    "phase2_fraction": 0.2598
+   },
+   "benign-traffic-4.txt": {
+    "phase2_fraction": 0.2598
+   },
+   "benign-traffic-5.txt": {
+    "phase2_fraction": 0.2598
+   },
+   "ph4-14-1.txt": {
+    "phase2_fraction": 0.0385
+   },
+   "ph4-14-2.txt": {
+    "phase2_fraction": 0.0
+   },
+   "ph4-14-3.txt": {
+    "phase2_fraction": 0.0
+   },
+   "ph4-14-4.txt": {
+    "phase2_fraction": 0.0385
+   },
+   "ph4-14-5.txt": {
+    "phase2_fraction": 0.0385
+   },
+   "rk-2-1.txt": {
+    "phase2_fraction": 0.0645
+   },
+   "rk-2-2.txt": {
+    "phase2_fraction": 0.0645
+   },
+   "rk-2-3.txt": {
+    "phase2_fraction": 0.0968
+   },
+   "rk-2-4.txt": {
+    "phase2_fraction": 0.0968
+   },
+   "rk-2-5.txt": {
+    "phase2_fraction": 0.0645
+   },
+   "rk-3-1.txt": {
+    "phase2_fraction": 0.0588
+   },
+   "rk-3-2.txt": {
+    "phase2_fraction": 0.0412
+   },
+   "rk-3-3.txt": {
+    "phase2_fraction": 0.0353
+   },
+   "rk-3-4.txt": {
+    "phase2_fraction": 0.0765
+   },
+   "rk-3-5.txt": {
+    "phase2_fraction": 0.0706
+   },
+   "ru-3-1.txt": {
+    "phase2_fraction": 0.0357
+   },
+   "ru-3-2.txt": {
+    "phase2_fraction": 0.0357
+   },
+   "ru-3-3.txt": {
+    "phase2_fraction": 0.0357
+   },
+   "ru-3-4.txt": {
+    "phase2_fraction": 0.0357
+   },
+   "ru-3-5.txt": {
+    "phase2_fraction": 0.0357
+   },
+   "ru-4-1.txt": {
+    "phase2_fraction": 0.0169
+   },
+   "ru-4-2.txt": {
+    "phase2_fraction": 0.027
+   },
+   "ru-4-3.txt": {
+    "phase2_fraction": 0.027
+   },
+   "ru-4-4.txt": {
+    "phase2_fraction": 0.0714
+   },
+   "ru-4-5.txt": {
+    "phase2_fraction": 0.0268
+   },
+   "ru-5-1.txt": {
+    "phase2_fraction": 0.1034
+   },
+   "ru-5-2.txt": {
+    "phase2_fraction": 0.2439
+   },
+   "ru-5-3.txt": {
+    "phase2_fraction": 0.2195
+   },
+   "ru-5-4.txt": {
+    "phase2_fraction": 0.2195
+   },
+   "ru-5-5.txt": {
+    "phase2_fraction": 0.1951
+   },
+   "trust-1-1.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-1-2.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-1-3.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-1-4.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-1-5.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-2-1.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-2-2.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-2-3.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-2-4.txt": {
+    "phase2_fraction": 0.0
+   },
+   "trust-2-5.txt": {
+    "phase2_fraction": 0.0
+   }
+  }
+ },
+ "label": "Comparison\n1 Oct, 90 runs"
+}

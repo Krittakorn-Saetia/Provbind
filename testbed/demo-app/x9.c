@@ -11,7 +11,7 @@
  * Safety:
  *   - It runs ONLY inside the throwaway demo container, never on a real host.
  *   - The line it appends uses /bin/false as the login shell, so it creates no usable account.
- *   - It performs no network, no privilege change, nothing destructive; then it just sleeps.
+ *   - It performs no network, no privilege change, nothing destructive; then it sleeps 20 s and exits.
  *
  * Build it statically so it runs on any base image (see gen_payload.sh):
  *   gcc -static -Os -s -o x9 x9.c
@@ -29,6 +29,6 @@ int main(void) {
         fclose(f);
     }
     /* Stay alive so the demo can show the process and its provenance, then exit on its own. */
-    sleep(600);
+    sleep(20);   /* exit inside attack-1's 30 s row, so its ML-B window closes there too (Role 3, 1 Oct) */
     return 0;
 }

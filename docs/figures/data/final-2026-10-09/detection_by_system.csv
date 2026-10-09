@@ -1,0 +1,6 @@
+system,kind,TP,FP,FN,TN,precision,recall,F1,FPR,attribution_level,known_caught,known_runs,unknown_caught,unknown_runs
+PROVBIND,measured,50,0,15,30,1.00,0.77,0.87,0.00,3,30,35,20,30
+Falco,measured,25,10,40,20,0.71,0.38,0.50,0.33,1,15,35,10,30
+Confine-E,estimated,0,5,65,25,0.00,0.00,,0.17,0,0,35,0,30
+DeSFAM-E,estimated,34,23,31,7,0.60,0.52,0.56,0.77,1,10,35,24,30
+Sig-only,derived,5,0,60,30,1.00,0.08,0.14,0.00,0,5,35,0,30

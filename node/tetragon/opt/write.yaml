@@ -1,0 +1,31 @@
+# Optimised variant of ../write.yaml (see README.md): no return probe, an in-kernel rate limit per process,
+# and only paths starting with "/" leave the kernel: writes to pipes and sockets (socket:[…], pipe:[…], e.g. a
+# kubectl-exec'd command's output), which node/normalize.py drops anyway.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-opt-write
+  namespace: demo
+spec:
+  kprobes:
+  - call: "security_file_permission"
+    syscall: false
+    args:
+    - index: 0
+      type: "file"      # struct file *: gives the path
+    - index: 1
+      type: "int"       # mask: 0x02 MAY_WRITE
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "Prefix"
+        values:
+        - "/"           # a real file, not a socket or pipe
+      - index: 1
+        operator: "Mask"
+        values:
+        - "2"           # MAY_WRITE
+      matchActions:
+      - action: Post
+        rateLimit: "1m"
+        rateLimitScope: "process"

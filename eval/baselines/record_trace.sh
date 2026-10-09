@@ -50,6 +50,12 @@ else
 fi
 
 PROG='tracepoint:syscalls:sys_enter_* '"$FILTER"' { printf("%lld\t%d\t%s\t%s\n", nsecs, pid, comm, probe); }'
+if [ "$SECONDS_LIMIT" -gt 0 ] 2>/dev/null; then
+  # bpftrace stops itself, so it writes out what it buffered. Killing it from outside (`timeout`) lost
+  # every line: the timed 30 s start-up traces of 2 and 9 October 2026 came out empty. The time counts
+  # from when the probes are attached.
+  PROG="$PROG interval:s:$SECONDS_LIMIT { exit(); }"
+fi
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "# bpftrace program:"; echo "$PROG"; exit 0
@@ -61,9 +67,5 @@ run_bpftrace() {
 }
 
 echo "record_trace: tracing into $OUT (Ctrl-C to stop)" >&2
-if [ "$SECONDS_LIMIT" -gt 0 ] 2>/dev/null; then
-  timeout "$SECONDS_LIMIT" bash -c "$(declare -f run_bpftrace); run_bpftrace" > "$OUT" || true
-else
-  run_bpftrace > "$OUT"
-fi
+run_bpftrace > "$OUT" || true
 echo "record_trace: $(wc -l < "$OUT") events written to $OUT" >&2

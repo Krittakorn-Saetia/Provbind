@@ -1,0 +1,18 @@
+# Optimised set: unchanged copy of ../connect.yaml (rare events), renamed so the two sets never clash.
+# D_net and the ML-B connection features (Test Plan §8, PH4-02b, PH4-16): every outbound TCP
+# connection by a process in a pod of namespace demo. UDP needs its own hook (Explanation §7).
+#
+# Adapted from Tetragon's network observability example (kprobe on tcp_connect, sock argument).
+# VERIFY on the demo PC: sock_arg carries daddr and dport.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: provbind-opt-connect
+  namespace: demo
+spec:
+  kprobes:
+  - call: "tcp_connect"
+    syscall: false
+    args:
+    - index: 0
+      type: "sock"      # struct sock *: family, addresses, ports
