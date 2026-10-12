@@ -55,6 +55,25 @@ def read_trace(path: str | os.PathLike, keep_runtime: bool = False) -> list[Even
     return events
 
 
+def iter_syscalls(path: str | os.PathLike, keep_runtime: bool = False):
+    """The system-call names of a trace file, in order, one at a time: the same calls `read_trace`
+    keeps, without building an Event per call (for long traces)."""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 4:
+                call = _clean(parts[3].strip())
+                if _SYSCALL_NAME.match(call) and (keep_runtime or not is_runtime(parts[2])):
+                    yield call
+            else:
+                call = _clean(line.strip())
+                if _SYSCALL_NAME.match(call):
+                    yield call
+
+
 _SYSCALL_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 # Tracepoint names that differ from the x86-64 syscall-table names.
