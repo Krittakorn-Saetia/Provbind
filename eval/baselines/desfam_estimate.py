@@ -28,6 +28,14 @@ window` restores the raw rule (any anomalous window detects).
 
 Phase 3 - enforcement (its §IV-E): a detected scenario is blocked.
 
+Checked against the paper's full text (12 October 2026). Besides the Isolation-Forest-only detector, this
+estimate leaves out or simplifies, as stated: S_static from libc imports, where the paper disassembles the
+binaries and builds a static call graph; S_template without the kernel documentation and Falco's community
+rules the paper also draws on; S_blocked from the calls the paper names, where it parses NVD CVE texts; no
+PrefixSpan benign-pattern filter; no moving threshold (the paper starts at the 99.5th percentile, then
+follows an EMA with beta 0.9 and floor 0.5); no MITRE ATT&CK risk tiers (block, rate-limit, log). The paper
+trains its detector on the DongTing dataset; this estimate trains on the app's own benign baseline.
+
 Alongside the estimate, `published_bound()` gives what DeSFAM would score at its reported recall (0.90)
 and false-positive rate (0.016), so the estimate carries a published reference.
 
