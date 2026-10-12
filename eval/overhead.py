@@ -16,8 +16,8 @@ Configurations (each run several times, in shuffled order, on the same VM and th
   list, alert engine, trust loop).
 
 Workloads: `mix` (the load generator's request mix, in-cluster client), `cache` (only the app's file-
-writing endpoint), and `micro` (the worst case: tight loops of file writes and process spawns, every
-one a hooked event). Overhead = (config - none) / none for times, and the loss of throughput for rps.
+writing endpoint), `micro` (the worst case: tight loops of file writes and process spawns, every
+one a hooked event), and `udp` (Her et al.'s network test, eval/udp_bench.py; only when asked for). Overhead = (config - none) / none for times, and the loss of throughput for rps.
 The report also states PROVBIND's overhead minus Falco's, and puts the cost beside each system's
 detection results (F1, false-positive rate) when a COMPARISON.json is given.
 """
@@ -124,7 +124,12 @@ METRICS = [  # (kind, field, label, lower_is_better)
     ("cache", "rps", "throughput, /cache (req/s)", False),
     ("micro", "file_op_us", "file write, worst case (us/op)", True),
     ("micro", "spawn_ms", "process spawn, worst case (ms/op)", True),
+    ("udp", "udp_us", "UDP send, socket + sendto (us/packet)", True),
 ]
+# Her et al. [F] (IEEE Access 13, 2025, Section V-B2): overhead of 100,000 UDP sends against no tool, on
+# their single Xeon node, without / with a policy that audits UDP sends. Shown beside our network test.
+HER_ET_AL_UDP = {"Falco": (19.93, 24.77), "Tetragon": (3.14, 72.92), "Tracee": (1.48, 71.50),
+                 "KubeArmor": (87.74, 88.59)}
 
 
 def load_rows(path: Path) -> list[dict]:
@@ -159,8 +164,11 @@ def overhead_pct(value, base, lower_is_better=True):
 
 def build(rows, threshold=20.0, comparison=None, oh01=None) -> dict:
     configs = [c for c in CONFIGS if any(r.get("config") == c for r in rows)]
+    kinds = sorted({r.get("kind") for r in rows if r.get("kind")})
     table = []
     for kind, field, label, lower in METRICS:
+        if kind not in kinds:          # a workload this run did not include (e.g. the network test alone)
+            continue
         base, _ = median_of(rows, "none", kind, field)
         entry = {"metric": label, "kind": kind, "field": field, "values": {}, "overhead_pct": {}, "spread": {}}
         for c in configs:
@@ -205,6 +213,8 @@ def build(rows, threshold=20.0, comparison=None, oh01=None) -> dict:
     if "provbind" in configs and "tetragon" in configs:
         vs_tetragon = {}
         for kind, field, label, lower in METRICS:
+            if kind not in kinds:
+                continue
             t, _ = median_of(rows, "tetragon", kind, field)
             p, _ = median_of(rows, "provbind", kind, field)
             vs_tetragon[label] = overhead_pct(p, t, lower)
@@ -219,9 +229,18 @@ def build(rows, threshold=20.0, comparison=None, oh01=None) -> dict:
                           "tp": s.get("TP"), "worst_app_overhead_pct": v.get("worst_app_overhead_pct"),
                           "worst_micro_overhead_pct": v.get("worst_micro_overhead_pct"),
                           "monitor_cpu_pct": cpu.get(cfg, {}).get("monitor_cpu_pct")})
-    return {"threshold_pct": threshold, "configs": configs, "repetitions": reps, "table": table, "cpu": cpu,
-            "verdict": verdict, "provbind_minus_falco": vs_falco, "provbind_over_tetragon": vs_tetragon,
-            "tradeoff": trade, "oh01": oh01, "failed": failed}
+    her = None
+    udp = next((e for e in table if e["kind"] == "udp"), None)
+    if udp:
+        ours = {"Falco": udp["overhead_pct"].get("falco"), "Tetragon": udp["overhead_pct"].get("tetragon"),
+                "PROVBIND": udp["overhead_pct"].get("provbind")}
+        her = [{"system": name, "ours_pct": ours.get(name),
+                "theirs_without_policy_pct": HER_ET_AL_UDP.get(name, (None, None))[0],
+                "theirs_with_policy_pct": HER_ET_AL_UDP.get(name, (None, None))[1]}
+               for name in ("PROVBIND", "Falco", "Tetragon", "Tracee", "KubeArmor")]
+    return {"threshold_pct": threshold, "configs": configs, "kinds": kinds, "repetitions": reps, "table": table,
+            "cpu": cpu, "verdict": verdict, "provbind_minus_falco": vs_falco, "provbind_over_tetragon": vs_tetragon,
+            "tradeoff": trade, "oh01": oh01, "failed": failed, "her_et_al_udp": her}
 
 
 def fmt(v, unit=""):
@@ -249,12 +268,14 @@ def render(doc) -> str:
         out.append(f"| {e['metric']} | " + " | ".join(
             f"{fmt((e.get('spread') or {}).get(c, (None, None))[0])} – {fmt((e.get('spread') or {}).get(c, (None, None))[1])}"
             for c in cs) + " |")
-    out += ["", "| Configuration | monitor CPU (% of one core) | monitor memory (MB) | host CPU busy (%) |",
-            "|---|---|---|---|"]
-    for c in cs:
-        m = doc["cpu"].get(c, {})
-        out.append(f"| {c} | {fmt(m.get('monitor_cpu_pct'))} | {fmt(m.get('monitor_rss_mb'))} | "
-                   f"{fmt(m.get('host_busy_pct'))} |")
+    kinds = set(doc.get("kinds") or [e["kind"] for e in doc["table"]] + ["cpu"])
+    if "cpu" in kinds:
+        out += ["", "| Configuration | monitor CPU (% of one core) | monitor memory (MB) | host CPU busy (%) |",
+                "|---|---|---|---|"]
+        for c in cs:
+            m = doc["cpu"].get(c, {})
+            out.append(f"| {c} | {fmt(m.get('monitor_cpu_pct'))} | {fmt(m.get('monitor_rss_mb'))} | "
+                       f"{fmt(m.get('host_busy_pct'))} |")
     if any(doc["cpu"].get(c, {}).get("top") for c in cs):
         out += ["", "Top CPU users in the last repetition of each configuration (% of one core):", ""]
         for c in cs:
@@ -266,15 +287,29 @@ def render(doc) -> str:
         ok_app = "within" if v["app_within_threshold"] else "OVER"
         ok_mic = "within" if v["micro_within_threshold"] else "over"
         app_s = (f"{fmt(v['worst_app_overhead_pct'], '%')} ({ok_app} {th:.0f}%)"
-                 if v["worst_app_overhead_pct"] is not None else "no data (the workloads failed)")
+                 if v["worst_app_overhead_pct"] is not None
+                 else "no data (the workloads failed)" if kinds & {"mix", "cache"} else "not run in this test")
         mic_s = (f"{fmt(v['worst_micro_overhead_pct'], '%')} ({ok_mic} {th:.0f}%)"
-                 if v["worst_micro_overhead_pct"] is not None else "no data (the workload failed)")
+                 if v["worst_micro_overhead_pct"] is not None
+                 else "no data (the workload failed)" if "micro" in kinds else "not run in this test")
         out.append(f"- **{c}**: worst application overhead {app_s}; worst-case micro-benchmark {mic_s}.")
     if doc["provbind_minus_falco"]:
         out += ["", "## PROVBIND against Falco", "", "| Metric | PROVBIND overhead minus Falco overhead |",
                 "|---|---|"]
         for k, v in doc["provbind_minus_falco"].items():
             out.append(f"| {k} | {fmt(v, '' if 'CPU,' in k else ' points')} |")
+    if doc.get("her_et_al_udp"):
+        out += ["", "## Network test against Her et al. (IEEE Access 2025)", "",
+                "Her et al. time socket() + sendto() for 100,000 UDP packets, 10 times per tool, on one Xeon node "
+                "(their udp.c). Ours runs the same loop in Python inside the demo pod, to a socket in the pod "
+                "instead of a public DNS server. Their Tetragon is the default install; our `tetragon` "
+                "configuration carries PROVBIND's policies. Compare their figures with our Falco first: it shows "
+                "how far this setup reproduces theirs.", "",
+                "| System | Overhead on our VM | Her et al., no policy | Her et al., with a UDP policy |",
+                "|---|---|---|---|"]
+        for h in doc["her_et_al_udp"]:
+            out.append(f"| {h['system']} | {fmt(h['ours_pct'], '%')} | {fmt(h['theirs_without_policy_pct'], '%')} | "
+                       f"{fmt(h['theirs_with_policy_pct'], '%')} |")
     if doc.get("provbind_over_tetragon"):
         out += ["", "## PROVBIND over the existing runtime collection (Tetragon with the same policies)", "",
                 "The paper's evaluation plan reports overhead relative to the runtime collection, not to an "
@@ -310,7 +345,7 @@ def main(argv=None) -> int:
     r.add_argument("--out", required=True)
     r.add_argument("--config", required=True, choices=CONFIGS)
     r.add_argument("--rep", type=int, required=True)
-    r.add_argument("--kind", required=True, choices=("mix", "cache", "micro", "cpu"))
+    r.add_argument("--kind", required=True, choices=("mix", "cache", "micro", "cpu", "udp"))
     p = sub.add_parser("report")
     p.add_argument("--dir", required=True, help="the results folder with overhead.jsonl")
     p.add_argument("--comparison", help="COMPARISON.json of the comparison run (accuracy beside cost)")

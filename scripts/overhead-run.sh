@@ -21,6 +21,11 @@
 #    with the CPU and memory of every monitor sampled around them.
 # 2. The report: $OUT_RUN/results/OVERHEAD.md (and .json), overhead against `none`, PROVBIND minus Falco,
 #    the verdict against THRESHOLD (20%), and the cost beside the comparison run's accuracy.
+# WORKLOADS picks the workloads (default "mix cache micro", as above). WORKLOADS=udp runs only Her et al.'s
+# network test (eval/udp_bench.py: UDP_PACKETS sends, UDP_ITERATIONS times, per configuration), and the
+# report adds their published figures beside ours. The network test, about 20 minutes:
+#   POLICY_SET=opt WORKLOADS=udp SKIP_PREP=1 PROVBIND_RUN=./run-final OUT_RUN=./run-network \
+#     DEMO_REF=<registry>/demo-app@sha256:<hex> scripts/overhead-run.sh
 # At the end both DaemonSets are scheduled again, whatever happened. Nothing here is an attack.
 # Do not type in the terminal, run kubectl exec, or take a VM snapshot while it runs.
 set -euo pipefail
@@ -54,6 +59,10 @@ PDIR=node/tetragon; [ "$POLICY_SET" = opt ] && PDIR=node/tetragon/opt
 : "${SKIP_PREP:=0}"                         # 1 = skip steps 0, 0b, 0c (an ablation run reuses them)
 : "${NODE_MLB:=1}"                          # 0 = the provbind configuration's node runs without ML-B
 : "${PREP_RUNS:=5}"                         # cold compiles of the image for PROVBIND's preparation time
+: "${WORKLOADS:=mix cache micro}"           # add or use `udp` for Her et al.'s network test
+: "${UDP_PACKETS:=100000}"                  # Her et al.: 100,000 UDP sends ...
+: "${UDP_ITERATIONS:=10}"                   # ... timed 10 times
+has() { case " $WORKLOADS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 LOADNS=provbind-load
 RES="$OUT_RUN/results"; LOGS="$OUT_RUN/logs"; ROWS="$RES/overhead.jsonl"
 URL="http://$DEPLOY.$NAMESPACE.svc.cluster.local:8080"
@@ -164,6 +173,9 @@ client() {    # SECONDS MIX
 micro() {
   kubectl -n "$NAMESPACE" exec -i "deploy/$DEPLOY" -- python3 - "$FILE_OPS" "$SPAWNS" < eval/overhead_micro.py
 }
+udp() {
+  kubectl -n "$NAMESPACE" exec -i "deploy/$DEPLOY" -- python3 - "$UDP_PACKETS" "$UDP_ITERATIONS" < eval/udp_bench.py
+}
 
 if [ "$SKIP_PREP" != 1 ]; then
 # --- 0. PROVBIND's own cost from the comparison run's files ----------------------------------------
@@ -239,8 +251,11 @@ ensure_loadgen() {
   fi
   kubectl -n "$LOADNS" wait --for=condition=Ready pod/loadgen --timeout=180s >/dev/null
 }
-ensure_loadgen
-client 5 mix > "$LOGS/connectivity.json" && echo "  client reaches $URL: $(cat "$LOGS/connectivity.json")"
+APP_LOAD=0; { has mix || has cache; } && APP_LOAD=1   # the request workloads need the load pod
+if [ "$APP_LOAD" = 1 ]; then
+  ensure_loadgen
+  client 5 mix > "$LOGS/connectivity.json" && echo "  client reaches $URL: $(cat "$LOGS/connectivity.json")"
+fi
 
 # Neo4j serves only offline attribution (alerts/attribute.py), which no configuration here runs; a JVM in
 # the background can take a whole core at random (it did on 5 October), so it is paused for every
@@ -257,20 +272,32 @@ for rep in $(seq 1 "$REPS"); do
   for cfg in $order; do
     step "rep $rep/$REPS: $cfg"
     configure "$cfg"
-    ensure_loadgen
-    client 10 mix > /dev/null || true                                   # warm the path, discarded
-    python3 -m eval.overhead sample > "$LOGS/before.json"
-    # A failed workload is recorded without numbers and the run goes on (the report skips it).
-    { client "$MIX_S" mix || true; }      | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind mix
-    { client "$CACHE_S" /cache || true; } | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind cache
-    # CPU and memory over the application workloads only: the micro-benchmark's tight loops would inflate them.
-    python3 -m eval.overhead sample > "$LOGS/after.json"
-    python3 -m eval.overhead cpu --before "$LOGS/before.json" --after "$LOGS/after.json" \
-      | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind cpu
-    { micro || true; }                    | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind micro
-    tail -n 4 "$ROWS" | python3 -c "import sys,json
+    before_rows=0; [ -f "$ROWS" ] && before_rows=$(wc -l < "$ROWS")
+    if [ "$APP_LOAD" = 1 ]; then
+      ensure_loadgen
+      client 10 mix > /dev/null || true                                 # warm the path, discarded
+      python3 -m eval.overhead sample > "$LOGS/before.json"
+      # A failed workload is recorded without numbers and the run goes on (the report skips it).
+      if has mix; then
+        { client "$MIX_S" mix || true; }      | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind mix
+      fi
+      if has cache; then
+        { client "$CACHE_S" /cache || true; } | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind cache
+      fi
+      # CPU and memory over the application workloads only: the micro-benchmark's tight loops would inflate them.
+      python3 -m eval.overhead sample > "$LOGS/after.json"
+      python3 -m eval.overhead cpu --before "$LOGS/before.json" --after "$LOGS/after.json" \
+        | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind cpu
+    fi
+    if has micro; then
+      { micro || true; }                  | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind micro
+    fi
+    if has udp; then
+      { udp || true; }                    | python3 -m eval.overhead record --out "$ROWS" --config "$cfg" --rep "$rep" --kind udp
+    fi
+    [ -f "$ROWS" ] && tail -n "+$((before_rows + 1))" "$ROWS" | python3 -c "import sys,json
 for l in sys.stdin:
-    d=json.loads(l); print('  ', d['kind'], {k: d[k] for k in ('p50_ms','p95_ms','rps','file_op_us','spawn_ms','monitor_cpu_pct') if k in d})"
+    d=json.loads(l); print('  ', d['kind'], {k: d[k] for k in ('p50_ms','p95_ms','rps','file_op_us','spawn_ms','udp_us','monitor_cpu_pct') if k in d})"
   done
 done
 

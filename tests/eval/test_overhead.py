@@ -109,3 +109,57 @@ def test_missing_numbers_are_not_called_over_the_limit():
             {"config": "provbind", "rep": 1, "kind": "mix", "failed": True}]
     text = overhead.render(overhead.build(rows))
     assert "worst application overhead no data" in text
+
+
+def udp_rows():
+    out = []
+    for cfg, us in (("none", 4.0), ("falco", 4.8), ("tetragon", 4.1), ("provbind", 4.2)):
+        for rep in (1, 2, 3):
+            out.append({"config": cfg, "rep": rep, "kind": "udp", "udp_us": us,
+                        "udp_packets": 100000, "udp_iterations": 10})
+    return out
+
+
+def test_network_test_alone_reports_udp_and_her_et_al():
+    doc = overhead.build(udp_rows())
+    assert [e["kind"] for e in doc["table"]] == ["udp"]          # no empty rows for workloads not run
+    udp = doc["table"][0]
+    assert udp["overhead_pct"]["falco"] == 20.0 and udp["overhead_pct"]["provbind"] == 5.0
+    her = {h["system"]: h for h in doc["her_et_al_udp"]}
+    assert her["Falco"]["ours_pct"] == 20.0 and her["Falco"]["theirs_without_policy_pct"] == 19.93
+    assert her["PROVBIND"]["theirs_with_policy_pct"] is None and her["KubeArmor"]["ours_pct"] is None
+    text = overhead.render(doc)
+    assert "Network test against Her et al." in text and "| Falco | 20.00% | 19.93% | 24.77% |" in text
+    assert "not run in this test" in text and "monitor CPU (% of one core)" not in text
+
+
+def test_udp_rows_beside_the_usual_workloads_do_not_change_them():
+    doc = overhead.build(rows() + udp_rows())
+    kinds = [e["kind"] for e in doc["table"]]
+    assert kinds.count("udp") == 1 and kinds[:3] == ["mix", "mix", "mix"]
+    assert doc["verdict"]["provbind"]["worst_app_overhead_pct"] == 16.7      # as without the udp rows
+
+
+def test_reports_without_udp_rows_have_no_network_section():
+    doc = overhead.build(rows())
+    assert doc["her_et_al_udp"] is None and "udp" not in [e["kind"] for e in doc["table"]]
+    assert "Her et al." not in overhead.render(doc)
+
+
+def test_record_accepts_the_udp_kind(tmp_path, monkeypatch):
+    import io
+    out = tmp_path / "overhead.jsonl"
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"udp_us": 4.0, "udp_packets": 10}) + "\n"))
+    assert overhead.main(["record", "--out", str(out), "--config", "none", "--rep", "1", "--kind", "udp"]) == 0
+    assert json.loads(out.read_text())["kind"] == "udp"
+
+
+def test_udp_bench_runs_and_reports_per_packet_time():
+    import subprocess
+    import sys
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[2] / "eval" / "udp_bench.py"
+    out = subprocess.run([sys.executable, str(script), "200", "3"], capture_output=True, text=True, timeout=60)
+    d = json.loads(out.stdout.strip().splitlines()[-1])
+    assert d["udp_packets"] == 200 and d["udp_iterations"] == 3 and len(d["udp_iteration_s"]) == 3
+    assert d["udp_us"] > 0 and d["udp_failed"] == 0

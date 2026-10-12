@@ -48,6 +48,9 @@ PDIR=node/tetragon; [ "$POLICY_SET" = opt ] && PDIR=node/tetragon/opt
 : "${BASELINE_CYCLES:=3}"
 : "${STARTUP_SECONDS:=30}"     # Confine watches the first 30 s
 : "${DOCKER_SECCOMP:=eval/baselines/docker-seccomp.json}"   # optional; DeSFAM template
+: "${ONLY:=}"                 # scenario names to run, space-separated (default: every scenario), e.g. the
+                              # benign ones for extra false-alarm runs (docs/NEXT-EXPERIMENTS.md)
+want() { [ -z "$ONLY" ] && return 0; case " $ONLY " in *" $1 "*) return 0 ;; esac; return 1; }
 
 TRACES="$PROVBIND_RUN/traces"
 BASE="$TRACES/baseline"
@@ -180,30 +183,30 @@ fi
 
 step "3. runtime + benign scenarios, $ROUNDS rounds each (Tier 1 + Tier 2)"
 for k in $(seq 1 "$ROUNDS"); do
-  run_traced benign-1        "$k" benign
-  run_traced benign-traffic  "$k" benign-traffic
-  run_traced ph4-14          "$k" ph4-14
-  run_traced attack-1        "$k" attack
-  [ "$ATTACK2" = 1 ] && run_traced attack-2 "$k" attack2
-  run_traced trust-1         "$k" trust 1
-  run_traced trust-2         "$k" trust2 1
-  run_traced rk-2            "$k" rk2
-  run_traced rk-3            "$k" rk3
-  run_traced ru-3            "$k" ru3
-  run_traced ru-4            "$k" ru4
-  run_traced ru-5            "$k" ru5
-  run_traced benign-3        "$k" benign-dns
-  run_traced benign-4        "$k" benign-vol
+  if want benign-1; then run_traced benign-1        "$k" benign; fi
+  if want benign-traffic; then run_traced benign-traffic  "$k" benign-traffic; fi
+  if want ph4-14; then run_traced ph4-14          "$k" ph4-14; fi
+  if want attack-1; then run_traced attack-1        "$k" attack; fi
+  if [ "$ATTACK2" = 1 ] && want attack-2; then run_traced attack-2 "$k" attack2; fi
+  if want trust-1; then run_traced trust-1         "$k" trust 1; fi
+  if want trust-2; then run_traced trust-2         "$k" trust2 1; fi
+  if want rk-2; then run_traced rk-2            "$k" rk2; fi
+  if want rk-3; then run_traced rk-3            "$k" rk3; fi
+  if want ru-3; then run_traced ru-3            "$k" ru3; fi
+  if want ru-4; then run_traced ru-4            "$k" ru4; fi
+  if want ru-5; then run_traced ru-5            "$k" ru5; fi
+  if want benign-3; then run_traced benign-3        "$k" benign-dns; fi
+  if want benign-4; then run_traced benign-4        "$k" benign-vol; fi
 done
 
 if [ "$ADMISSION" = 1 ]; then
   step "4. admission scenarios (own short-lived deployments; not syscall-traced)"
   for k in $(seq 1 "$ROUNDS"); do
-    step "round $k: A-B1 benign deploy";  make --no-print-directory ab1 || true; sleep "$GAP"
-    step "round $k: A-K1 advisory-first"; make --no-print-directory ak1 || true; sleep "$GAP"
-    step "round $k: A-K2 unsigned";       make --no-print-directory ak2 || true; sleep "$GAP"
-    step "round $k: A-K3 revoked key";    make --no-print-directory ak3 || true; sleep "$GAP"
-    step "round $k: A-U2 build-time";     make --no-print-directory au2-deploy || true; sleep "$GAP"
+    if want ab-1; then step "round $k: A-B1 benign deploy";  make --no-print-directory ab1 || true; sleep "$GAP"; fi
+    if want ak-1; then step "round $k: A-K1 advisory-first"; make --no-print-directory ak1 || true; sleep "$GAP"; fi
+    if want ak-2; then step "round $k: A-K2 unsigned";       make --no-print-directory ak2 || true; sleep "$GAP"; fi
+    if want ak-3; then step "round $k: A-K3 revoked key";    make --no-print-directory ak3 || true; sleep "$GAP"; fi
+    if want au-2; then step "round $k: A-U2 build-time";     make --no-print-directory au2-deploy || true; sleep "$GAP"; fi
   done
 fi
 
