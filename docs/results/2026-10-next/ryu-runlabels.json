@@ -1,0 +1,1068 @@
+{
+  "system": "Ryu-E",
+  "estimated": true,
+  "capabilities": {
+    "admission_check": false,
+    "runtime_detection": true,
+    "prevents": false,
+    "alert_text": true,
+    "attribution_level": 1,
+    "trust_reevaluation": false
+  },
+  "published_reference": {
+    "host_accuracy": 0.9839,
+    "host_f1": 0.9837,
+    "flow_accuracy": 0.8749,
+    "best_model": "decision tree",
+    "scenarios": "6 malicious, 4 benign",
+    "split": "random 70:30 of windows",
+    "source": "Ryu et al., Computers, Materials & Continua 86(3), 2026, Tables 3 and 4"
+  },
+  "design": {
+    "window": 5,
+    "stride": 1,
+    "features": "x86-64 call numbers",
+    "model": "decision tree",
+    "labels": "run",
+    "train_attacks": [
+      "rk-2",
+      "rk-3"
+    ],
+    "trace_rule": "fraction",
+    "baseline_recordings": [
+      "benign-1.txt",
+      "benign-2.txt",
+      "benign-3.txt"
+    ],
+    "training_attack_runs": [
+      "rk-2-1.txt",
+      "rk-2-2.txt",
+      "rk-2-3.txt",
+      "rk-2-4.txt",
+      "rk-2-5.txt",
+      "rk-3-1.txt",
+      "rk-3-2.txt",
+      "rk-3-3.txt",
+      "rk-3-4.txt",
+      "rk-3-5.txt"
+    ]
+  },
+  "calibration": {
+    "threshold": 0.001336,
+    "baseline_shares": [
+      0.001336,
+      0.001293,
+      0.001267
+    ],
+    "how": "leave one recording out"
+  },
+  "unknown_syscalls": [],
+  "results": {
+    "attack-1-1.txt": {
+      "detected": true,
+      "malicious_share": 0.623762,
+      "malicious_windows": 252,
+      "windows": 404,
+      "distinct_windows": 139,
+      "predicted": {
+        "benign": 152,
+        "rk-2": 28,
+        "rk-3": 224
+      },
+      "model": "all training data"
+    },
+    "attack-1-2.txt": {
+      "detected": true,
+      "malicious_share": 0.584615,
+      "malicious_windows": 114,
+      "windows": 195,
+      "distinct_windows": 77,
+      "predicted": {
+        "benign": 81,
+        "rk-2": 16,
+        "rk-3": 98
+      },
+      "model": "all training data"
+    },
+    "attack-1-3.txt": {
+      "detected": true,
+      "malicious_share": 0.580311,
+      "malicious_windows": 112,
+      "windows": 193,
+      "distinct_windows": 75,
+      "predicted": {
+        "benign": 81,
+        "rk-2": 14,
+        "rk-3": 98
+      },
+      "model": "all training data"
+    },
+    "attack-1-4.txt": {
+      "detected": true,
+      "malicious_share": 0.57732,
+      "malicious_windows": 112,
+      "windows": 194,
+      "distinct_windows": 76,
+      "predicted": {
+        "benign": 82,
+        "rk-2": 14,
+        "rk-3": 98
+      },
+      "model": "all training data"
+    },
+    "attack-1-5.txt": {
+      "detected": true,
+      "malicious_share": 0.572165,
+      "malicious_windows": 111,
+      "windows": 194,
+      "distinct_windows": 77,
+      "predicted": {
+        "benign": 83,
+        "rk-2": 13,
+        "rk-3": 98
+      },
+      "model": "all training data"
+    },
+    "attack-2-1.txt": {
+      "detected": true,
+      "malicious_share": 0.345681,
+      "malicious_windows": 1801,
+      "windows": 5210,
+      "distinct_windows": 44,
+      "predicted": {
+        "benign": 3409,
+        "rk-2": 603,
+        "rk-3": 1198
+      },
+      "model": "all training data"
+    },
+    "attack-2-2.txt": {
+      "detected": true,
+      "malicious_share": 0.345615,
+      "malicious_windows": 1801,
+      "windows": 5211,
+      "distinct_windows": 45,
+      "predicted": {
+        "benign": 3410,
+        "rk-2": 604,
+        "rk-3": 1197
+      },
+      "model": "all training data"
+    },
+    "attack-2-3.txt": {
+      "detected": true,
+      "malicious_share": 0.345615,
+      "malicious_windows": 1801,
+      "windows": 5211,
+      "distinct_windows": 45,
+      "predicted": {
+        "benign": 3410,
+        "rk-2": 604,
+        "rk-3": 1197
+      },
+      "model": "all training data"
+    },
+    "attack-2-4.txt": {
+      "detected": true,
+      "malicious_share": 0.345615,
+      "malicious_windows": 1801,
+      "windows": 5211,
+      "distinct_windows": 45,
+      "predicted": {
+        "benign": 3410,
+        "rk-2": 604,
+        "rk-3": 1197
+      },
+      "model": "all training data"
+    },
+    "attack-2-5.txt": {
+      "detected": true,
+      "malicious_share": 0.345615,
+      "malicious_windows": 1801,
+      "windows": 5211,
+      "distinct_windows": 45,
+      "predicted": {
+        "benign": 3410,
+        "rk-2": 604,
+        "rk-3": 1197
+      },
+      "model": "all training data"
+    },
+    "benign-1-1.txt": {
+      "detected": true,
+      "malicious_share": 0.875,
+      "malicious_windows": 350,
+      "windows": 400,
+      "distinct_windows": 181,
+      "predicted": {
+        "benign": 50,
+        "rk-2": 110,
+        "rk-3": 240
+      },
+      "model": "all training data"
+    },
+    "benign-1-2.txt": {
+      "detected": true,
+      "malicious_share": 0.87218,
+      "malicious_windows": 348,
+      "windows": 399,
+      "distinct_windows": 183,
+      "predicted": {
+        "benign": 51,
+        "rk-2": 106,
+        "rk-3": 242
+      },
+      "model": "all training data"
+    },
+    "benign-1-3.txt": {
+      "detected": true,
+      "malicious_share": 0.877193,
+      "malicious_windows": 350,
+      "windows": 399,
+      "distinct_windows": 170,
+      "predicted": {
+        "benign": 49,
+        "rk-2": 108,
+        "rk-3": 242
+      },
+      "model": "all training data"
+    },
+    "benign-1-4.txt": {
+      "detected": true,
+      "malicious_share": 0.872818,
+      "malicious_windows": 350,
+      "windows": 401,
+      "distinct_windows": 171,
+      "predicted": {
+        "benign": 51,
+        "rk-2": 108,
+        "rk-3": 242
+      },
+      "model": "all training data"
+    },
+    "benign-1-5.txt": {
+      "detected": true,
+      "malicious_share": 0.875,
+      "malicious_windows": 350,
+      "windows": 400,
+      "distinct_windows": 171,
+      "predicted": {
+        "benign": 50,
+        "rk-2": 108,
+        "rk-3": 242
+      },
+      "model": "all training data"
+    },
+    "benign-3-1.txt": {
+      "detected": true,
+      "malicious_share": 0.48996,
+      "malicious_windows": 122,
+      "windows": 249,
+      "distinct_windows": 75,
+      "predicted": {
+        "benign": 127,
+        "rk-2": 34,
+        "rk-3": 88
+      },
+      "model": "all training data"
+    },
+    "benign-3-2.txt": {
+      "detected": true,
+      "malicious_share": 0.470833,
+      "malicious_windows": 113,
+      "windows": 240,
+      "distinct_windows": 72,
+      "predicted": {
+        "benign": 127,
+        "rk-2": 28,
+        "rk-3": 85
+      },
+      "model": "all training data"
+    },
+    "benign-3-3.txt": {
+      "detected": true,
+      "malicious_share": 0.466942,
+      "malicious_windows": 113,
+      "windows": 242,
+      "distinct_windows": 73,
+      "predicted": {
+        "benign": 129,
+        "rk-2": 28,
+        "rk-3": 85
+      },
+      "model": "all training data"
+    },
+    "benign-3-4.txt": {
+      "detected": true,
+      "malicious_share": 0.470833,
+      "malicious_windows": 113,
+      "windows": 240,
+      "distinct_windows": 72,
+      "predicted": {
+        "benign": 127,
+        "rk-2": 28,
+        "rk-3": 85
+      },
+      "model": "all training data"
+    },
+    "benign-3-5.txt": {
+      "detected": true,
+      "malicious_share": 0.46888,
+      "malicious_windows": 113,
+      "windows": 241,
+      "distinct_windows": 73,
+      "predicted": {
+        "benign": 128,
+        "rk-2": 28,
+        "rk-3": 85
+      },
+      "model": "all training data"
+    },
+    "benign-4-1.txt": {
+      "detected": true,
+      "malicious_share": 0.044118,
+      "malicious_windows": 3,
+      "windows": 68,
+      "distinct_windows": 37,
+      "predicted": {
+        "benign": 65,
+        "rk-2": 3
+      },
+      "model": "all training data"
+    },
+    "benign-4-2.txt": {
+      "detected": true,
+      "malicious_share": 0.044776,
+      "malicious_windows": 3,
+      "windows": 67,
+      "distinct_windows": 37,
+      "predicted": {
+        "benign": 64,
+        "rk-2": 3
+      },
+      "model": "all training data"
+    },
+    "benign-4-3.txt": {
+      "detected": true,
+      "malicious_share": 0.045455,
+      "malicious_windows": 3,
+      "windows": 66,
+      "distinct_windows": 36,
+      "predicted": {
+        "benign": 63,
+        "rk-2": 3
+      },
+      "model": "all training data"
+    },
+    "benign-4-4.txt": {
+      "detected": true,
+      "malicious_share": 0.045455,
+      "malicious_windows": 3,
+      "windows": 66,
+      "distinct_windows": 36,
+      "predicted": {
+        "benign": 63,
+        "rk-2": 3
+      },
+      "model": "all training data"
+    },
+    "benign-4-5.txt": {
+      "detected": true,
+      "malicious_share": 0.045455,
+      "malicious_windows": 3,
+      "windows": 66,
+      "distinct_windows": 36,
+      "predicted": {
+        "benign": 63,
+        "rk-2": 3
+      },
+      "model": "all training data"
+    },
+    "benign-traffic-1.txt": {
+      "detected": true,
+      "malicious_share": 0.107969,
+      "malicious_windows": 42,
+      "windows": 389,
+      "distinct_windows": 38,
+      "predicted": {
+        "benign": 347,
+        "rk-2": 42
+      },
+      "model": "all training data"
+    },
+    "benign-traffic-2.txt": {
+      "detected": true,
+      "malicious_share": 0.107417,
+      "malicious_windows": 42,
+      "windows": 391,
+      "distinct_windows": 39,
+      "predicted": {
+        "benign": 349,
+        "rk-2": 42
+      },
+      "model": "all training data"
+    },
+    "benign-traffic-3.txt": {
+      "detected": true,
+      "malicious_share": 0.107692,
+      "malicious_windows": 42,
+      "windows": 390,
+      "distinct_windows": 39,
+      "predicted": {
+        "benign": 348,
+        "rk-2": 42
+      },
+      "model": "all training data"
+    },
+    "benign-traffic-4.txt": {
+      "detected": true,
+      "malicious_share": 0.107969,
+      "malicious_windows": 42,
+      "windows": 389,
+      "distinct_windows": 38,
+      "predicted": {
+        "benign": 347,
+        "rk-2": 42
+      },
+      "model": "all training data"
+    },
+    "benign-traffic-5.txt": {
+      "detected": true,
+      "malicious_share": 0.107417,
+      "malicious_windows": 42,
+      "windows": 391,
+      "distinct_windows": 39,
+      "predicted": {
+        "benign": 349,
+        "rk-2": 42
+      },
+      "model": "all training data"
+    },
+    "ph4-14-1.txt": {
+      "detected": true,
+      "malicious_share": 0.609195,
+      "malicious_windows": 53,
+      "windows": 87,
+      "distinct_windows": 59,
+      "predicted": {
+        "benign": 34,
+        "rk-2": 30,
+        "rk-3": 23
+      },
+      "model": "all training data"
+    },
+    "ph4-14-2.txt": {
+      "detected": true,
+      "malicious_share": 0.602273,
+      "malicious_windows": 53,
+      "windows": 88,
+      "distinct_windows": 59,
+      "predicted": {
+        "benign": 35,
+        "rk-2": 30,
+        "rk-3": 23
+      },
+      "model": "all training data"
+    },
+    "ph4-14-3.txt": {
+      "detected": true,
+      "malicious_share": 0.602273,
+      "malicious_windows": 53,
+      "windows": 88,
+      "distinct_windows": 59,
+      "predicted": {
+        "benign": 35,
+        "rk-2": 30,
+        "rk-3": 23
+      },
+      "model": "all training data"
+    },
+    "ph4-14-4.txt": {
+      "detected": true,
+      "malicious_share": 0.609195,
+      "malicious_windows": 53,
+      "windows": 87,
+      "distinct_windows": 59,
+      "predicted": {
+        "benign": 34,
+        "rk-2": 30,
+        "rk-3": 23
+      },
+      "model": "all training data"
+    },
+    "ph4-14-5.txt": {
+      "detected": true,
+      "malicious_share": 0.602273,
+      "malicious_windows": 53,
+      "windows": 88,
+      "distinct_windows": 59,
+      "predicted": {
+        "benign": 35,
+        "rk-2": 30,
+        "rk-3": 23
+      },
+      "model": "all training data"
+    },
+    "rk-2-1.txt": {
+      "detected": true,
+      "malicious_share": 0.649485,
+      "malicious_windows": 126,
+      "windows": 194,
+      "distinct_windows": 128,
+      "predicted": {
+        "benign": 68,
+        "rk-2": 27,
+        "rk-3": 99
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-2-2.txt": {
+      "detected": true,
+      "malicious_share": 0.49505,
+      "malicious_windows": 50,
+      "windows": 101,
+      "distinct_windows": 62,
+      "predicted": {
+        "benign": 51,
+        "rk-2": 30,
+        "rk-3": 20
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-2-3.txt": {
+      "detected": true,
+      "malicious_share": 0.49505,
+      "malicious_windows": 50,
+      "windows": 101,
+      "distinct_windows": 62,
+      "predicted": {
+        "benign": 51,
+        "rk-2": 30,
+        "rk-3": 20
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-2-4.txt": {
+      "detected": true,
+      "malicious_share": 0.490196,
+      "malicious_windows": 50,
+      "windows": 102,
+      "distinct_windows": 63,
+      "predicted": {
+        "benign": 52,
+        "rk-2": 30,
+        "rk-3": 20
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-2-5.txt": {
+      "detected": true,
+      "malicious_share": 0.490196,
+      "malicious_windows": 50,
+      "windows": 102,
+      "distinct_windows": 63,
+      "predicted": {
+        "benign": 52,
+        "rk-2": 30,
+        "rk-3": 20
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-3-1.txt": {
+      "detected": true,
+      "malicious_share": 0.801923,
+      "malicious_windows": 417,
+      "windows": 520,
+      "distinct_windows": 253,
+      "predicted": {
+        "benign": 103,
+        "rk-2": 17,
+        "rk-3": 400
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-3-2.txt": {
+      "detected": true,
+      "malicious_share": 0.803468,
+      "malicious_windows": 417,
+      "windows": 519,
+      "distinct_windows": 256,
+      "predicted": {
+        "benign": 102,
+        "rk-2": 20,
+        "rk-3": 397
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-3-3.txt": {
+      "detected": true,
+      "malicious_share": 0.803468,
+      "malicious_windows": 417,
+      "windows": 519,
+      "distinct_windows": 252,
+      "predicted": {
+        "benign": 102,
+        "rk-2": 17,
+        "rk-3": 400
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-3-4.txt": {
+      "detected": true,
+      "malicious_share": 0.801923,
+      "malicious_windows": 417,
+      "windows": 520,
+      "distinct_windows": 253,
+      "predicted": {
+        "benign": 103,
+        "rk-2": 17,
+        "rk-3": 400
+      },
+      "model": "leave-one-run-out"
+    },
+    "rk-3-5.txt": {
+      "detected": true,
+      "malicious_share": 0.803468,
+      "malicious_windows": 417,
+      "windows": 519,
+      "distinct_windows": 253,
+      "predicted": {
+        "benign": 102,
+        "rk-2": 17,
+        "rk-3": 400
+      },
+      "model": "leave-one-run-out"
+    },
+    "ru-3-1.txt": {
+      "detected": true,
+      "malicious_share": 0.075269,
+      "malicious_windows": 7,
+      "windows": 93,
+      "distinct_windows": 24,
+      "predicted": {
+        "benign": 86,
+        "rk-2": 3,
+        "rk-3": 4
+      },
+      "model": "all training data"
+    },
+    "ru-3-2.txt": {
+      "detected": true,
+      "malicious_share": 0.075269,
+      "malicious_windows": 7,
+      "windows": 93,
+      "distinct_windows": 24,
+      "predicted": {
+        "benign": 86,
+        "rk-2": 3,
+        "rk-3": 4
+      },
+      "model": "all training data"
+    },
+    "ru-3-3.txt": {
+      "detected": true,
+      "malicious_share": 0.076087,
+      "malicious_windows": 7,
+      "windows": 92,
+      "distinct_windows": 23,
+      "predicted": {
+        "benign": 85,
+        "rk-2": 3,
+        "rk-3": 4
+      },
+      "model": "all training data"
+    },
+    "ru-3-4.txt": {
+      "detected": true,
+      "malicious_share": 0.075269,
+      "malicious_windows": 7,
+      "windows": 93,
+      "distinct_windows": 24,
+      "predicted": {
+        "benign": 86,
+        "rk-2": 3,
+        "rk-3": 4
+      },
+      "model": "all training data"
+    },
+    "ru-3-5.txt": {
+      "detected": true,
+      "malicious_share": 0.076087,
+      "malicious_windows": 7,
+      "windows": 92,
+      "distinct_windows": 23,
+      "predicted": {
+        "benign": 85,
+        "rk-2": 3,
+        "rk-3": 4
+      },
+      "model": "all training data"
+    },
+    "ru-4-1.txt": {
+      "detected": true,
+      "malicious_share": 0.737569,
+      "malicious_windows": 267,
+      "windows": 362,
+      "distinct_windows": 161,
+      "predicted": {
+        "benign": 95,
+        "rk-2": 41,
+        "rk-3": 226
+      },
+      "model": "all training data"
+    },
+    "ru-4-2.txt": {
+      "detected": true,
+      "malicious_share": 0.73607,
+      "malicious_windows": 251,
+      "windows": 341,
+      "distinct_windows": 154,
+      "predicted": {
+        "benign": 90,
+        "rk-2": 40,
+        "rk-3": 211
+      },
+      "model": "all training data"
+    },
+    "ru-4-3.txt": {
+      "detected": true,
+      "malicious_share": 0.735465,
+      "malicious_windows": 253,
+      "windows": 344,
+      "distinct_windows": 157,
+      "predicted": {
+        "benign": 91,
+        "rk-2": 41,
+        "rk-3": 212
+      },
+      "model": "all training data"
+    },
+    "ru-4-4.txt": {
+      "detected": true,
+      "malicious_share": 0.733333,
+      "malicious_windows": 253,
+      "windows": 345,
+      "distinct_windows": 157,
+      "predicted": {
+        "benign": 92,
+        "rk-2": 40,
+        "rk-3": 213
+      },
+      "model": "all training data"
+    },
+    "ru-4-5.txt": {
+      "detected": true,
+      "malicious_share": 0.732558,
+      "malicious_windows": 252,
+      "windows": 344,
+      "distinct_windows": 157,
+      "predicted": {
+        "benign": 92,
+        "rk-2": 39,
+        "rk-3": 213
+      },
+      "model": "all training data"
+    },
+    "ru-5-1.txt": {
+      "detected": true,
+      "malicious_share": 0.384615,
+      "malicious_windows": 70,
+      "windows": 182,
+      "distinct_windows": 58,
+      "predicted": {
+        "benign": 112,
+        "rk-2": 8,
+        "rk-3": 62
+      },
+      "model": "all training data"
+    },
+    "ru-5-2.txt": {
+      "detected": true,
+      "malicious_share": 0.338346,
+      "malicious_windows": 45,
+      "windows": 133,
+      "distinct_windows": 51,
+      "predicted": {
+        "benign": 88,
+        "rk-2": 8,
+        "rk-3": 37
+      },
+      "model": "all training data"
+    },
+    "ru-5-3.txt": {
+      "detected": true,
+      "malicious_share": 0.338346,
+      "malicious_windows": 45,
+      "windows": 133,
+      "distinct_windows": 51,
+      "predicted": {
+        "benign": 88,
+        "rk-2": 8,
+        "rk-3": 37
+      },
+      "model": "all training data"
+    },
+    "ru-5-4.txt": {
+      "detected": true,
+      "malicious_share": 0.340909,
+      "malicious_windows": 45,
+      "windows": 132,
+      "distinct_windows": 50,
+      "predicted": {
+        "benign": 87,
+        "rk-2": 8,
+        "rk-3": 37
+      },
+      "model": "all training data"
+    },
+    "ru-5-5.txt": {
+      "detected": true,
+      "malicious_share": 0.338346,
+      "malicious_windows": 45,
+      "windows": 133,
+      "distinct_windows": 50,
+      "predicted": {
+        "benign": 88,
+        "rk-2": 8,
+        "rk-3": 37
+      },
+      "model": "all training data"
+    },
+    "trust-1-1.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 72,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 72
+      },
+      "model": "all training data"
+    },
+    "trust-1-2.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 72,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 72
+      },
+      "model": "all training data"
+    },
+    "trust-1-3.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 71,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 71
+      },
+      "model": "all training data"
+    },
+    "trust-1-4.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 71,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 71
+      },
+      "model": "all training data"
+    },
+    "trust-1-5.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 71,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 71
+      },
+      "model": "all training data"
+    },
+    "trust-2-1.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 71,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 71
+      },
+      "model": "all training data"
+    },
+    "trust-2-2.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 72,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 72
+      },
+      "model": "all training data"
+    },
+    "trust-2-3.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 72,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 72
+      },
+      "model": "all training data"
+    },
+    "trust-2-4.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 71,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 71
+      },
+      "model": "all training data"
+    },
+    "trust-2-5.txt": {
+      "detected": false,
+      "malicious_share": 0.0,
+      "malicious_windows": 0,
+      "windows": 72,
+      "distinct_windows": 1,
+      "predicted": {
+        "benign": 72
+      },
+      "model": "all training data"
+    }
+  },
+  "their_protocol": {
+    "windows": 46924,
+    "test_windows": 14142,
+    "classes": 15,
+    "accuracy": 0.7921,
+    "precision_weighted": 0.7825,
+    "recall_weighted": 0.7921,
+    "f1_weighted": 0.7636
+  },
+  "summary": {
+    "rows": 95,
+    "TP": 35,
+    "FP": 25,
+    "FN": 30,
+    "TN": 5,
+    "precision": 0.5833,
+    "recall": 0.5385,
+    "f1": 0.56,
+    "fpr": 0.8333,
+    "accuracy": 0.4211,
+    "known": [
+      10,
+      35
+    ],
+    "unknown": [
+      25,
+      30
+    ],
+    "others": {
+      "PROVBIND": {
+        "kind": "measured",
+        "TP": 50,
+        "FP": 0,
+        "FN": 15,
+        "TN": 30,
+        "precision": 1.0,
+        "recall": 0.7692,
+        "f1": 0.8695,
+        "fpr": 0.0,
+        "known": [
+          30,
+          35
+        ],
+        "unknown": [
+          20,
+          30
+        ]
+      },
+      "Falco": {
+        "kind": "measured",
+        "TP": 25,
+        "FP": 10,
+        "FN": 40,
+        "TN": 20,
+        "precision": 0.7143,
+        "recall": 0.3846,
+        "f1": 0.5,
+        "fpr": 0.3333,
+        "known": [
+          15,
+          35
+        ],
+        "unknown": [
+          10,
+          30
+        ]
+      },
+      "Confine-E": {
+        "kind": "estimated",
+        "TP": 0,
+        "FP": 5,
+        "FN": 65,
+        "TN": 25,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": null,
+        "fpr": 0.1667,
+        "known": [
+          0,
+          35
+        ],
+        "unknown": [
+          0,
+          30
+        ]
+      },
+      "DeSFAM-E": {
+        "kind": "estimated",
+        "TP": 34,
+        "FP": 23,
+        "FN": 31,
+        "TN": 7,
+        "precision": 0.5965,
+        "recall": 0.5231,
+        "f1": 0.5574,
+        "fpr": 0.7667,
+        "known": [
+          10,
+          35
+        ],
+        "unknown": [
+          24,
+          30
+        ]
+      },
+      "Sig-only": {
+        "kind": "derived",
+        "TP": 5,
+        "FP": 0,
+        "FN": 60,
+        "TN": 30,
+        "precision": 1.0,
+        "recall": 0.0769,
+        "f1": 0.1428,
+        "fpr": 0.0,
+        "known": [
+          5,
+          35
+        ],
+        "unknown": [
+          0,
+          30
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "threshold_pct": 20.0,
+  "configs": [
+    "none",
+    "falco",
+    "tetragon",
+    "provbind"
+  ],
+  "kinds": [
+    "udp"
+  ],
+  "repetitions": {
+    "none": 3,
+    "falco": 3,
+    "tetragon": 3,
+    "provbind": 3
+  },
+  "table": [
+    {
+      "metric": "UDP send, socket + sendto (us/packet)",
+      "kind": "udp",
+      "field": "udp_us",
+      "values": {
+        "none": 6.9935,
+        "falco": 8.5768,
+        "tetragon": 7.0594,
+        "provbind": 7.0614
+      },
+      "overhead_pct": {
+        "none": 0.0,
+        "falco": 22.6,
+        "tetragon": 0.9,
+        "provbind": 1.0
+      },
+      "spread": {
+        "none": [
+          6.952,
+          7.0389
+        ],
+        "falco": [
+          8.567,
+          8.6332
+        ],
+        "tetragon": [
+          6.9696,
+          7.071
+        ],
+        "provbind": [
+          6.9781,
+          7.0809
+        ]
+      }
+    }
+  ],
+  "cpu": {
+    "none": {
+      "monitor_cpu_pct": null,
+      "monitor_rss_mb": null,
+      "host_busy_pct": null,
+      "top": null
+    },
+    "falco": {
+      "monitor_cpu_pct": null,
+      "monitor_rss_mb": null,
+      "host_busy_pct": null,
+      "top": null
+    },
+    "tetragon": {
+      "monitor_cpu_pct": null,
+      "monitor_rss_mb": null,
+      "host_busy_pct": null,
+      "top": null
+    },
+    "provbind": {
+      "monitor_cpu_pct": null,
+      "monitor_rss_mb": null,
+      "host_busy_pct": null,
+      "top": null
+    }
+  },
+  "verdict": {
+    "provbind": {
+      "worst_app_overhead_pct": null,
+      "worst_micro_overhead_pct": null,
+      "app_within_threshold": false,
+      "micro_within_threshold": false
+    },
+    "falco": {
+      "worst_app_overhead_pct": null,
+      "worst_micro_overhead_pct": null,
+      "app_within_threshold": false,
+      "micro_within_threshold": false
+    },
+    "tetragon": {
+      "worst_app_overhead_pct": null,
+      "worst_micro_overhead_pct": null,
+      "app_within_threshold": false,
+      "micro_within_threshold": false
+    }
+  },
+  "provbind_minus_falco": {
+    "UDP send, socket + sendto (us/packet)": -21.6,
+    "monitor CPU, PROVBIND / Falco": null
+  },
+  "provbind_over_tetragon": {
+    "UDP send, socket + sendto (us/packet)": 0.0
+  },
+  "tradeoff": [
+    {
+      "system": "PROVBIND",
+      "f1": 0.8695,
+      "fpr": 0.0,
+      "fp": 0,
+      "tp": 50,
+      "worst_app_overhead_pct": null,
+      "worst_micro_overhead_pct": null,
+      "monitor_cpu_pct": null
+    },
+    {
+      "system": "Falco",
+      "f1": 0.5,
+      "fpr": 0.3333,
+      "fp": 10,
+      "tp": 25,
+      "worst_app_overhead_pct": null,
+      "worst_micro_overhead_pct": null,
+      "monitor_cpu_pct": null
+    }
+  ],
+  "oh01": null,
+  "failed": [],
+  "her_et_al_udp": [
+    {
+      "system": "PROVBIND",
+      "ours_pct": 1.0,
+      "theirs_without_policy_pct": null,
+      "theirs_with_policy_pct": null
+    },
+    {
+      "system": "Falco",
+      "ours_pct": 22.6,
+      "theirs_without_policy_pct": 19.93,
+      "theirs_with_policy_pct": 24.77
+    },
+    {
+      "system": "Tetragon",
+      "ours_pct": 0.9,
+      "theirs_without_policy_pct": 3.14,
+      "theirs_with_policy_pct": 72.92
+    },
+    {
+      "system": "Tracee",
+      "ours_pct": null,
+      "theirs_without_policy_pct": 1.48,
+      "theirs_with_policy_pct": 71.5
+    },
+    {
+      "system": "KubeArmor",
+      "ours_pct": null,
+      "theirs_without_policy_pct": 87.74,
+      "theirs_with_policy_pct": 88.59
+    }
+  ]
+}
