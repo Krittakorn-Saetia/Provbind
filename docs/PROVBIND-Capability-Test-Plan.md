@@ -606,8 +606,23 @@ The supervisor asked for 3–4 experiments PROVBIND wins, with 7–8 tested in t
 
 **Supporting:** E5 runtime cost on application requests (within 5% of Falco, worst +9.9% against no
 monitoring; monitor CPU 0.2% of a core against Falco's 8.2%), E6 check time per event (2.0 µs median),
-E7 Ryu-E (EV-08, new, no new runs), E8 Her et al.'s network test (OH-07, new). Optional: OH-08 (policy
-update time) and 60 more benign runs for a tighter false-alarm bound (90 runs: at most 3.3% at 95%).
+E7 Ryu-E (EV-08) and E8 Her et al.'s network test (OH-07), both won (results below). Optional: OH-08
+(policy update time) and 60 more benign runs for a tighter false-alarm bound (90 runs: at most 3.3% at 95%).
+
+**E7 and E8 results** (12 October 2026, demo VM; aggregates in `docs/results/2026-10-next/`):
+- E7, Ryu-E, trained on the three normal-traffic recordings and the known attacks rk-2 and rk-3, every
+  run scored out of sample: F1 0.58, with 35 attack runs caught (unknown 25/30, known 10/35) and 20 of
+  30 normal runs flagged; PROVBIND F1 0.87 with none flagged. Two sensitivity variants: the loosest run
+  rule (more than half of a run's windows) gives F1 0.33 (16 caught, 15 flagged); every window of an
+  attack run labelled as the attack, as Ryu et al. label, gives F1 0.56 (35 caught, 25 flagged). Their
+  own protocol (a random 70:30 split of windows) on our data: accuracy 0.79 (published: 0.98). Ryu-E and
+  DeSFAM-E catch more unknown attacks than PROVBIND (25 and 24 against 20 of 30) only by flagging most
+  normal runs: the precision claim of the draft's Section IV, to be written up as that trade-off.
+- E8, Her et al.'s network test (100,000 UDP sends, timed 10 times, three rounds): PROVBIND +1.0%,
+  Tetragon with PROVBIND's policies +0.9%, Falco +22.6% (Her et al.: Falco +19.9% without a policy and
+  +24.8% with a UDP policy, so this setup reproduces theirs). PROVBIND's policies trace TCP connections
+  only (a kprobe on `tcp_connect`): UDP sends raise no events, which is why the cost is near zero, and UDP
+  traffic is not checked. That coverage limit is stated beside the result.
 
 **Not featured, and stated in the paper as measured facts or limits:** the program-start stress test
 (+119% against no monitoring, Falco +16%; Her et al.'s process test measures the same thing, so it is not
@@ -730,4 +745,4 @@ Take every citation's exact form from its source; do not reconstruct one from me
 | 1.0 | 27 Sep 2026 | First version |
 | 1.1 | 27 Sep 2026 | Section 12 added: every dataset (D1–D8) with source, access, risk and tests, plus handling rules for real malicious samples. ML-B benign run lengthened to at least 3 hours, with a threshold rule for small validation sets |
 | 1.2 | 9 Oct 2026 | Section 10: results of the final evaluation filled in (Event hooks, Evaluation plan, Results), with the proposed Results section (10.1) and citations (10.2). The citations were then checked against their publishers' listings: only sources from 2020 on, full author lists and DOIs, SynthChain under its ACM CCS 2026 title, Kozachok et al. marked as a preprint |
-| 1.3 | 12 Oct 2026 | Section 10.3: the experiment plan for the paper (E1–E4 headline, E5–E8 supporting) and the further updates to the draft; EV-08 (Ryu-E), OH-07 (Her et al.'s network test) and OH-08 (policy update time) added to Sections 3.11 and 3.12 and the registry; Section 10.2: Her et al. (IEEE Access 2025) and Zhou et al. (Mathematics 2026) added, the RITECH entry checked against its full text, reference [17] corrected (first author J. Ryu, DOI) |
+| 1.3 | 12 Oct 2026 | Section 10.3: the experiment plan for the paper (E1–E4 headline, E5–E8 supporting) and the further updates to the draft; EV-08 (Ryu-E), OH-07 (Her et al.'s network test) and OH-08 (policy update time) added to Sections 3.11 and 3.12 and the registry; Section 10.2: Her et al. (IEEE Access 2025) and Zhou et al. (Mathematics 2026) added, the RITECH entry checked against its full text, reference [17] corrected (first author J. Ryu, DOI), DeSFAM [24] and SST-LOF [25] checked against their full texts; E7 and E8 results recorded in Section 10.3 |
