@@ -45,6 +45,7 @@ What it shows for the four contributions:
 | `eval/baselines/trace.py`, `syscalls.py` | read a recorded trace; read the libc functions an ELF file imports; map them to system calls |
 | `eval/baselines/confine_estimate.py` | **Confine-E**: allow list = system calls the image's programs can make (static); a run is *blocked* if its trace uses a call outside it |
 | `eval/baselines/desfam_estimate.py` | **DeSFAM-E**: DeSFAM's allow-list formula (Eq. 1) plus an Isolation Forest over 15-call windows, threshold at the 99.5th percentile of benign scores; DeSFAM's published recall/FPR reported beside it |
+| `eval/baselines/ryu_estimate.py` | **Ryu-E** (added 12 October, EV-08): Ryu et al. [17]'s host-based detector, 5-call windows of x86-64 call numbers and a decision tree, trained on the normal-traffic recordings and the known attacks rk-2 and rk-3 and applied to every traced run out of sample; their 70:30 protocol reported beside it. Run after the comparison: `python -m eval.baselines.ryu_estimate --run run-final` (`docs/NEXT-EXPERIMENTS.md`) |
 | `eval/baselines/aggregate.py` | joins everything per ground-truth run and writes the tables: detected or not, the stage (admission / runtime / trust), confusion matrix, precision, recall, F1, FPR, attribution level |
 | `eval/baselines/record_trace.sh` | bpftrace recorder: the demo pod's system calls only (filtered by its PID namespace) |
 | `eval/baselines/export_binaries.sh` | copies the image's executables and libraries out of the pod, for the estimators |
@@ -102,6 +103,7 @@ benign) and whether the system flagged that run.
 | Falco | measured | `falco.jsonl` | any Falco rule in the row's pod and time window |
 | Confine-E | estimated | `traces/<scenario>-<k>.txt` → `results/confine.json` | the trace uses a system call outside the static allow list |
 | DeSFAM-E | estimated | the same trace → `results/desfam.json` | a call outside its allow list, or a share of anomalous 15-call windows above the benign baseline's (§5, "Only the analysis") |
+| Ryu-E | estimated | the same trace → `results/ryu.json`, `results/RYU.md` | a share of windows classified as a known attack above the share on normal traffic (leave one recording out) |
 | Sig-only | derived | `bindings.json` + `results/admission-bindings.jsonl` | the pod's binding failed for a signature or attestation reason; a revoked key is a miss |
 
 **The trace naming is a contract:** `traces/<scenario>-<k>.txt` is the k-th run of that scenario and must

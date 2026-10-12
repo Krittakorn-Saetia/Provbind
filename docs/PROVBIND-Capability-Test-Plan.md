@@ -1,6 +1,6 @@
 # PROVBIND Capability Test Plan
 
-**Version 1.2 · 9 October 2026 · Reference: Aj Ohm's draft (`PROVBIND_AjOhmdraft.pdf`)**
+**Version 1.3 · 12 October 2026 · Reference: Aj Ohm's draft (`PROVBIND_AjOhmdraft.pdf`)**
 
 Aj Ohm gave us his draft and asked us to **understand, check and update** it. This plan is the "check" step: every capability the draft claims gets at least one test, and every result either confirms the draft or produces a specific update to it (Section 10).
 
@@ -270,6 +270,7 @@ All tables share one format, and `registry.json` is generated from them.
 | EV-05 | Low-and-slow mimicry | attack-2 spread over 30 minutes | Detected or missed, reported honestly | R1 | P2 |
 | EV-06 | Stage coverage per scenario (DS1) | Multi-stage scenarios | Fraction of stages detected | R1 | P2 |
 | EV-07 | ML-C baseline, kept separate from ML-B | Isolation Forest on all benign events, with its own code, data and model file | Baseline column added to EV-01 and EV-02 | R1 | P1 |
+| EV-08 | Ryu et al. [17] (CMC 2026) rebuilt as Ryu-E: 5-call windows of x86-64 call numbers, a decision tree | `eval/baselines/ryu_estimate.py` on the recorded traces: trained on the normal-traffic recordings and the known attacks rk-2 and rk-3, every run scored out of sample; their 70:30 protocol reported too | Ryu-E column added to EV-01 and EV-02 (caught, false alarms, known and unknown) | R1 | P1 |
 
 ### 3.12 Cost
 
@@ -281,6 +282,8 @@ All tables share one format, and `registry.json` is generated from them.
 | OH-04 | Compile and index time per image | Every test image | Seconds per image | R2 | P1 |
 | OH-05 | Index memory per envelope | Every test image | Bytes per 1,000 files | R2 | P1 |
 | OH-06 | Cache hit rate at 1, 10 and 50 replicas | Scale test | Hit rate reported | R3 | P2 |
+| OH-07 | Her et al.'s network test [F]: 100,000 UDP sends (socket + sendto) | `WORKLOADS=udp scripts/overhead-run.sh` (`eval/udp_bench.py` in the demo pod), four configurations, three rounds | Overhead per configuration beside Her et al.'s published figures | R1 | P1 |
+| OH-08 | Her et al.'s policy enforcement benchmark [F]: time for a new policy to act | `scripts/policy-update-test.sh`: Falco with one new rule through `helm upgrade`, until it fires; PROVBIND's cold-start window for a fresh pod's envelope | Median times beside Her et al.'s; no held event lost | R1 | P2 |
 
 Cost numbers from kind on a laptop are only indicative. Numbers for the paper need the bare-metal machine.
 
@@ -579,8 +582,49 @@ checks that its events arrive before every measurement.
 | Section IV, the unknown-attack method and the container testbed | M. Grimmer, T. Kaelble, F. Nirsberger, E. Schulze, T. Rucks, J. Hoffmann, E. Rahm, "Dataset Report: LID-DS 2021," CRITIS 2022, LNCS 13723, Springer, 2023, pp. 63–73, doi:10.1007/978-3-031-35190-7_6; S. Zehra, H. J. Syed, F. Samad, U. Faseeha, "DeSFAM: An Adaptive eBPF and AI-Driven Framework for Securing Cloud Containers in Real Time," IEEE Access, vol. 13, pp. 139203–139224, 2025 | normal-only training and a container testbed with kernel-level recording, the methods our evaluation adapts; both from 2020 or later, as in Role 1's report. DeSFAM is also a comparator; confirm its DOI on IEEE Xplore |
 | Section IV, "attack semantics are extracted and re-instantiated" | DataDog, malicious-software-packages-dataset (GitHub); M. Ohm et al., "Backstabber's Knife Collection," DIMVA 2020 | the source of the behaviours the scenarios re-create, and the taxonomy they follow |
 | Section IV comparators; the architecture table ("Tetragon") | The Falco Project (falco.org); Cilium Tetragon (tetragon.io) | tools the draft uses and names without a reference |
-| Related work or Section IV | A. A. Syairozi and Arizal, "Comparative Analysis of eBPF-Based Runtime Security Monitoring Tools in Monitoring and Threat Detection on Kubernetes," RITECH 2025, SciTePress, pp. 136–141, doi:10.5220/0014272700004928 | a recent comparison of eBPF runtime monitors on Kubernetes, the setting we evaluate in. Read the full text before citing (checked from the abstract) |
+| Related work or Section IV | A. A. Syairozi and Arizal, "Comparative Analysis of eBPF-Based Runtime Security Monitoring Tools in Monitoring and Threat Detection on Kubernetes," RITECH 2025, SciTePress, pp. 136–141, doi:10.5220/0014272700004928 | a peer-reviewed measurement of Falco, Tetragon and Tracee on Kubernetes (full text checked, 12 October): container escape with `nsenter`, overload with `stress-ng`, mining with `xmrig`, started with `kubectl exec`, 20 runs each; all three tools 100% detection and 0% false positives; Falco 431.5 millicores and 397 MB at idle. Conference paper; not re-run (known attacks: the best result would be a tie) |
+| Section IV comparators and cost; related work | J. Her, J. Kim, J. Kim and S. Lee, "An In-Depth Analysis of eBPF-Based System Security Tools in Cloud-Native Environments," IEEE Access, vol. 13, pp. 155588–155604, 2025, doi:10.1109/ACCESS.2025.3605432; code: github.com/gjwls/ESST-eval | the journal paper (2023 on) that measures Falco, with Tetragon, Tracee and KubeArmor: program-start and network cost, time to apply a policy, events lost under load. OH-07 and OH-08 repeat two of its tests with PROVBIND (full text checked) |
+| Optional, related work | N. Zhou, H. Chen, Z. Chen, C. Li and F. Li, "An Abnormal File Access Detection Model for Containers Based on eBPF Listening," Mathematics, vol. 14, no. 6, art. 991, 2026, doi:10.3390/math14060991 | a 2026 journal paper stating that the static rule matching of Falco, Tracee and Tetragon cannot catch previously unseen attacks (full text checked); a general mathematics journal |
 | Optional | A. V. Kozachok, S. G. Vyugov, S. G. Magomedov, "From CVE to CWE: Syscall-Based HIDS Generalisation," arXiv preprint arXiv:2606.22581, 2026 | newer work testing detection of unseen attacks the same way. A preprint, not yet peer-reviewed; read the full text before citing |
+
+### 10.3 Experiment plan for the paper (12 October 2026)
+
+The supervisor asked for 3–4 experiments PROVBIND wins, with 7–8 tested in total. Run guide:
+`docs/NEXT-EXPERIMENTS.md`.
+
+**Headline (already measured, all won):**
+
+| # | Experiment | PROVBIND | Other systems |
+|---|---|---|---|
+| E1 | Supply-chain attacks caught without false alarms (19 scenarios × 5 runs) | F1 0.87: 50/65 caught, 0/30 false alarms; unknown attacks alone F1 0.80; without ML-B 45/65, F1 0.82 | DeSFAM-E 0.56 (23/30 false alarms), Falco 0.50 (10/30), signature check 0.14, Confine-E 0 |
+| E2 | Package, layer and dependency path named in alerts | layer in 15/15 image-content alerts, package and dependency path in 10/15 | Falco 0/55; DeSFAM-E, Confine-E none by design |
+| E3 | Trust withdrawn while a workload runs (trust-1, trust-2) | 10/10; median reaction 1.1 s (key), 1.7 s (advisory) | 0/10 for every other system |
+| E4 | Time to protect a new image | 4.38 s (envelope compile) | Confine-E 32.8 s, DeSFAM-E 30.5 min; Falco none, generic rules only |
+
+**Supporting:** E5 runtime cost on application requests (within 5% of Falco, worst +9.9% against no
+monitoring; monitor CPU 0.2% of a core against Falco's 8.2%), E6 check time per event (2.0 µs median),
+E7 Ryu-E (EV-08, new, no new runs), E8 Her et al.'s network test (OH-07, new). Optional: OH-08 (policy
+update time) and 60 more benign runs for a tighter false-alarm bound (90 runs: at most 3.3% at 95%).
+
+**Not featured, and stated in the paper as measured facts or limits:** the program-start stress test
+(+119% against no monitoring, Falco +16%; Her et al.'s process test measures the same thing, so it is not
+re-run), monitor memory (409 MB against Falco's 119 MB), events lost under burst load (OH-03, not measured;
+PROVBIND reads Tetragon's events, and Tetragon lost events early in Her et al.'s test), RITECH's three
+attacks (well-known attacks every tool catches; the best result would be a tie), and Zhou et al.'s
+file-access detector (needs a new recording of file opens).
+
+**Updates to the draft, in addition to Sections 10, 10.1 and 10.2:**
+- Section IV rewritten as the evaluation around E1–E4, with E5–E8 as supporting results; comparators
+  named: Falco (measured), DeSFAM [24] and Confine [14] (estimated), Ryu et al. [17] (estimated), the
+  signature check alone (derived); Falco named and cited.
+- Her et al.'s published numbers [F] beside ours for network cost (and policy update time, if run).
+- Taken out: the promise to measure the ring-buffer drop rate (OH-03, not measured); "Overhead is reported
+  relative to existing runtime collection rather than to an unmonitored host" (we report cost against no
+  monitoring, against Falco, and against the collection alone).
+- References [18], [26], [28] and [29] are listed but never cited: cite them where they fit or drop them
+  ([28] concerns RFID in physical supply chains).
+- Claims not tested in our evaluation are softened: ML-A's capability model (LightGBM [21]) and the graph
+  database's "multi-hop deviation correlation" in the abstract.
 
 ---
 
@@ -683,3 +727,4 @@ Take every citation's exact form from its source; do not reconstruct one from me
 | 1.0 | 27 Sep 2026 | First version |
 | 1.1 | 27 Sep 2026 | Section 12 added: every dataset (D1–D8) with source, access, risk and tests, plus handling rules for real malicious samples. ML-B benign run lengthened to at least 3 hours, with a threshold rule for small validation sets |
 | 1.2 | 9 Oct 2026 | Section 10: results of the final evaluation filled in (Event hooks, Evaluation plan, Results), with the proposed Results section (10.1) and citations (10.2). The citations were then checked against their publishers' listings: only sources from 2020 on, full author lists and DOIs, SynthChain under its ACM CCS 2026 title, Kozachok et al. marked as a preprint |
+| 1.3 | 12 Oct 2026 | Section 10.3: the experiment plan for the paper (E1–E4 headline, E5–E8 supporting) and the further updates to the draft; EV-08 (Ryu-E), OH-07 (Her et al.'s network test) and OH-08 (policy update time) added to Sections 3.11 and 3.12 and the registry; Section 10.2: Her et al. (IEEE Access 2025) and Zhou et al. (Mathematics 2026) added, the RITECH entry checked against its full text |

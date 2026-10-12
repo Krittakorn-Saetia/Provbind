@@ -8,13 +8,16 @@ PROVBIND signs an image's SBOM and provenance, compiles them into an **envelope*
 
 **Evaluation, 9 October 2026:** finished. The results are in `docs/ROLE1-SUPERVISOR-QUESTIONS-2026-10-05.md`;
 the paper figures and the numbers behind them are in `docs/FIGURES-HOWTO.md`.
+The next experiments the supervisor asked for (12 October: Ryu-E, Her et al.'s network test, optional
+extras) and how to run them on the VM: `docs/NEXT-EXPERIMENTS.md`.
 
 ## Start here
 
 | Read | Why |
 |---|---|
 | `docs/PROVBIND-Sprint-Handoff.md` (v1.1) | The team plan: roles, run folder, contracts, schedule |
-| `docs/PROVBIND-Capability-Test-Plan.md` (v1.2) | All 113 tests, the datasets (Section 12) and the update log, with a proposed Results section (Section 10.1) |
+| `docs/PROVBIND-Capability-Test-Plan.md` (v1.3) | All 116 tests, the datasets (Section 12) and the update log, with a proposed Results section (Section 10.1) and the experiment plan for the paper (Section 10.3) |
+| `docs/NEXT-EXPERIMENTS.md` | Run guide for the next experiments (E7 Ryu-E, E8 Her et al.'s network test, optional extras) |
 | `docs/ROLE1-SUPERVISOR-QUESTIONS-2026-10-05.md` | The evaluation's final results: accuracy, runtime cost, the zero-day method, preparation time |
 | `docs/FIGURES-HOWTO.md` | How to draw the paper figures from the repository, and where the final numbers are |
 | `docs/ROLE2-HANDOFF.md` (v0.2) | Role 2 spec: evidence pipeline, envelope compiler, ML-A |

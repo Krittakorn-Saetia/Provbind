@@ -1,5 +1,5 @@
 {
-  "plan": "PROVBIND Capability Test Plan v1.1",
+  "plan": "PROVBIND Capability Test Plan v1.3",
   "generated": "2026-09-27",
   "tests": [
     {
@@ -1109,6 +1109,16 @@
       "fail_points": []
     },
     {
+      "id": "EV-08",
+      "section": "3.11 Evaluation against baselines",
+      "checks": "Ryu et al. [17] (CMC 2026) rebuilt as Ryu-E: their host-based detector (5-call windows of x86-64 call numbers, decision tree) beside the other systems",
+      "how": "eval/baselines/ryu_estimate.py on the comparison run's recorded traces: trained on the normal-traffic recordings and the known attacks rk-2 and rk-3, every run scored out of sample; their own 70:30 protocol reported too",
+      "pass": "Ryu-E column added to EV-01 and EV-02 (caught, false alarms, known and unknown)",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
       "id": "OH-01",
       "section": "3.12 Cost",
       "checks": "Per-event verification latency",
@@ -1165,6 +1175,26 @@
       "how": "Scale test",
       "pass": "Hit rate reported",
       "owner": "R3",
+      "priority": "P2",
+      "fail_points": []
+    },
+    {
+      "id": "OH-07",
+      "section": "3.12 Cost",
+      "checks": "Her et al.'s network test [F]: cost of 100,000 UDP sends (socket + sendto) against no monitoring",
+      "how": "scripts/overhead-run.sh with WORKLOADS=udp (eval/udp_bench.py in the demo pod), the four configurations, three rounds",
+      "pass": "Overhead per configuration reported beside Her et al.'s published Falco, Tetragon, Tracee and KubeArmor figures",
+      "owner": "R1",
+      "priority": "P1",
+      "fail_points": []
+    },
+    {
+      "id": "OH-08",
+      "section": "3.12 Cost",
+      "checks": "Her et al.'s policy enforcement benchmark [F]: time for a new policy to act",
+      "how": "scripts/policy-update-test.sh: Falco with one new rule through helm upgrade, until it fires; PROVBIND's cold-start window for a fresh pod's envelope (node summary), 10 runs each",
+      "pass": "Median times reported beside Her et al.'s published figures; no held event lost",
+      "owner": "R1",
       "priority": "P2",
       "fail_points": []
     }
