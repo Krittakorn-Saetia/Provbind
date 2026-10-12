@@ -28,10 +28,12 @@ Nothing already measured has to be run again: E1–E6 come from the final runs (
    kubectl get pods -A | grep -v Running          # only the header line is left
    ```
    If a container is missing, run `docker start <name>`.
-2. Get the code and the Python environment:
+2. Get the code and the Python environment. The new code is on the branch `claude/zen-hypatia-pyrg25`
+   until it is merged into `main`:
    ```bash
-   cd ~/Provbind && git checkout main && git pull
+   cd ~/Provbind && git checkout claude/zen-hypatia-pyrg25 && git pull origin claude/zen-hypatia-pyrg25
    source .venv/bin/activate && pip install -r requirements.txt
+   ls eval/baselines/ryu_estimate.py eval/udp_bench.py   # both exist: you have the new code
    ```
 3. Set the demo image the final run used, and check it:
    ```bash
