@@ -2,7 +2,7 @@
 folder. PNG at 300 dpi, sized for the IEEE page (7.16 in across two columns, 3.5 in for one).
 
     python -m eval.baselines.plot_contributions --run "$PROVBIND_RUN" [--out <run>/results/figures] [--dpi 300]
-        [--overhead <overhead run> [--history LABEL=<overhead run> ...]]
+        [--overhead <overhead run> [--history LABEL=<overhead run> ...]] [--ryu <folder>] [--network <run>]
 
 Two steps when the run folder lives on another machine (docs/FIGURES-HOWTO.md):
 
@@ -22,6 +22,12 @@ Two steps when the run folder lives on another machine (docs/FIGURES-HOWTO.md):
 | fig5_scenarios.png | detail | every scenario x system: runs flagged / runs | - |
 | fig6_runtime_cost.png | runtime cost | PROVBIND and Falco against no monitoring, per application metric, with the 20% limit | - |
 | fig7_cost_history.png | runtime cost | PROVBIND's overhead in each overhead run given with --history | - |
+| fig8_e7_ryu.png | E7 | PROVBIND against Ryu et al. [17] rebuilt (Ryu-E) and its sensitivity variants: detection rate, false-positive rate, F1 | - |
+| fig9_e8_network.png | E8 | change in time per UDP packet against no monitoring on our VM, beside Her et al.'s published figures | - |
+
+E7 and E8 (12 October): --ryu takes a folder with ryu_estimate.py's ryu.json (and ryu-majority.json,
+ryu-runlabels.json, when they exist; default <run>/results), which also adds Ryu-E to figures 2 and 5;
+--network takes the network overhead run (WORKLOADS=udp scripts/overhead-run.sh) or its OVERHEAD.json.
 
 Measured, estimated, by design. PROVBIND and Falco are measured from the run's files. Confine-E and
 DeSFAM-E are estimated (their published design applied to our traces) and marked *; Sig-only is derived
@@ -50,7 +56,7 @@ from eval.compare import alert_pod, confusion, falco_pod, load_ground_truth, loa
 # --- what is compared ---------------------------------------------------------------------------------
 SYSTEMS = ("PROVBIND", "Falco", "Confine-E", "DeSFAM-E")           # figures 1-3; figure 4 adds Sig-only
 KIND = {"PROVBIND": "measured", "PROVBIND + ML-B": "measured", "Falco": "measured", "Confine-E": "estimated", "DeSFAM-E": "estimated",
-        "Sig-only": "derived"}
+        "Ryu-E": "estimated", "Sig-only": "derived"}
 MARK = {"measured": "", "estimated": "*", "derived": "†"}
 NOT_DETECTION = {"tamper-1"}                    # a log-integrity check, not a detection run
 C4_SCENARIOS = ("ak-1", "ak-2", "ak-3", "trust-1", "trust-2")   # threats that live in trust, not behaviour
@@ -81,6 +87,7 @@ CELLS = ("Admission, known", "Admission, unknown", "Runtime, known", "Runtime, u
 # --- colours: the dataviz reference palette (light surface; categorical pair validated) ---------------
 SURFACE, INK, INK2, MUTED, GRID, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 S1, S2 = "#2a78d6", "#eb6834"                   # categorical slots 1 and 2
+S3 = "#1baf7a"                                  # slot 3 (figure 8 only; validated with 1 and 2, values labelled)
 BLUE_RAMP = ("#fcfcfb", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b")
 ORANGE_RAMP = ("#fcfcfb", "#fbdccd", "#f6b090", "#eb6834", "#b84a1f", "#7d3010")
 
@@ -121,13 +128,20 @@ def load_run(run):
             "envelopes": envs, "profile_s": profile,
             "desfam": _json(run / "results" / "desfam.json") or {},
             "prep": _json(run / "results" / "PREP.json") or {},          # eval/prep_time.py (overhead run)
-            "results": {i: _json(run / "results" / f"{i}.json") for i in ("OH-01", "OH-04", "OH-05")}}
+            "results": {i: _json(run / "results" / f"{i}.json") for i in ("OH-01", "OH-04", "OH-05")},
+            "ryu": ryu_data(run / "results"), "network": None}           # E7 if ryu_estimate ran; E8: --network
 
 
 def _pre(d, key, compute):
     """A figure's data: from the data file when drawing with --data, else computed from the run folder."""
     pre = d.get("precomputed")
     return pre[key] if pre is not None and key in pre else compute(d)
+
+
+def _extra(d, key):
+    """E7 or E8 data: given on the command line (--ryu, --network) or found in the run folder, else from
+    the data file."""
+    return d.get(key) if d.get(key) is not None else (d.get("precomputed") or {}).get(key)
 
 
 def _real(result):
@@ -626,8 +640,13 @@ def fig1_c1(d, path, dpi):
 def fig2_c2(d, path, dpi):
     plt = _plt()
     from matplotlib.patches import Patch
-    fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 2.5), gridspec_kw={"width_ratios": [2.2, 1]})
     data = _pre(d, "c2_metrics", lambda d: c2_metrics(d["rows"]))
+    ryu = _extra(d, "ryu")
+    if ryu and ryu.get("variants"):                  # E7: Ryu-E on the same runs
+        _, hrows = _pre(d, "heatmap", lambda d: heatmap(d["tables"]))
+        data = list(data) + [ryu_c2(ryu, hrows)]
+    wide = len(data) > 4
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 2.5), gridspec_kw={"width_ratios": [2.9 if wide else 2.2, 1]})
     w = 0.36
     for i, m in enumerate(data):
         hatch = "///" if m["kind"] != "measured" else None
@@ -639,7 +658,7 @@ def fig2_c2(d, path, dpi):
             a.bar(i + off, v, w, color=col, edgecolor=SURFACE, linewidth=1, hatch=hatch)
             a.text(i + off, v + 0.02, f"{v:.2f}", ha="center", va="bottom", fontsize=6.5, color=INK)
     a.set_xticks(range(len(data)))
-    a.set_xticklabels([_tick(m["system"], m["kind"]) for m in data], fontsize=7)
+    a.set_xticklabels([_tick(m["system"], m["kind"]) for m in data], fontsize=6.6 if wide else 7)
     a.tick_params(axis="x", length=0)
     a.set_ylim(0, 1.15)
     a.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
@@ -678,6 +697,10 @@ def fig2_c2(d, path, dpi):
     if pub:
         foot.append(f"* Estimated systems. DeSFAM's own published operating point (its data, not ours): detection "
                     f"{pub.get('recall')}, false-positive rate {pub.get('fpr', pub.get('false_positive_rate'))}.")
+    if ryu and ryu.get("variants"):
+        acc = (ryu.get("their_protocol") or {}).get("accuracy")
+        foot.append("Ryu-E: Ryu et al. [17] rebuilt, trained only on what is known before an attack (Figure 8)"
+                    + (f"; their own 70:30 split scores accuracy {acc:.2f} on our data." if acc is not None else "."))
     _footer(fig, foot)
     return _save(plt, fig, path, dpi)
 
@@ -811,7 +834,7 @@ NICE = {"ak-1": "Advisory exists before deploy", "ak-2": "Unsigned image", "ak-3
         "ph4-14": "New temporary file", "benign-3": "DNS lookups", "benign-4": "Writes to a mounted volume",
         "ab-1": "Clean signed image deployed"}
 ADMISSION = {"ak-1", "ak-2", "ak-3", "au-2", "ab-1"}
-STAGES = {"Confine-E": "runtime", "DeSFAM-E": "runtime", "Sig-only": "admission"}   # stages a system covers
+STAGES = {"Confine-E": "runtime", "DeSFAM-E": "runtime", "Ryu-E": "runtime", "Sig-only": "admission"}  # stages covered
 
 
 def scenario_outcome(scenario, truth, system, flagged, runs):
@@ -837,11 +860,14 @@ def fig5_scenarios(d, path, dpi):
     names, rows = _pre(d, "heatmap", lambda d: heatmap(d["tables"]))
     if not rows:
         raise ValueError("no scenario rows in COMPARISON.json")
+    ryu = _extra(d, "ryu")
+    if ryu and ryu.get("variants"):                  # E7: a Ryu-E column
+        names, rows = heatmap_with_ryu(names, rows, ryu)
     fill = {"right": "#256abf", "wrong": "#eb6834", "partial": "#f6b090", "na": "#efeeea"}
     ink = {"right": SURFACE, "wrong": INK, "partial": INK, "na": INK2}
     mark = {"right": "\u2713 ", "wrong": "\u2717 ", "partial": "~ ", "na": ""}
     totals = {n: [0, 0] for n in names}
-    fig, ax = plt.subplots(figsize=(6.2, 0.24 * (len(rows) + 1) + 0.7))
+    fig, ax = plt.subplots(figsize=(min(7.16, 1.24 * len(names)), 0.24 * (len(rows) + 1) + 0.7))
     for i, r in enumerate(rows):
         for j, m in enumerate(names):
             flagged = int(round(r["fraction"][j] * r["runs"]))
@@ -885,7 +911,8 @@ def fig5_scenarios(d, path, dpi):
               handlelength=1.2, columnspacing=1.0)
     _footer(fig, ["Each cell is 5 runs. Falco's admission 'catches' come from rules that fire on every pod start: it also alarms on the clean",
                   "deploy (A-B1). The bottom row counts every run as the comparison tables do (true positives + true negatives).",
-                  "* Confine-E, DeSFAM-E: estimated systems (runtime only).  \u2020 Sig-only: a signature check at admission only."])
+                  f"* {', '.join(n for n in names if KIND.get(n) == 'estimated')}: estimated systems (runtime only).  "
+                  "\u2020 Sig-only: a signature check at admission only."])
     return _save(plt, fig, path, dpi)
 
 
@@ -928,6 +955,97 @@ def overhead_data(final, history=()):
             "history": [{"run": label, "overhead_pct": {f"{k}/{f}": _overhead_pct(_overhead_doc(path), k, f, "provbind")
                                                         for k, f, _ in APP_METRICS + MICRO_METRICS}}
                         for label, path in history]}
+
+
+# --- E7 and E8: Ryu et al. [17] rebuilt (eval/baselines/ryu_estimate.py), Her et al.'s network test ---------
+
+RYU_FILES = (("ryu.json", "Ryu-E"), ("ryu-majority.json", "Ryu-E, looser run rule"),
+             ("ryu-runlabels.json", "Ryu-E, their labelling"))
+
+
+def _scenario_of(trace):
+    """'attack-1-3.txt' -> 'attack-1': a recorded trace's scenario, its run number dropped."""
+    stem = trace[:-4] if trace.endswith(".txt") else trace
+    head, sep, tail = stem.rpartition("-")
+    return head if sep and tail.isdigit() else stem
+
+
+def ryu_variant(doc, label):
+    """One ryu_estimate.py result file as figure data: totals over every run, the labels and run rule it
+    used, and per scenario [traced runs flagged, traced runs] (a run without a trace is not flagged)."""
+    s = doc.get("summary") or {}
+    design = doc.get("design") or {}
+    flagged = {}
+    for trace, r in (doc.get("results") or {}).items():
+        f = flagged.setdefault(_scenario_of(trace), [0, 0])
+        f[0] += 1 if r.get("detected") else 0
+        f[1] += 1
+    return {"label": label, "labels": design.get("labels"), "rule": design.get("trace_rule"),
+            **{k: s.get(k) for k in ("TP", "FP", "FN", "TN", "precision", "recall", "f1", "fpr", "known", "unknown")},
+            "flagged": flagged}
+
+
+def ryu_data(src):
+    """Figure 8, and Ryu-E in figures 2 and 5: ryu.json from a folder (with the sensitivity files beside it,
+    when they exist) or one result file. None when there is no result file."""
+    p = Path(src)
+    files = [(p / f, label) for f, label in RYU_FILES] if p.is_dir() else [(p, "Ryu-E")]
+    variants, first = [], None
+    for f, label in files:
+        if f.is_file():
+            doc = json.loads(f.read_text(encoding="utf-8"))
+            variants.append(ryu_variant(doc, label))
+            first = first or doc
+    if not variants:
+        return None
+    prov = ((first.get("summary") or {}).get("others") or {}).get("PROVBIND")
+    keep = ("TP", "FP", "FN", "TN", "precision", "recall", "f1", "fpr")
+    return {"variants": variants, "provbind": {k: prov.get(k) for k in keep} if prov else None,
+            "their_protocol": first.get("their_protocol"), "published": first.get("published_reference")}
+
+
+def ryu_c2(ryu, rows):
+    """Ryu-E's entry in figure 2a: detection rate and false-positive rate over the same scenario runs as
+    c2_metrics (`rows`: heatmap rows), from its main result file."""
+    flagged = ryu["variants"][0]["flagged"]
+    tp = fn = fp = tn = 0
+    for r in rows:
+        if r["scenario"] in C4_SCENARIOS or r["scenario"] in NOT_DETECTION:
+            continue
+        f = min(flagged.get(r["scenario"], [0, 0])[0], r["runs"])
+        if r.get("truth") == "malicious":
+            tp, fn = tp + f, fn + r["runs"] - f
+        elif r.get("truth") == "benign":
+            fp, tn = fp + f, tn + r["runs"] - f
+    att, ben = tp + fn, fp + tn
+    return {"system": "Ryu-E", "kind": "estimated", "recall": round(tp / att, 4) if att else None,
+            "fpr": round(fp / ben, 4) if ben else None, "attack_runs": att, "benign_runs": ben}
+
+
+def heatmap_with_ryu(names, rows, ryu):
+    """Figure 5's systems and rows with a Ryu-E column after the other estimated systems (runs it flagged;
+    a scenario it has no trace for counts as not flagged)."""
+    flagged = ryu["variants"][0]["flagged"]
+    at = names.index("Sig-only") if "Sig-only" in names else len(names)
+    out = []
+    for r in rows:
+        f = min(flagged.get(r["scenario"], [0, 0])[0], r["runs"])
+        out.append({**r, "fraction": list(r["fraction"][:at]) + [f / r["runs"]] + list(r["fraction"][at:]),
+                    "counts": list(r["counts"][:at]) + [f"{f}/{r['runs']}"] + list(r["counts"][at:])})
+    return list(names[:at]) + ["Ryu-E"] + list(names[at:]), out
+
+
+def network_data(src):
+    """Figure 9: the network overhead run (WORKLOADS=udp scripts/overhead-run.sh), its folder or its
+    OVERHEAD.json: time per UDP packet and change against no monitoring per configuration, with Her et
+    al.'s published figures. None when the run has no UDP row."""
+    doc = _overhead_doc(src)
+    row = next((e for e in doc.get("table") or [] if e.get("kind") == "udp"), None)
+    if row is None:
+        return None
+    return {"metric": row.get("metric"), "values": row.get("values") or {}, "spread": row.get("spread") or {},
+            "overhead_pct": row.get("overhead_pct") or {}, "repetitions": doc.get("repetitions") or {},
+            "her_et_al": doc.get("her_et_al_udp") or []}
 
 
 def _limit_line(ax, th, vertical=True):
@@ -1034,11 +1152,152 @@ def fig7_cost_history(d, path, dpi):
     return _save(plt, fig, path, dpi)
 
 
+def _ryu_tick(label, kind):
+    """'Ryu-E, looser run rule' -> 'Ryu-E*' over 'looser run rule'."""
+    name, sep, rest = label.partition(", ")
+    return name + MARK.get(kind, "") + ("\n" + rest if sep else "")
+
+
+def fig8_e7_ryu(d, path, dpi):
+    """Figure 8 (E7): PROVBIND against Ryu et al. [17] rebuilt, over every scenario run: detection rate,
+    false-positive rate and F1, for Ryu-E as run and its two sensitivity variants."""
+    plt = _plt()
+    from matplotlib.patches import Patch
+    ryu = _extra(d, "ryu")
+    if not ryu or not ryu.get("variants") or not ryu.get("provbind"):
+        fig, ax = plt.subplots(figsize=(5.2, 1.2))
+        _empty(ax, "Not measured: give --ryu <folder with ryu.json> (eval/baselines/ryu_estimate.py).")
+        return _save(plt, fig, path, dpi)
+    groups = [("PROVBIND", "measured", ryu["provbind"])] + [(v["label"], "estimated", v) for v in ryu["variants"]]
+    p = ryu["provbind"]
+    n_att, n_ben = (p.get("TP") or 0) + (p.get("FN") or 0), (p.get("FP") or 0) + (p.get("TN") or 0)
+    series = (("recall", f"detection rate ({n_att} attack runs)", S1),
+              ("fpr", f"false-positive rate ({n_ben} normal runs)", S2), ("f1", "F1", S3))
+    fig, ax = plt.subplots(figsize=(7.16, 2.4))
+    w = 0.25
+    for i, (_, kind, m) in enumerate(groups):
+        hatch = "///" if kind != "measured" else None
+        for k, (key, _, col) in enumerate(series):
+            v, x = m.get(key), i + (k - 1) * w
+            if v is None:
+                ax.text(x, 0.02, "n/a", ha="center", va="bottom", fontsize=6, color=MUTED, rotation=90)
+                continue
+            ax.bar(x, v, w, color=col, edgecolor=SURFACE, linewidth=1, hatch=hatch)
+            ax.text(x, v + 0.02, f"{v:.2f}", ha="center", va="bottom", fontsize=6.3, color=INK)
+    ax.set_xticks(range(len(groups)))
+    ax.set_xticklabels([_ryu_tick(label, kind) for label, kind, _ in groups], fontsize=6.8)
+    ax.tick_params(axis="x", length=0)
+    ax.set_xlim(-0.6, len(groups) - 0.4)
+    ax.set_ylim(0, 1.15)
+    ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+    ax.set_ylabel("share of runs, or F1")
+    _grid(ax, "y")
+    ax.set_title("PROVBIND against Ryu et al. [17], rebuilt as Ryu-E", loc="left", fontsize=8, color=INK, pad=6)
+    ax.legend(handles=[Patch(facecolor=c, edgecolor=SURFACE, label=lab) for _, lab, c in series]
+              + [Patch(facecolor="#d9d8d3", edgecolor=SURFACE, hatch="///", label="* estimated system")],
+              loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=4, fontsize=6.5)
+    tp, pub = ryu.get("their_protocol") or {}, ryu.get("published") or {}
+    foot = ["E7. Ryu-E: Ryu et al.'s host detector (5-call windows of system-call numbers, a decision tree), trained only on what is "
+            "known before an attack:",
+            "the normal-traffic recordings and the known attacks R-K2 and R-K3. Every run is scored by a model that did not see it. "
+            "Admission scenarios are not traced, so they count as missed.",
+            "Looser run rule: a run is flagged only when most of its windows look malicious. Their labelling: every window of an "
+            "attack run is labelled as the attack, as Ryu et al. label."]
+    if tp.get("accuracy") is not None:
+        foot.append(f"Their own protocol (a random 70:30 split of windows) scores accuracy {tp['accuracy']:.2f} on our data"
+                    + (f"; published: {pub['host_accuracy']:.2f} on theirs." if pub.get("host_accuracy") is not None else "."))
+    fig.tight_layout()
+    _footer(fig, foot)
+    return _save(plt, fig, path, dpi)
+
+
+def fig9_e8_network(d, path, dpi):
+    """Figure 9 (E8): Her et al.'s network test [F]. (a) Change in time per UDP packet against no monitoring
+    on our VM; (b) Her et al.'s published figures for the same test, with our Falco marked, which shows how
+    far our setup reproduces theirs."""
+    plt = _plt()
+    from matplotlib.patches import Patch
+    net = _extra(d, "network")
+    if not net:
+        fig, ax = plt.subplots(figsize=(5.2, 1.2))
+        _empty(ax, "Not measured: give --network <network overhead run> (WORKLOADS=udp scripts/overhead-run.sh).")
+        return _save(plt, fig, path, dpi)
+    pct, vals, spread = net.get("overhead_pct") or {}, net.get("values") or {}, net.get("spread") or {}
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 2.3), gridspec_kw={"width_ratios": [1, 1.3]})
+    ours = [(c, lab, col) for c, lab, col in (("provbind", "PROVBIND", S1),
+                                              ("tetragon", "Tetragon alone\n(PROVBIND's policies)", MUTED),
+                                              ("falco", "Falco (default rules)", S2)) if pct.get(c) is not None]
+    top = max([pct[c] for c, _, _ in ours] + [1.0])
+    ys = list(range(len(ours)))[::-1]
+    for y, (c, _, col) in zip(ys, ours):
+        v = pct[c]
+        a.barh(y, max(v, 0), height=0.5, color=col, edgecolor=SURFACE, linewidth=1, zorder=3)
+        a.text(max(v, 0) + top * 0.03, y, f"{v:+.1f}%", va="center", fontsize=6.5, color=INK)
+    a.set_yticks(ys)
+    a.set_yticklabels([lab for _, lab, _ in ours], fontsize=6.6)
+    a.tick_params(axis="y", length=0)
+    a.set_xlim(0, top * 1.3)
+    a.set_xlabel("change against no monitoring (%)", fontsize=6.5)
+    _grid(a, "x")
+    a.set_title("(a)  Our VM: time per UDP packet", loc="left", fontsize=8, color=INK, pad=16)
+    her = [r for r in net.get("her_et_al") or [] if r.get("theirs_without_policy_pct") is not None]
+    if not her:
+        _empty(b, "(b)  Her et al.'s published figures are not in this run's OVERHEAD.json.")
+    else:
+        # our Falco on its own row above Her et al.'s, so the calibration reads on one axis
+        ours_falco = next((r.get("ours_pct") for r in her if r["system"] == "Falco"), None)
+        brows = ([("Falco, our VM", [(ours_falco, S2, None)])] if ours_falco is not None else []) + [
+            (r["system"], [(r["theirs_without_policy_pct"], AXIS, "///"), (r.get("theirs_with_policy_pct"), MUTED, "///")])
+            for r in her]
+        btop = max(v for _, bars in brows for v, _, _ in bars if v is not None)
+        h = 0.36
+        hy = list(range(len(brows)))[::-1]
+        for y, (_, bars) in zip(hy, brows):
+            bars = [x for x in bars if x[0] is not None]
+            offs = [0.0] if len(bars) == 1 else [h / 2, -h / 2]
+            for off, (v, col, hatch) in zip(offs, bars):
+                b.barh(y + off, v, height=h, color=col, edgecolor=SURFACE, linewidth=1, hatch=hatch, zorder=3)
+                b.text(v + btop * 0.015, y + off, f"{v:+.1f}%", va="center", fontsize=6.0, color=INK)
+        b.set_yticks(hy)
+        b.set_yticklabels([name for name, _ in brows], fontsize=6.8)
+        b.tick_params(axis="y", length=0)
+        b.set_xlim(0, btop * 1.2)
+        b.set_xlabel("change against no monitoring (%)", fontsize=6.5)
+        _grid(b, "x")
+        b.set_title("(b)  Her et al. [F], same test (published)", loc="left", fontsize=8, color=INK, pad=16)
+        b.legend(handles=[Patch(facecolor=AXIS, edgecolor=SURFACE, hatch="///", label="Her et al., no policy"),
+                          Patch(facecolor=MUTED, edgecolor=SURFACE, hatch="///", label="with a UDP policy"),
+                          Patch(facecolor=S2, edgecolor=SURFACE, label="our Falco, as in (a)")],
+                 loc="lower left", bbox_to_anchor=(-0.01, 1.0), ncol=3, fontsize=6.0, frameon=False,
+                 handlelength=1.4, columnspacing=1.0, borderaxespad=0.2)
+    fig.tight_layout(w_pad=2.5)
+    reps = sorted(set((net.get("repetitions") or {}).values()))
+    foot = ["E8. socket() + sendto() for 100,000 UDP packets, timed 10 times in each round; medians of "
+            f"{'/'.join(str(r) for r in reps) or '?'} rounds per configuration, run in shuffled order."]
+    rng = lambda c: f"{spread[c][0]:.2f}–{spread[c][1]:.2f}" if len(spread.get(c) or []) == 2 else "?"
+    if vals.get("none") is not None and vals.get("provbind") is not None:
+        overlap = len(spread.get("none") or []) == 2 and len(spread.get("provbind") or []) == 2 \
+            and spread["provbind"][0] <= spread["none"][1]
+        foot.append(f"No monitoring {vals['none']:.2f} µs per packet (rounds {rng('none')}); PROVBIND {vals['provbind']:.2f} µs "
+                    f"(rounds {rng('provbind')})" + (": the two ranges overlap." if overlap else "."))
+    falco = next((r for r in her if r["system"] == "Falco" and r.get("ours_pct") is not None), None)
+    if falco and falco.get("theirs_with_policy_pct") is not None:
+        lo, hi = sorted((falco["theirs_without_policy_pct"], falco["theirs_with_policy_pct"]))
+        foot.append("Ours sends to a socket in the pod, not to a public DNS server. Our Falco "
+                    + ("lies between Her et al.'s two Falco figures, so the setup reproduces theirs." if lo <= falco["ours_pct"] <= hi
+                       else f"({falco['ours_pct']:+.1f}%) differs from Her et al.'s ({lo:+.1f}% to {hi:+.1f}%)."))
+    foot.append("PROVBIND's policies trace TCP connections only: UDP sends raise no events, which is why its cost is within the "
+                "noise, and why UDP traffic is not checked.")
+    _footer(fig, foot)
+    return _save(plt, fig, path, dpi)
+
+
 FIGURES = (("fig1_c1_specification.png", fig1_c1), ("fig1b_c1_components.png", fig1b_c1),
            ("fig2_c2_verification.png", fig2_c2),
            ("fig3_c3_attribution.png", fig3_c3), ("fig4_c4_trust.png", fig4_c4),
            ("fig5_scenarios.png", fig5_scenarios),
-           ("fig6_runtime_cost.png", fig6_runtime_cost), ("fig7_cost_history.png", fig7_cost_history))
+           ("fig6_runtime_cost.png", fig6_runtime_cost), ("fig7_cost_history.png", fig7_cost_history),
+           ("fig8_e7_ryu.png", fig8_e7_ryu), ("fig9_e8_network.png", fig9_e8_network))
 
 DATA_SCHEMA = "provbind.figures/v1"
 
@@ -1055,7 +1314,7 @@ def figure_data(d):
             "c1_steps": c1_steps(d), "c2_metrics": c2_metrics(d["rows"]), "c2_latency": c2_latency(d),
             "c3_attribution": c3_attribution(d), "c4_matrix": [list(systems), c4rows],
             "c4_trust_latency": c4_trust_latency(d["alerts"]), "heatmap": [names, hrows],
-            "overhead": d.get("overhead")}
+            "overhead": d.get("overhead"), "ryu": d.get("ryu"), "network": d.get("network")}
 
 
 def load_data(path):
@@ -1067,7 +1326,8 @@ def load_data(path):
         raise ValueError(f"{f} is not a figure data file ({DATA_SCHEMA})")
     return {"precomputed": data, "prep": data.get("prep") or {}, "desfam": data.get("desfam") or {},
             "rows": [], "tables": {}, "alerts": [], "falco": [], "gt": [], "envelopes": [], "profile_s": 0,
-            "results": {}, "overhead": data.get("overhead"), "run": None}
+            "results": {}, "overhead": data.get("overhead"), "run": None,
+            "ryu": data.get("ryu"), "network": data.get("network")}
 
 
 def _history(items):
@@ -1088,9 +1348,25 @@ def main(argv=None) -> int:
     ap.add_argument("--overhead", metavar="RUN", help="the final overhead run (its results/OVERHEAD.json): figure 6")
     ap.add_argument("--history", nargs="*", default=[], metavar="LABEL=RUN",
                     help="overhead runs in order, for figure 7 (the final one last)")
+    ap.add_argument("--ryu", metavar="PATH", help="E7: a folder with ryu.json (and the sensitivity files), or one "
+                                                  "ryu_estimate.py result file (default: <run>/results)")
+    ap.add_argument("--network", metavar="PATH", help="E8: the network overhead run (WORKLOADS=udp), or its OVERHEAD.json")
     ap.add_argument("--out", help="output directory (default <run>/results/figures; with --data, ./figures)")
     ap.add_argument("--dpi", type=int, default=300)
     args = ap.parse_args(argv)
+    extra = {}
+    try:
+        if args.ryu:
+            extra["ryu"] = ryu_data(args.ryu)
+            if extra["ryu"] is None:
+                raise FileNotFoundError(f"no ryu_estimate.py result in {args.ryu}")
+        if args.network:
+            extra["network"] = network_data(args.network)
+            if extra["network"] is None:
+                raise ValueError(f"no UDP row in {args.network} (WORKLOADS=udp scripts/overhead-run.sh)")
+    except (OSError, ValueError) as e:
+        print(f"plot_contributions: {e}", file=sys.stderr)
+        return 1
     if args.data:
         try:
             d = load_data(args.data)
@@ -1098,6 +1374,7 @@ def main(argv=None) -> int:
             print(f"plot_contributions: cannot read the figure data: {e} (Role 1 makes figures.json on the VM "
                   "with --export: docs/FIGURES-HOWTO.md, section 4)", file=sys.stderr)
             return 1
+        d.update(extra)
     else:
         d = load_run(args.run)
         if not d["rows"]:
@@ -1106,6 +1383,7 @@ def main(argv=None) -> int:
             return 1
         if args.overhead:
             d["overhead"] = overhead_data(args.overhead, _history(args.history))
+        d.update(extra)
         if args.export:
             target = Path(args.export)
             target.parent.mkdir(parents=True, exist_ok=True)

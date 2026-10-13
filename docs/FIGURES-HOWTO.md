@@ -25,25 +25,31 @@ Run every command below from the repository's top folder (the one with `README.m
 ## 2. A. The paper figures
 
 ```bash
-python -m eval.baselines.plot_contributions --data docs/figures/data/final-2026-10-09 --out figures --dpi 300
+python -m eval.baselines.plot_contributions --data docs/figures/data/final-2026-10-09 \
+  --ryu docs/results/2026-10-next --network docs/results/2026-10-next/network-OVERHEAD.json \
+  --out figures --dpi 300
 ```
 
 It prints the path of each file it writes into `figures/`. All are PNG at 300 dpi, sized for an IEEE
-page (7.16 in across two columns, 3.5 in for one).
+page (7.16 in across two columns, 3.5 in for one). `--ryu` and `--network` add the two experiments run on
+12 October (E7 and E8); without them, figures 8 and 9 say "not measured" and figures 2 and 5 have no Ryu-E.
 
-| File | Shows | Supervisor's question |
-|---|---|---|
-| `fig1_c1_specification.png` | time until each system can protect a new image, measured, with the package and file counts behind each bar | Q1: exact times, not estimates; how many packages |
-| `fig1b_c1_components.png` | each system's preparation split into its timed components | Q1 (optional figure) |
-| `fig2_c2_verification.png` | (a) attacks caught and false alarms per system; (b) PROVBIND's check time per event | Q3: the accuracy side |
-| `fig3_c3_attribution.png` | what each system's alerts name (container, process, rule, package, layer, dependency path), as "named / alerts" in every cell | Q1: easier to read |
-| `fig4_c4_trust.png` | admission and trust scenarios: runs caught per system; trust-loop reaction time | - |
-| `fig5_scenarios.png` | every scenario × system: right (blue), wrong (orange), no check at that stage (grey), with the runs judged right per system at the bottom | Q1: one rule for every cell |
-| `fig6_runtime_cost.png` | PROVBIND and Falco against no monitoring on each application metric, with the 20% limit | Q3 and Q4 |
-| `fig7_cost_history.png` | PROVBIND's p95 overhead in each overhead run, in the order the sensor policies were optimised | Q4: the optimisation |
+| File | Experiment | Shows | Supervisor's question |
+|---|---|---|---|
+| `fig1_c1_specification.png` | E4 | time until each system can protect a new image, measured, with the package and file counts behind each bar | Q1: exact times, not estimates; how many packages |
+| `fig1b_c1_components.png` | E4 | each system's preparation split into its timed components | Q1 (optional figure) |
+| `fig2_c2_verification.png` | E1, E6 | (a) attacks caught and false alarms per system, Ryu-E included; (b) PROVBIND's check time per event | Q3: the accuracy side |
+| `fig3_c3_attribution.png` | E2 | what each system's alerts name (container, process, rule, package, layer, dependency path), as "named / alerts" in every cell | Q1: easier to read |
+| `fig4_c4_trust.png` | E3 | admission and trust scenarios: runs caught per system; trust-loop reaction time | - |
+| `fig5_scenarios.png` | E1, E7 | every scenario × system: right (blue), wrong (orange), no check at that stage (grey), with the runs judged right per system at the bottom | Q1: one rule for every cell |
+| `fig6_runtime_cost.png` | E5 | PROVBIND and Falco against no monitoring on each application metric, with the 20% limit | Q3 and Q4 |
+| `fig7_cost_history.png` | E5 | PROVBIND's p95 overhead in each overhead run, in the order the sensor policies were optimised | Q4: the optimisation |
+| `fig8_e7_ryu.png` | E7 | PROVBIND against Ryu et al. [17] rebuilt (Ryu-E) and its two sensitivity variants: detection rate, false-positive rate and F1 over every run | the papers we compete against |
+| `fig9_e8_network.png` | E8 | (a) time per UDP packet against no monitoring on our VM; (b) Her et al.'s published figures for the same test, with our Falco beside them | a journal paper that measures Falco |
 
-Systems marked `*` (Confine-E, DeSFAM-E) are estimated from their published designs on our recorded
-traces; `†` (Sig-only) is derived from the admission records. PROVBIND and Falco are measured.
+Systems marked `*` (Confine-E, DeSFAM-E, Ryu-E) are estimated from their published designs on our
+recorded traces; `†` (Sig-only) is derived from the admission records. PROVBIND and Falco are measured.
+Hatched bars in figure 9 are Her et al.'s published numbers, not our measurements.
 
 ### Check before sending
 

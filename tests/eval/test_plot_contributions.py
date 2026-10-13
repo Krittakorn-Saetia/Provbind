@@ -195,3 +195,86 @@ def test_data_file_must_be_a_figure_data_file(tmp_path, capsys):
     with pytest.raises(ValueError):
         pc.load_data(tmp_path)
     assert pc.main(["--data", str(tmp_path)]) == 1
+
+
+def _ryu_doc(results, tp=3, fp=1, labels="clean", rule="fraction"):
+    """A minimal eval/baselines/ryu_estimate.py result file."""
+    return {"summary": {"TP": tp, "FP": fp, "FN": 2, "TN": 4, "precision": 0.75, "recall": 0.6, "f1": 0.667,
+                        "fpr": 0.2, "known": [1, 2], "unknown": [2, 3],
+                        "others": {"PROVBIND": {"TP": 5, "FP": 0, "FN": 0, "TN": 5, "precision": 1.0, "recall": 1.0,
+                                                "f1": 1.0, "fpr": 0.0, "known": [3, 3]}}},
+            "design": {"labels": labels, "trace_rule": rule}, "results": results,
+            "their_protocol": {"accuracy": 0.79}, "published_reference": {"host_accuracy": 0.98}}
+
+
+def test_ryu_data_reads_each_variant_and_the_runs_flagged_per_scenario(tmp_path):
+    assert pc.ryu_data(tmp_path) is None                               # nothing there yet
+    results = {"ru-3-1.txt": {"detected": True}, "ru-3-2.txt": {"detected": False},
+               "benign-traffic-1.txt": {"detected": True}}
+    (tmp_path / "ryu.json").write_text(json.dumps(_ryu_doc(results)))
+    (tmp_path / "ryu-majority.json").write_text(json.dumps(_ryu_doc({}, tp=1, rule="majority")))
+    ryu = pc.ryu_data(tmp_path)
+    assert [v["label"] for v in ryu["variants"]] == ["Ryu-E", "Ryu-E, looser run rule"]   # no run-label file: skipped
+    first = ryu["variants"][0]
+    assert first["flagged"] == {"ru-3": [1, 2], "benign-traffic": [1, 1]}
+    assert (first["labels"], first["rule"], first["TP"]) == ("clean", "fraction", 3)
+    assert ryu["variants"][1]["rule"] == "majority"
+    assert ryu["provbind"] == {"TP": 5, "FP": 0, "FN": 0, "TN": 5, "precision": 1.0, "recall": 1.0, "f1": 1.0, "fpr": 0.0}
+    assert ryu["their_protocol"]["accuracy"] == 0.79
+    assert pc.ryu_data(tmp_path / "ryu.json")["variants"][0]["label"] == "Ryu-E"           # one file works too
+
+
+def test_ryu_on_figure_2_runs_and_as_a_figure_5_column():
+    ryu = {"variants": [{"flagged": {"ru-3": [4, 5], "benign-1": [5, 5], "trust-1": [5, 5]}}]}
+    rows = [{"scenario": s, "truth": t, "runs": 5, "fraction": [1.0, 0.0, 0.0], "counts": ["5/5", "0/5", "0/5"]}
+            for s, t in (("ak-1", "malicious"), ("trust-1", "malicious"), ("ru-3", "malicious"),
+                         ("au-2", "malicious"), ("benign-1", "benign"))]
+    m = pc.ryu_c2(ryu, rows)                     # admission and trust scenarios are figure 4's, not figure 2's
+    assert (m["attack_runs"], m["benign_runs"], m["recall"], m["fpr"]) == (10, 5, 0.4, 1.0)   # au-2 untraced: missed
+    names, out = pc.heatmap_with_ryu(["PROVBIND", "Falco", "Sig-only"], rows, ryu)
+    assert names == ["PROVBIND", "Falco", "Ryu-E", "Sig-only"]
+    by = {r["scenario"]: r for r in out}
+    assert by["ru-3"]["fraction"] == [1.0, 0.0, 0.8, 0.0] and by["ru-3"]["counts"][2] == "4/5"
+    assert by["ak-1"]["counts"][2] == "0/5" and rows[0]["counts"] == ["5/5", "0/5", "0/5"]   # input rows untouched
+    assert pc.scenario_outcome("ak-1", "malicious", "Ryu-E", 0, 5) == ("na", "n/a")        # runtime-only system
+
+
+def _network_run(path, udp=True):
+    """A minimal network overhead run: results/OVERHEAD.json with a UDP row and Her et al.'s figures."""
+    table = [{"metric": "UDP send", "kind": "udp", "field": "udp_us",
+              "values": {"none": 7.0, "falco": 8.6, "tetragon": 7.06, "provbind": 7.07},
+              "overhead_pct": {"none": 0.0, "falco": 22.6, "tetragon": 0.9, "provbind": 1.0},
+              "spread": {"none": [6.95, 7.04], "provbind": [6.98, 7.08]}}] if udp else []
+    her = [{"system": "PROVBIND", "ours_pct": 1.0, "theirs_without_policy_pct": None, "theirs_with_policy_pct": None},
+           {"system": "Falco", "ours_pct": 22.6, "theirs_without_policy_pct": 19.93, "theirs_with_policy_pct": 24.77},
+           {"system": "Tracee", "ours_pct": None, "theirs_without_policy_pct": 1.48, "theirs_with_policy_pct": 71.5}]
+    (path / "results").mkdir(parents=True)
+    (path / "results" / "OVERHEAD.json").write_text(json.dumps(
+        {"configs": ["none", "falco", "tetragon", "provbind"], "repetitions": {"none": 3, "provbind": 3},
+         "table": table, "her_et_al_udp": her}))
+    return path
+
+
+def test_network_data_reads_the_udp_row_and_her_et_al(tmp_path):
+    net = pc.network_data(_network_run(tmp_path / "net"))
+    assert net["overhead_pct"]["provbind"] == 1.0 and net["spread"]["none"] == [6.95, 7.04]
+    assert [r["system"] for r in net["her_et_al"]] == ["PROVBIND", "Falco", "Tracee"]
+    assert pc.network_data(_network_run(tmp_path / "other", udp=False)) is None
+
+
+def test_draws_e7_and_e8_from_the_run_folder_and_from_the_data_file(tmp_path):
+    run = _run(tmp_path / "run")
+    (run / "results" / "ryu.json").write_text(json.dumps(_ryu_doc({"ru-3-1.txt": {"detected": True}})))
+    net = _network_run(tmp_path / "net")
+    data_dir = tmp_path / "data"
+    assert pc.main(["--run", str(run), "--network", str(net), "--export", str(data_dir / "figures.json")]) == 0
+    data = json.loads((data_dir / "figures.json").read_text())
+    assert data["ryu"]["variants"][0]["flagged"] == {"ru-3": [1, 1]}       # found in <run>/results
+    assert data["network"]["overhead_pct"]["falco"] == 22.6
+    assert pc.main(["--data", str(tmp_path), "--ryu", str(tmp_path / "missing")]) == 1   # a bad path: a message
+    pytest.importorskip("matplotlib")
+    for argv, out in ((["--run", str(run), "--network", str(net)], run / "results" / "figures"),
+                      (["--data", str(data_dir), "--out", str(tmp_path / "figs")], tmp_path / "figs")):
+        assert pc.main(argv + ["--dpi", "60"]) == 0
+        for name in ("fig2_c2_verification.png", "fig5_scenarios.png", "fig8_e7_ryu.png", "fig9_e8_network.png"):
+            assert (out / name).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
