@@ -599,9 +599,9 @@ The supervisor asked for 3–4 experiments PROVBIND wins, with 7–8 tested in t
 
 | # | Experiment | PROVBIND | Other systems |
 |---|---|---|---|
-| E1 | Supply-chain attacks caught without false alarms (19 scenarios × 5 runs) | F1 0.87: 50/65 caught, 0/30 false alarms; unknown attacks alone F1 0.80; without ML-B 45/65, F1 0.82 | DeSFAM-E 0.56 (23/30 false alarms), Falco 0.50 (10/30), signature check 0.14, Confine-E 0 |
+| E1 | Runtime attacks caught without false alarms (the 8 runtime attack scenarios, 40 runs, and the 30 benign runs) | F1 0.77: 25/40 caught, 0/30 false alarms; without ML-B 20/40, F1 0.67. Over all 65 attack runs (with E3's): 50/65, F1 0.87 | Ryu-E 0.74 (35/40, 20/30 false alarms), DeSFAM-E 0.70 (34/40, 23/30), Falco 0.33 (10/40, 10/30), signature check and Confine-E catch none |
 | E2 | Package, layer and dependency path named in alerts | layer in 15/15 image-content alerts, package and dependency path in 10/15 | Falco 0/55; DeSFAM-E, Confine-E none by design |
-| E3 | Trust withdrawn while a workload runs (trust-1, trust-2) | 10/10; median reaction 1.1 s (key), 1.7 s (advisory) | 0/10 for every other system |
+| E3 | Trust problems before and after deployment (ak-1, ak-2, ak-3, trust-1, trust-2; 25 runs) | 25/25, at admission or by the trust loop; trust-loop reaction median 1.1 s (key, 10 alerts), 1.7 s (advisory, 18 alerts) | signature check 5/25 (the unsigned image); Falco's 15 alerts on ak-1 to ak-3 come from rules that fire on every pod start and also flag the clean deploy (ab-1, 5/5); DeSFAM-E, Ryu-E, Confine-E 0/25 |
 | E4 | Time to protect a new image | 4.38 s (envelope compile) | Confine-E 32.8 s, DeSFAM-E 30.5 min; Falco none, generic rules only |
 
 **E1 by stage (write Section IV this way, as figure 2 already does):** 25 of the 65 attack runs are the admission
