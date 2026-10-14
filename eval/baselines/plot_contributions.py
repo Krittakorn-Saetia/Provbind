@@ -959,7 +959,7 @@ def overhead_data(final, history=()):
 
 # --- E7 and E8: Ryu et al. [17] rebuilt (eval/baselines/ryu_estimate.py), Her et al.'s network test ---------
 
-RYU_FILES = (("ryu.json", "Ryu-E"), ("ryu-majority.json", "Ryu-E, looser run rule"),
+RYU_FILES = (("ryu.json", "Ryu-E"), ("ryu-majority.json", "Ryu-E, stricter run rule"),
              ("ryu-runlabels.json", "Ryu-E, their labelling"))
 
 
@@ -1153,7 +1153,7 @@ def fig7_cost_history(d, path, dpi):
 
 
 def _ryu_tick(label, kind):
-    """'Ryu-E, looser run rule' -> 'Ryu-E*' over 'looser run rule'."""
+    """'Ryu-E, stricter run rule' -> 'Ryu-E*' over 'stricter run rule'."""
     name, sep, rest = label.partition(", ")
     return name + MARK.get(kind, "") + ("\n" + rest if sep else "")
 
@@ -1201,7 +1201,7 @@ def fig8_e7_ryu(d, path, dpi):
             "known before an attack:",
             "the normal-traffic recordings and the known attacks R-K2 and R-K3. Every run is scored by a model that did not see it. "
             "Admission scenarios are not traced, so they count as missed.",
-            "Looser run rule: a run is flagged only when most of its windows look malicious. Their labelling: every window of an "
+            "Stricter run rule: a run is flagged only when most of its windows look malicious, not any one of them. Their labelling: every window of an "
             "attack run is labelled as the attack, as Ryu et al. label."]
     if tp.get("accuracy") is not None:
         foot.append(f"Their own protocol (a random 70:30 split of windows) scores accuracy {tp['accuracy']:.2f} on our data"

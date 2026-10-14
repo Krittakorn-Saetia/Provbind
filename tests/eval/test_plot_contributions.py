@@ -214,7 +214,7 @@ def test_ryu_data_reads_each_variant_and_the_runs_flagged_per_scenario(tmp_path)
     (tmp_path / "ryu.json").write_text(json.dumps(_ryu_doc(results)))
     (tmp_path / "ryu-majority.json").write_text(json.dumps(_ryu_doc({}, tp=1, rule="majority")))
     ryu = pc.ryu_data(tmp_path)
-    assert [v["label"] for v in ryu["variants"]] == ["Ryu-E", "Ryu-E, looser run rule"]   # no run-label file: skipped
+    assert [v["label"] for v in ryu["variants"]] == ["Ryu-E", "Ryu-E, stricter run rule"]   # no run-label file: skipped
     first = ryu["variants"][0]
     assert first["flagged"] == {"ru-3": [1, 2], "benign-traffic": [1, 1]}
     assert (first["labels"], first["rule"], first["TP"]) == ("clean", "fraction", 3)
