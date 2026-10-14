@@ -409,11 +409,13 @@ def _empty(ax, text):
 
 
 def _tick(name, kind):
-    return name + MARK.get(kind, "")
+    return (PLAIN.get(name, name) if PLAIN_NAMES else name) + MARK.get(kind, "")
 
 
 FOOTERS = True                                  # --no-footer: the paper's LaTeX caption carries the note instead
 MEASURED_ONLY = False                           # --measured-only: figure 3 shows only the systems whose alerts were read
+PLAIN_NAMES = False                             # --plain-names: the papers' names, not our -E labels (for the paper)
+PLAIN = {"Confine-E": "Confine", "DeSFAM-E": "DeSFAM", "Ryu-E": "Ryu et al."}
 
 
 def _footer(fig, lines):
@@ -673,7 +675,8 @@ def fig2_c2(d, path, dpi):
     _panel(a, "a", "Detection rate vs false-positive rate")
     a.legend(handles=[Patch(facecolor=S1, edgecolor=SURFACE, label="detection rate (attack runs)"),
                       Patch(facecolor=S2, edgecolor=SURFACE, label="false-positive rate (benign runs)"),
-                      Patch(facecolor="#d9d8d3", edgecolor=SURFACE, hatch="///", label="* estimated system")],
+                      Patch(facecolor="#d9d8d3", edgecolor=SURFACE, hatch="///",
+                              label="* re-implemented system" if PLAIN_NAMES else "* estimated system")],
              loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3, fontsize=6.5)
 
     lat = _pre(d, "c2_latency", c2_latency)
@@ -1175,7 +1178,7 @@ def fig7_cost_history(d, path, dpi):
 def _ryu_tick(label, kind):
     """'Ryu-E, stricter run rule' -> 'Ryu-E*' over 'stricter run rule'."""
     name, sep, rest = label.partition(", ")
-    return name + MARK.get(kind, "") + ("\n" + rest if sep else "")
+    return _tick(name, kind) + ("\n" + rest if sep else "")
 
 
 def fig8_e7_ryu(d, path, dpi):
@@ -1214,7 +1217,8 @@ def fig8_e7_ryu(d, path, dpi):
     _grid(ax, "y")
     ax.set_title("PROVBIND against Ryu et al. [17], rebuilt as Ryu-E", loc="left", fontsize=8, color=INK, pad=6)
     ax.legend(handles=[Patch(facecolor=c, edgecolor=SURFACE, label=lab) for _, lab, c in series]
-              + [Patch(facecolor="#d9d8d3", edgecolor=SURFACE, hatch="///", label="* estimated system")],
+              + [Patch(facecolor="#d9d8d3", edgecolor=SURFACE, hatch="///",
+                              label="* re-implemented system" if PLAIN_NAMES else "* estimated system")],
               loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=4, fontsize=6.5)
     tp, pub = ryu.get("their_protocol") or {}, ryu.get("published") or {}
     foot = ["E7. Ryu-E: Ryu et al.'s host detector (5-call windows of system-call numbers, a decision tree), trained only on what is "
@@ -1373,14 +1377,16 @@ def main(argv=None) -> int:
     ap.add_argument("--network", metavar="PATH", help="E8: the network overhead run (WORKLOADS=udp), or its OVERHEAD.json")
     ap.add_argument("--out", help="output directory (default <run>/results/figures; with --data, ./figures)")
     ap.add_argument("--dpi", type=int, default=300)
+    ap.add_argument("--plain-names", action="store_true",
+                    help="label the re-implemented systems by their papers' names (DeSFAM*, not DeSFAM-E*), for the paper")
     ap.add_argument("--measured-only", action="store_true",
                     help="figure 3: draw only the systems whose alerts were read (PROVBIND, Falco), for the paper")
     ap.add_argument("--no-footer", action="store_true",
                     help="leave out the note under each figure and test-plan references (for the paper, where the "
                          "LaTeX caption carries the note)")
     args = ap.parse_args(argv)
-    global FOOTERS, MEASURED_ONLY
-    FOOTERS, MEASURED_ONLY = not args.no_footer, args.measured_only
+    global FOOTERS, MEASURED_ONLY, PLAIN_NAMES
+    FOOTERS, MEASURED_ONLY, PLAIN_NAMES = not args.no_footer, args.measured_only, args.plain_names
     extra = {}
     try:
         if args.ryu:

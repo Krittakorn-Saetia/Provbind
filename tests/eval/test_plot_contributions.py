@@ -134,6 +134,14 @@ def test_no_footer_leaves_the_note_out(tmp_path):
     assert pc.FOOTERS is True                                          # every run sets it afresh
 
 
+def test_plain_names_label_the_rebuilt_systems_by_their_papers(monkeypatch):
+    assert pc._tick("DeSFAM-E", "estimated") == "DeSFAM-E*"
+    monkeypatch.setattr(pc, "PLAIN_NAMES", True)
+    assert pc._tick("DeSFAM-E", "estimated") == "DeSFAM*"
+    assert pc._tick("Falco", "measured") == "Falco"
+    assert pc._ryu_tick("Ryu-E, stricter run rule", "estimated") == "Ryu et al.*\nstricter run rule"
+
+
 def test_measured_only_draws_figure_3_with_the_live_systems_alone(tmp_path):
     pytest.importorskip("matplotlib")
     run = _run(tmp_path)

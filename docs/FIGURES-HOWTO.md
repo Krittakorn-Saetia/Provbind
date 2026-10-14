@@ -37,7 +37,9 @@ page (7.16 in across two columns, 3.5 in for one). `--ryu` and `--network` add t
 For the paper, add `--no-footer`. Each figure then leaves out the note printed under it, which refers to the
 figure numbers of this pack, and names no test-plan ID; the LaTeX caption carries the note instead, starred
 systems included. Add `--measured-only` too: figure 3 then shows only PROVBIND and Falco, the two systems whose
-alerts were read, and its caption says the rebuilt systems are described from their designs in the text.
+alerts were read, and its caption says the rebuilt systems are described from their designs in the text. And add
+`--plain-names`: the rebuilt systems are labelled by their papers' names (DeSFAM\*, Ryu et al.\*, Confine\*)
+instead of DeSFAM-E and the like, which a reader could take for the experiment numbers E1 to E8.
 
 | File | Experiment | Shows | Supervisor's question |
 |---|---|---|---|
