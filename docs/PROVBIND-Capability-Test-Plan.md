@@ -612,7 +612,7 @@ E7 Ryu-E (EV-08) and E8 Her et al.'s network test (OH-07), both won (results bel
 **E7 and E8 results** (12 October 2026, demo VM; aggregates in `docs/results/2026-10-next/`):
 - E7, Ryu-E, trained on the three normal-traffic recordings and the known attacks rk-2 and rk-3, every
   run scored out of sample: F1 0.58, with 35 attack runs caught (unknown 25/30, known 10/35) and 20 of
-  30 normal runs flagged; PROVBIND F1 0.87 with none flagged. Two sensitivity variants: the loosest run
+  30 normal runs flagged; PROVBIND F1 0.87 with none flagged. Two sensitivity variants: the strictest run
   rule (more than half of a run's windows) gives F1 0.33 (16 caught, 15 flagged); every window of an
   attack run labelled as the attack, as Ryu et al. label, gives F1 0.56 (35 caught, 25 flagged). Their
   own protocol (a random 70:30 split of windows) on our data: accuracy 0.79 (published: 0.98). Ryu-E and
