@@ -39,13 +39,15 @@ figure numbers of this pack, and names no test-plan ID; the LaTeX caption carrie
 systems included. Add `--measured-only` too: figure 3 then shows only PROVBIND and Falco, the two systems whose
 alerts were read, and its caption says the rebuilt systems are described from their designs in the text. And add
 `--plain-names`: the rebuilt systems are labelled by their papers' names (DeSFAM\*, Ryu et al.\*, Confine\*)
-instead of DeSFAM-E and the like, which a reader could take for the experiment numbers E1 to E8.
+instead of DeSFAM-E and the like, which a reader could take for the experiment numbers E1 to E8. `--no-mlb` leaves
+the optional PROVBIND + ML-B bar out of figure 1; the paper gives its 7 hours of training traffic in the text.
 
 | File | Experiment | Shows | Supervisor's question |
 |---|---|---|---|
 | `fig1_c1_specification.png` | E4 | time until each system can protect a new image, measured, with the package and file counts behind each bar | Q1: exact times, not estimates; how many packages |
 | `fig1b_c1_components.png` | E4 | each system's preparation split into its timed components | Q1 (optional figure) |
 | `fig2_c2_verification.png` | E1, E6 | (a) attacks caught and false alarms per system, Ryu-E included; (b) PROVBIND's check time per event | Q3: the accuracy side |
+| `fig2s_c2_detection.png` | E1 | attacks caught (of 65) and benign runs flagged (of 30) per system, as counts, in the style of the results pack: the paper's E1 figure | the professor's results pack |
 | `fig3_c3_attribution.png` | E2 | what each system's alerts name (container, process, rule, package, layer, dependency path), as "named / alerts" in every cell | Q1: easier to read |
 | `fig4_c4_trust.png` | E3 | admission and trust scenarios: runs caught per system; trust-loop reaction time | - |
 | `fig5_scenarios.png` | E1, E7 | every scenario × system: right (blue), wrong (orange), no check at that stage (grey), with the runs judged right per system at the bottom | Q1: one rule for every cell |

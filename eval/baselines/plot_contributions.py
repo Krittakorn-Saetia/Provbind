@@ -415,7 +415,8 @@ def _tick(name, kind):
 FOOTERS = True                                  # --no-footer: the paper's LaTeX caption carries the note instead
 MEASURED_ONLY = False                           # --measured-only: figure 3 shows only the systems whose alerts were read
 PLAIN_NAMES = False                             # --plain-names: the papers' names, not our -E labels (for the paper)
-PLAIN = {"Confine-E": "Confine", "DeSFAM-E": "DeSFAM", "Ryu-E": "Ryu et al."}
+NO_MLB = False                                  # --no-mlb: figure 1 without the optional PROVBIND + ML-B bar
+PLAIN = {"Confine-E": "Confine", "DeSFAM-E": "DeSFAM", "Ryu-E": "Ryu et al.", "Sig-only": "Signature check"}
 
 
 def _footer(fig, lines):
@@ -487,6 +488,8 @@ def fig1_c1_measured(d, path, dpi):
     component breakdown is a separate image (fig1b_c1_components.png)."""
     plt = _plt()
     ready = c1_readiness_measured(d["prep"])
+    if NO_MLB:                               # the paper states ML-B's training time in the text instead
+        ready = [r for r in ready if r["system"] != "PROVBIND + ML-B"]
     fig, a = plt.subplots(figsize=(3.6, 0.62 * len(ready) + 0.9))
     ys = list(range(len(ready)))[::-1]
     vals = [r["seconds"] for r in ready if r["seconds"]]
@@ -1316,8 +1319,52 @@ def fig9_e8_network(d, path, dpi):
     return _save(plt, fig, path, dpi)
 
 
+def fig2s_c2_detection(d, path, dpi):
+    """Figure 2, simple form (the style of the results pack): attack runs caught and benign runs flagged per
+    system, as counts over every run, PROVBIND in blue. Ryu-E is added when --ryu was given."""
+    plt = _plt()
+    table = _pre(d, "systems_table", lambda d: (d.get("tables") or {}).get("systems")) or {}
+    rows = []
+    for name in ("PROVBIND", "Ryu-E", "DeSFAM-E", "Falco", "Sig-only", "Confine-E"):
+        if name == "Ryu-E":
+            ryu = _extra(d, "ryu")
+            v = (ryu or {}).get("variants") or []
+            r = v[0] if v else None
+        else:
+            r = table.get(name)
+        if r and all(k in r for k in ("TP", "FP", "FN", "TN")):
+            rows.append((name, KIND.get(name, "estimated"), r["TP"], r["TP"] + r["FN"], r["FP"], r["FP"] + r["TN"]))
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.16, 0.42 * max(len(rows), 3) + 0.95), sharey=True)
+    if not rows:
+        _empty(a, "Not measured: no per-system totals in this run")
+        b.set_axis_off()
+        return _save(plt, fig, path, dpi)
+    ys = list(range(len(rows)))[::-1]
+    for y, (name, kind, tp, n_att, fp, n_ben) in zip(ys, rows):
+        col = S1 if name == "PROVBIND" else MUTED
+        for ax, k, n in ((a, tp, n_att), (b, fp, n_ben)):
+            v = 100 * k / n if n else 0
+            ax.barh(y, max(v, 0.6), height=0.6, color=col)
+            ax.text(max(v, 0.6) + 2.5, y, f"{k} of {n}", va="center", fontsize=7.2, color=INK,
+                    fontweight="bold" if name == "PROVBIND" else "normal")
+    a.set_yticks(ys)
+    a.set_yticklabels([_tick(n, k) for n, k, *_ in rows], fontsize=7.5)
+    for ax, t in ((a, f"(a)  Attack runs caught, of {rows[0][3]} (higher is better)"),
+                  (b, f"(b)  Benign runs flagged, of {rows[0][5]} (lower is better)")):
+        ax.set_xlim(0, 125)
+        ax.set_xticks([0, 25, 50, 75, 100])
+        ax.set_xticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=6.8)
+        ax.grid(axis="x", color=GRID, linewidth=0.6)
+        ax.set_axisbelow(True)
+        ax.set_title(t, loc="left", fontsize=7.8, color=INK)
+    fig.tight_layout(w_pad=2)
+    _footer(fig, ["C2, every scenario run counted; the admission and trust scenarios are part of the attack runs.",
+                  "* Estimated systems (runtime only, from recorded traces); \u2020 Sig-only: derived from the admission records."])
+    return _save(plt, fig, path, dpi)
+
+
 FIGURES = (("fig1_c1_specification.png", fig1_c1), ("fig1b_c1_components.png", fig1b_c1),
-           ("fig2_c2_verification.png", fig2_c2),
+           ("fig2_c2_verification.png", fig2_c2), ("fig2s_c2_detection.png", fig2s_c2_detection),
            ("fig3_c3_attribution.png", fig3_c3), ("fig4_c4_trust.png", fig4_c4),
            ("fig5_scenarios.png", fig5_scenarios),
            ("fig6_runtime_cost.png", fig6_runtime_cost), ("fig7_cost_history.png", fig7_cost_history),
@@ -1377,6 +1424,8 @@ def main(argv=None) -> int:
     ap.add_argument("--network", metavar="PATH", help="E8: the network overhead run (WORKLOADS=udp), or its OVERHEAD.json")
     ap.add_argument("--out", help="output directory (default <run>/results/figures; with --data, ./figures)")
     ap.add_argument("--dpi", type=int, default=300)
+    ap.add_argument("--no-mlb", action="store_true",
+                    help="figure 1: leave out the optional PROVBIND + ML-B bar (the paper gives its time in the text)")
     ap.add_argument("--plain-names", action="store_true",
                     help="label the re-implemented systems by their papers' names (DeSFAM*, not DeSFAM-E*), for the paper")
     ap.add_argument("--measured-only", action="store_true",
@@ -1385,8 +1434,8 @@ def main(argv=None) -> int:
                     help="leave out the note under each figure and test-plan references (for the paper, where the "
                          "LaTeX caption carries the note)")
     args = ap.parse_args(argv)
-    global FOOTERS, MEASURED_ONLY, PLAIN_NAMES
-    FOOTERS, MEASURED_ONLY, PLAIN_NAMES = not args.no_footer, args.measured_only, args.plain_names
+    global FOOTERS, MEASURED_ONLY, PLAIN_NAMES, NO_MLB
+    FOOTERS, MEASURED_ONLY, PLAIN_NAMES, NO_MLB = not args.no_footer, args.measured_only, args.plain_names, args.no_mlb
     extra = {}
     try:
         if args.ryu:

@@ -134,6 +134,18 @@ def test_no_footer_leaves_the_note_out(tmp_path):
     assert pc.FOOTERS is True                                          # every run sets it afresh
 
 
+def test_no_mlb_draws_figure_1_without_the_optional_bar(tmp_path):
+    pytest.importorskip("matplotlib")
+    data = "docs/figures/data/final-2026-10-09"
+    height = lambda png: struct.unpack(">II", png.read_bytes()[16:24])[1]
+    assert pc.main(["--data", data, "--dpi", "60", "--out", str(tmp_path / "all")]) == 0
+    assert pc.main(["--data", data, "--dpi", "60", "--out", str(tmp_path / "core"), "--no-mlb"]) == 0
+    name = "fig1_c1_specification.png"
+    assert height(tmp_path / "core" / name) < height(tmp_path / "all" / name)   # one bar fewer
+    assert pc.main(["--data", data, "--dpi", "60", "--out", str(tmp_path / "again")]) == 0
+    assert pc.NO_MLB is False
+
+
 def test_plain_names_label_the_rebuilt_systems_by_their_papers(monkeypatch):
     assert pc._tick("DeSFAM-E", "estimated") == "DeSFAM-E*"
     monkeypatch.setattr(pc, "PLAIN_NAMES", True)
