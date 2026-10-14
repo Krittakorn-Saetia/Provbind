@@ -604,6 +604,17 @@ The supervisor asked for 3–4 experiments PROVBIND wins, with 7–8 tested in t
 | E3 | Trust withdrawn while a workload runs (trust-1, trust-2) | 10/10; median reaction 1.1 s (key), 1.7 s (advisory) | 0/10 for every other system |
 | E4 | Time to protect a new image | 4.38 s (envelope compile) | Confine-E 32.8 s, DeSFAM-E 30.5 min; Falco none, generic rules only |
 
+**E1 by stage (write Section IV this way, as figure 2 already does):** 25 of the 65 attack runs are the admission
+and trust scenarios of figure 4 (ak-1 to ak-3, trust-1, trust-2). PROVBIND catches all 25, Falco 15, the signature
+check 5, DeSFAM-E and Ryu-E none: the admission scenarios have no traces, so the trace-based estimates count them as
+missed (Falco, run live, caught all three), and a trust change alters no behaviour, so no runtime detector sees it.
+On the 40 runtime attack runs, PROVBIND catches 25 (F1 0.77; 20 and F1 0.67 without ML-B), DeSFAM-E 34 (F1 0.70)
+and Ryu-E 35 (F1 0.74; 0.45 and 0.70 for its two variants), with 0 false alarms against their 23 and 20 of 30. At
+run time the result is therefore the draft's precision claim, not higher recall, and its F1 lead needs ML-B. Removing
+every false alarm would lift DeSFAM-E and Ryu-E to F1 0.92 and 0.93 on the runtime runs (0.69 and 0.70 over all 65),
+so DeSFAM-E's missing benign-pattern filter and moving threshold belong in the limitations, or the filter is added
+and re-scored before submission.
+
 **Supporting:** E5 runtime cost on application requests (within 5% of Falco, worst +9.9% against no
 monitoring; monitor CPU 0.2% of a core against Falco's 8.2%), E6 check time per event (2.0 µs median),
 E7 Ryu-E (EV-08) and E8 Her et al.'s network test (OH-07), both won (results below). Optional: OH-08
