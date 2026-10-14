@@ -134,6 +134,18 @@ def test_no_footer_leaves_the_note_out(tmp_path):
     assert pc.FOOTERS is True                                          # every run sets it afresh
 
 
+def test_measured_only_draws_figure_3_with_the_live_systems_alone(tmp_path):
+    pytest.importorskip("matplotlib")
+    run = _run(tmp_path)
+    width = lambda png: struct.unpack(">II", png.read_bytes()[16:24])[0]
+    assert pc.main(["--run", str(run), "--dpi", "60", "--out", str(tmp_path / "all")]) == 0
+    assert pc.main(["--run", str(run), "--dpi", "60", "--out", str(tmp_path / "live"), "--measured-only"]) == 0
+    name = "fig3_c3_attribution.png"
+    assert width(tmp_path / "live" / name) < width(tmp_path / "all" / name)
+    assert pc.main(["--run", str(run), "--dpi", "60", "--out", str(tmp_path / "again")]) == 0
+    assert pc.MEASURED_ONLY is False
+
+
 def test_c3_counts_use_in_image_alerts_for_origin_fields(tmp_path):
     att = pc.c3_attribution(pc.load_run(_run(tmp_path)))
     c = dict(zip(att["fields"], att["counts"]["PROVBIND"]))

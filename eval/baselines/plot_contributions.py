@@ -413,6 +413,7 @@ def _tick(name, kind):
 
 
 FOOTERS = True                                  # --no-footer: the paper's LaTeX caption carries the note instead
+MEASURED_ONLY = False                           # --measured-only: figure 3 shows only the systems whose alerts were read
 
 
 def _footer(fig, lines):
@@ -717,10 +718,12 @@ def fig3_c3(d, path, dpi):
     plt = _plt()
     att = _pre(d, "c3_attribution", c3_attribution)
     fields, systems = att["fields"], att["systems"]
+    if MEASURED_ONLY:                        # the paper's version: the others are described from their designs in the text
+        systems = [s for s in systems if att["how"].get(s) == "measured"]
     cmap = _cmap(BLUE_RAMP, "blue")
     groups = (("Where", ("Container / pod", "Process")), ("Why", ("Rule / clause / technique",)),
               ("Supply-chain origin", ORIGIN_FIELDS))
-    fig, ax = plt.subplots(figsize=(5.2, 3.1))
+    fig, ax = plt.subplots(figsize=(3.5, 3.1) if MEASURED_ONLY else (5.2, 3.1))
     xs = {s: j + (0.35 if j >= 2 else 0) for j, s in enumerate(systems)}       # a gap before estimated systems
     for i, f in enumerate(fields):
         y = i
@@ -754,17 +757,28 @@ def fig3_c3(d, path, dpi):
     for sp in ax.spines.values():
         sp.set_visible(False)
     row = 0
+    label_x, label_tr = -1.9, ax.transData
+    if MEASURED_ONLY:                        # a narrower axis: place the group labels just left of the row labels
+        fig.canvas.draw()
+        left = min(t.get_window_extent().x0 for t in ax.get_yticklabels())
+        label_x, label_tr = ax.transAxes.inverted().transform((left - 9, 0))[0], ax.get_yaxis_transform()
     for g, members in groups:                                                   # group labels and rules
         if row:
             ax.axhline(row, color=INK2, linewidth=0.7, xmax=0.97)
-        ax.text(-1.9, row + len(members) / 2, g, rotation=90, ha="center", va="center", fontsize=6.3,
-                color=INK2, style="italic", clip_on=False)
+        ax.text(label_x, row + len(members) / 2, g, rotation=90, ha="center", va="center", fontsize=6.3,
+                color=INK2, style="italic", clip_on=False, transform=label_tr)
         row += len(members)
-    _footer(fig, ["C3. What each system's alerts in attack runs name. PROVBIND and Falco: measured from their alert files,",
-                  f"shown as named / alerts. Supply-chain origin rows count only PROVBIND alerts about a file that is in the image",
-                  f"({att['n_image']} of {att['n'].get('PROVBIND') or 0}); a dropped file, a connection or a behaviour window has no package or layer to name.",
-                  "* Confine-E and DeSFAM-E are estimated, not run live: grey cells say what their design records. Confine-E",
-                  "raises no alert at all (seccomp blocks the call silently)."])
+    if MEASURED_ONLY:
+        ax.set_title("What each alert names (the systems run live)", fontsize=7.2, color=INK, pad=24)
+    note = ["C3. What each system's alerts in attack runs name. PROVBIND and Falco: measured from their alert files,",
+            "shown as named / alerts. Supply-chain origin rows count only PROVBIND alerts about a file that is in the image",
+            f"({att['n_image']} of {att['n'].get('PROVBIND') or 0}); a dropped file, a connection or a behaviour window has no package or layer to name."]
+    if MEASURED_ONLY:
+        note.append("Only PROVBIND and Falco were run live; the rebuilt systems are described from their designs in the text.")
+    else:
+        note += ["* Confine-E and DeSFAM-E are estimated, not run live: grey cells say what their design records. Confine-E",
+                 "raises no alert at all (seccomp blocks the call silently)."]
+    _footer(fig, note)
     return _save(plt, fig, path, dpi)
 
 
@@ -1359,12 +1373,14 @@ def main(argv=None) -> int:
     ap.add_argument("--network", metavar="PATH", help="E8: the network overhead run (WORKLOADS=udp), or its OVERHEAD.json")
     ap.add_argument("--out", help="output directory (default <run>/results/figures; with --data, ./figures)")
     ap.add_argument("--dpi", type=int, default=300)
+    ap.add_argument("--measured-only", action="store_true",
+                    help="figure 3: draw only the systems whose alerts were read (PROVBIND, Falco), for the paper")
     ap.add_argument("--no-footer", action="store_true",
                     help="leave out the note under each figure and test-plan references (for the paper, where the "
                          "LaTeX caption carries the note)")
     args = ap.parse_args(argv)
-    global FOOTERS
-    FOOTERS = not args.no_footer
+    global FOOTERS, MEASURED_ONLY
+    FOOTERS, MEASURED_ONLY = not args.no_footer, args.measured_only
     extra = {}
     try:
         if args.ryu:
