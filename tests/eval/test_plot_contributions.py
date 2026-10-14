@@ -1,5 +1,6 @@
 """eval/baselines/plot_contributions.py: the data behind each contribution figure, and the PNGs."""
 import json
+import struct
 
 import pytest
 
@@ -119,6 +120,18 @@ def test_renders_five_pngs(tmp_path):
     assert pc.main(["--run", str(run), "--dpi", "60"]) == 0
     for name, _ in pc.FIGURES:
         assert (run / "results" / "figures" / name).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_no_footer_leaves_the_note_out(tmp_path):
+    pytest.importorskip("matplotlib")
+    run = _run(tmp_path)
+    height = lambda png: struct.unpack(">II", png.read_bytes()[16:24])[1]
+    assert pc.main(["--run", str(run), "--dpi", "60", "--out", str(tmp_path / "with")]) == 0
+    assert pc.main(["--run", str(run), "--dpi", "60", "--out", str(tmp_path / "without"), "--no-footer"]) == 0
+    name = "fig3_c3_attribution.png"
+    assert height(tmp_path / "without" / name) < height(tmp_path / "with" / name)
+    assert pc.main(["--run", str(run), "--dpi", "60", "--out", str(tmp_path / "again")]) == 0
+    assert pc.FOOTERS is True                                          # every run sets it afresh
 
 
 def test_c3_counts_use_in_image_alerts_for_origin_fields(tmp_path):

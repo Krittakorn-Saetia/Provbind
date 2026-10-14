@@ -412,7 +412,12 @@ def _tick(name, kind):
     return name + MARK.get(kind, "")
 
 
+FOOTERS = True                                  # --no-footer: the paper's LaTeX caption carries the note instead
+
+
 def _footer(fig, lines):
+    if not FOOTERS:
+        return
     fig.text(0.0, -0.02, "\n".join(lines), ha="left", va="top", fontsize=6.3, color=INK2, transform=fig.transFigure)
 
 
@@ -686,7 +691,8 @@ def fig2_c2(d, path, dpi):
         b.set_xlabel("µs per event")
         _grid(b, "x")
         _panel(b, "b", "PROVBIND per-event check latency")
-        note = f"{lat['events']:,} real events (OH-01)" + ("; the plan asks for ≥ 100,000" if lat["short"] else "")
+        note = (f"{lat['events']:,} real events (OH-01)" + ("; the plan asks for ≥ 100,000" if lat["short"] else "")
+                if FOOTERS else f"n = {lat['events']:,} real events")             # the paper names no test IDs
         _note_below(b, note)
     fig.tight_layout(w_pad=2.5)
     n_att = data[0]["attack_runs"] if data else 0
@@ -1353,7 +1359,12 @@ def main(argv=None) -> int:
     ap.add_argument("--network", metavar="PATH", help="E8: the network overhead run (WORKLOADS=udp), or its OVERHEAD.json")
     ap.add_argument("--out", help="output directory (default <run>/results/figures; with --data, ./figures)")
     ap.add_argument("--dpi", type=int, default=300)
+    ap.add_argument("--no-footer", action="store_true",
+                    help="leave out the note under each figure and test-plan references (for the paper, where the "
+                         "LaTeX caption carries the note)")
     args = ap.parse_args(argv)
+    global FOOTERS
+    FOOTERS = not args.no_footer
     extra = {}
     try:
         if args.ryu:

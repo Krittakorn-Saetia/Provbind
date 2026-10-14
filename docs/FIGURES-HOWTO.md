@@ -34,6 +34,10 @@ It prints the path of each file it writes into `figures/`. All are PNG at 300 dp
 page (7.16 in across two columns, 3.5 in for one). `--ryu` and `--network` add the two experiments run on
 12 October (E7 and E8); without them, figures 8 and 9 say "not measured" and figures 2 and 5 have no Ryu-E.
 
+For the paper, add `--no-footer`. Each figure then leaves out the note printed under it, which refers to the
+figure numbers of this pack, and names no test-plan ID; the LaTeX caption carries the note instead, starred
+systems included.
+
 | File | Experiment | Shows | Supervisor's question |
 |---|---|---|---|
 | `fig1_c1_specification.png` | E4 | time until each system can protect a new image, measured, with the package and file counts behind each bar | Q1: exact times, not estimates; how many packages |
