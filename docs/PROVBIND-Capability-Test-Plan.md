@@ -655,6 +655,33 @@ file-access detector (needs a new recording of file opens).
 - Claims not tested in our evaluation are softened: ML-A's capability model (LightGBM [21]) and the graph
   database's "multi-hop deviation correlation" in the abstract.
 
+### 10.4 Review of the report draft DS3 (30 October 2026)
+
+The report version to submit (`Provbind_DS3.pdf`, 16 pages) restructures the paper. Section IV is a security
+analysis, Section V the experiment design, Section VI the results and Section VII the conclusion; the separate
+Limitations section is gone. The report renumbers the experiments: its E1 (compile time) is 10.3's E4, E2
+(detection) is E1, E3 (attribution) is E2, E4 (trust) is E3, and E5 (cost) keeps its number.
+
+Checked against this repository: every result number, Table III (matches `alerts/score.py`), Table IV (every
+component exists), Table V (scenarios and known/unknown labels) and all cross-references but one are correct.
+Proposed changes, with replacement text, in `docs/REPORT-DS3-FIXES.md`:
+
+| # | Where | Change | Why |
+|---|---|---|---|
+| M1 | V-C, VII | List all of DeSFAM-E's omissions; put the limitations V-C points to into VII: the F1 0.92 upper bound, the 0/30 bound, and the untested builder and transparency checks | V-C says "discussed in Section VII", which has none of this; 10.3 asks for the DeSFAM-E caveat |
+| M2 | VI-C | Give Falco's 0 of 55 and the by-design attribution of DeSFAM, Ryu et al. and Confine | Table VI and the text promise a comparison that Table VII does not show |
+| M3 | Table VII, VI-C | Say "names", unless the 15 alerts were checked against the build | `c3_attribution` counts the alerts that name a field, not a correctness check |
+| M4 | References | Delete [28] | Never cited; off-topic (10.3) |
+| M5 | Abstract | Drop "builder" from the trust-loop claim | No experiment changed a builder |
+| S1 | V-A | Describe the in-kernel rate limits (10.1, "Collection") | Cost and detection were measured with them; a repetition within a minute raises no new alert |
+| S2 | VI-B | Say both learned baselines flag every normal-traffic run | DeSFAM-E and Ryu-E flag `benign-traffic` (B2) 5/5 |
+| S3 | V-B | "each run five times", not "executed independently" | The runs are repeats, not independent samples |
+| S4 | V-C | Scenario 6 (`au-2`) was not traced either | The trace-based baselines could not see it; every system misses it |
+| S5 | Phase 1 | Say how the prototype realises h_I | No single bundle commitment is signed: a cosign signature over d_I and attestations with subject d_I |
+| S6 | VI-A | Give a source for the 2.3 s / 0.7 s / 0.1 s split, or drop it | Not in the exported results; the envelopes' `timings_ms` on the VM have stage times |
+
+Still to check by hand: the authors of [31] (SynthChain) against the arXiv page.
+
 ---
 
 ## 11. What will not be finished before the presentation
