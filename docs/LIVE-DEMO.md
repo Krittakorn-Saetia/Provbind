@@ -270,10 +270,16 @@ the restart by itself.
 
 ## 8. What the demo does not show
 
+- **Building and signing (Phase 1):** `make demo-app` did it beforehand; it takes minutes and needs the
+  internet. The builder, commit and Rekor entry on the envelope card are its evidence.
 - **The behavioural path (ML-B):** it needs a model trained on 7 hours of traffic. The report gives its
   result: it catches the in-envelope burst.
 - **Measurements:** the numbers come from 95 recorded runs (report, Section VI), not from this run.
 - **Blocking at admission:** the prototype verifies and flags; it does not reject pods.
+- **What PROVBIND misses** (the 15 of 65 attack runs it did not catch, `docs/COMPARISON-RUN.md`): ru-5, a
+  program that only reads a credential file, since nothing it does contradicts the envelope; rk-2, the
+  system-call shape of a kernel exploit, which a system-call detector complements; au-2, a build step
+  that adds an undeclared program before signing, which PROVBIND only logs as Low when it runs.
 
 ## 9. How it works
 
