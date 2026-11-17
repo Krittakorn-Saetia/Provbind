@@ -37,7 +37,7 @@ fi
 for k in $SETTINGS; do [ -z "${!k+x}" ] || FROM[$k]=conf; done
 for k in "${!GIVEN[@]}"; do printf -v "$k" '%s' "${GIVEN[$k]}"; FROM[$k]="command line"; done
 : "${ACTS:=envelope shell trust attack log}"
-: "${PAUSE:=3}"
+: "${PAUSE:=10}"
 : "${CAPTIONS:=short}"
 : "${ATTACK:=update}"
 : "${TRUST:=advisory}"

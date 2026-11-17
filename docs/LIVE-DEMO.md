@@ -42,7 +42,7 @@ Rekor log.
 Each `make live-demo`:
 1. Restarts PROVBIND on a fresh run folder. The previous run is kept as `run-demo.<date-time>` for plan B.
 2. Clears the audience screen, which starts over by itself.
-3. Runs five acts with 3 s between them.
+3. Runs five acts with 10 s between them, so the audience can read each result.
 
 Nothing needs undoing between runs: the advisory, the key state and the log edit all stay in the old folder.
 
@@ -74,7 +74,7 @@ Edit `testbed/live-demo.conf`, or give the setting for one run:
 |---|---|---|
 | The default | `make live-demo` | 1 min |
 | You set the pace; the script shows what to say | `make live-demo PAUSE=enter CAPTIONS=long` | as long as you talk |
-| The short version | `make live-demo ACTS="envelope trust attack" PAUSE=1` | 30 s |
+| The short version | `make live-demo ACTS="envelope trust attack" PAUSE=3` | 20 s |
 | Admission live: the app is deployed during the first act | `make live-demo REDEPLOY=1` | 1.5 min |
 | Add an unsigned image | `make live-demo ACTS="envelope shell trust attack log unsigned"` | 1.5–2 min |
 | Another attack | `make live-demo ATTACK=egress` (or `overwrite`, `inject`) | 1 min |
@@ -82,12 +82,13 @@ Edit `testbed/live-demo.conf`, or give the setting for one run:
 | An ordinary CVE: reported, trust stays | `make live-demo ADVISORY_ID=CVE-2026-0001` | 1 min |
 | See what is in use, and where it comes from | `make live-demo-settings` | |
 
-The times are estimates from the evaluation's measured delays; the script prints the real total at the end.
+The times come from runs on the demo VM (17 November): the five default acts took about 20 s, plus the
+pauses. The script prints the real total at the end.
 
 | Setting | Default | Values | What it changes |
 |---|---|---|---|
 | `ACTS` | `envelope shell trust attack log` | any of `envelope shell trust attack log unsigned`, in any order | which acts run, in that order |
-| `PAUSE` | `3` | seconds, or `enter` | the gap between acts; `enter` waits for you before each act |
+| `PAUSE` | `10` | seconds, or `enter` | the gap between acts; `enter` waits for you before each act. The acts take about 20 s in all, so 10 gives about a minute and 3 about 30 s |
 | `CAPTIONS` | `short` | `short`, `long` | one line per act, or also what to say and what to watch |
 | `ATTACK` | `update` | `update`, `overwrite`, `inject`, `egress` | the attack act (table in Section 3) |
 | `TRUST` | `advisory` | `advisory`, `key` | an advisory appears, or the signing key is revoked |
