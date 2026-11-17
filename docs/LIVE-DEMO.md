@@ -4,6 +4,9 @@ One command, about a minute, the same every time. It runs on the demo PC (kind, 
 local registry), and everything the audience sees is real: the cluster, the sensor and PROVBIND's
 services. The only exception is plan B, a replay of an earlier run, and the screen says so.
 
+The one-page version, with every setting and the steps from start to finish, is
+`docs/LIVE-DEMO-CHEATSHEET.md`.
+
 The settings are in `testbed/live-demo.conf`. Any setting can also be given for one run on the command
 line, which wins: `make live-demo ATTACK=overwrite`.
 
