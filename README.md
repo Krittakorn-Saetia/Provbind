@@ -22,6 +22,7 @@ extras) and how to run them on the VM: `docs/NEXT-EXPERIMENTS.md`.
 | `docs/FIGURES-HOWTO.md` | How to draw the paper figures from the repository, and where the final numbers are |
 | `docs/REPORT-DS3-FIXES.md` | What to fix in the report draft DS3 before submitting, with replacement text ready to paste |
 | `docs/LIVE-DEMO.md` | The live demo for an audience: one command, about a minute, the same every time; settings in `testbed/live-demo.conf`, what to say, and plan B (`make live-demo`) |
+| `docs/LIVE-DEMO-BRIEFING.md` | Before presenting: the project, the demo in technical detail, the comparison, what is left out and why, and likely questions with answers |
 | `docs/ROLE2-HANDOFF.md` (v0.2) | Role 2 spec: evidence pipeline, envelope compiler, ML-A |
 | `docs/PROVBIND-Explanation-and-Review.md` | The design behind every phase, and the 31 fail points in the draft |
 | `docs/PROVBIND-Source-Answers.md` | Project questions answered from the documents, with sources |

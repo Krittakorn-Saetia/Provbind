@@ -5,7 +5,8 @@ local registry), and everything the audience sees is real: the cluster, the sens
 services. The only exception is plan B, a replay of an earlier run, and the screen says so.
 
 The one-page version, with every setting and the steps from start to finish, is
-`docs/LIVE-DEMO-CHEATSHEET.md`.
+`docs/LIVE-DEMO-CHEATSHEET.md`. The briefing (the project, the demo in technical detail, the comparison,
+what is left out and likely questions) is `docs/LIVE-DEMO-BRIEFING.md`.
 
 The settings are in `testbed/live-demo.conf`. Any setting can also be given for one run on the command
 line, which wins: `make live-demo ATTACK=overwrite`.
