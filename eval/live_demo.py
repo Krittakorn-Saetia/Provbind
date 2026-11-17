@@ -6,7 +6,8 @@
     python -m eval.live_demo incident --run R                                  # attack-1's two alerts
     python -m eval.live_demo trust    --run R                                  # trust act
     python -m eval.live_demo binding  --run R --pod-prefix demo-app-unsigned   # unsigned act
-    python -m eval.live_demo falco    --run R --since N   # Falco's alerts after line N of falco.jsonl
+    python -m eval.live_demo falco    --run R --since N [--namespace demo --pod-prefix demo-app]
+                                      # Falco's alerts after line N of falco.jsonl, for that app only
     python -m eval.live_demo lines    --file F            # number of lines, 0 when F does not exist
     python -m eval.live_demo advisory --run R --id MAL-2026-9001 --ecosystem PyPI --package requestz-helper \
                                       [--pkg-version 0.1.0]  # write the trust act's advisory; prints its path
@@ -214,8 +215,19 @@ def binding_summary(run: Path, prefix: str) -> list[str]:
     return lines
 
 
-def falco_summary(run: Path, since: int = 0, limit: int = 3) -> list[str]:
+def falco_pod(event: dict) -> tuple[str, str]:
+    """(namespace, pod) of a Falco alert, as eval/compare.py reads them; empty for the host."""
+    f = event.get("output_fields") or {}
+    return str(f.get("k8s.ns.name") or ""), str(f.get("k8s.pod.name") or "")
+
+
+def falco_summary(run: Path, since: int = 0, limit: int = 3, namespace: str | None = None,
+                  pod_prefix: str = "") -> list[str]:
+    """Falco's alerts after line `since` of falco.jsonl. With a namespace, only that app's: Falco watches
+    the whole machine, so the VM's own desktop programs raise alerts too."""
     events = load_jsonl(Path(run) / "falco.jsonl")[since:]
+    if namespace is not None:
+        events = [e for e in events if falco_pod(e)[0] == namespace and falco_pod(e)[1].startswith(pod_prefix)]
     if not events:
         return ["Falco: no alert"]
     rules: dict[str, str] = {}
@@ -270,6 +282,7 @@ def main(argv=None) -> int:
     group.add_argument("--low", action="store_true", help="count: Low records only")
     group.add_argument("--alerts", action="store_true", help="count: alerts above Low only")
     ap.add_argument("--pod-prefix", default="demo-app")
+    ap.add_argument("--namespace", help="falco: only alerts from pods in this namespace (with --pod-prefix)")
     ap.add_argument("--since", type=int, default=0, help="since: alerts already shown; falco: lines already shown")
     ap.add_argument("--file")
     ap.add_argument("--id", help="advisory: its id (MAL-... withdraws trust)")
@@ -292,7 +305,8 @@ def main(argv=None) -> int:
                "incident": lambda: incident_summary(run),
                "trust": lambda: trust_summary(run),
                "binding": lambda: binding_summary(run, args.pod_prefix),
-               "falco": lambda: falco_summary(run, args.since)}[args.what]()
+               "falco": lambda: falco_summary(run, args.since, namespace=args.namespace,
+                                              pod_prefix=args.pod_prefix)}[args.what]()
         for line in out:
             print(line)
     return 0

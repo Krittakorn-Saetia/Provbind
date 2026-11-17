@@ -167,6 +167,22 @@ def test_falco_summary_reads_only_the_new_lines(tmp_path):
     assert ld.falco_summary(run, since=3) == ["Falco: no alert"]
 
 
+def falco_event(rule, ns=None, pod=None):
+    return {"rule": rule, "priority": "Notice",
+            "output_fields": {"k8s.ns.name": ns, "k8s.pod.name": pod, "container.id": "host" if ns is None else "abc"}}
+
+
+def test_falco_summary_leaves_out_the_machines_own_programs(tmp_path):
+    run = make_run(tmp_path, falco=[falco_event("Read sensitive file untrusted"),             # the VM's desktop
+                                    falco_event("Terminal shell in container", "demo", "demo-app-6f7c9"),
+                                    falco_event("Launch Privileged Container", "kube-system", "tetragon-x"),
+                                    falco_event("Read sensitive file untrusted")])
+    assert ld.falco_summary(run, namespace="demo", pod_prefix="demo-app") == [
+        "Falco: Terminal shell in container (Notice)", "Falco: 1 alert in all"]
+    assert ld.falco_summary(run, since=2, namespace="demo", pod_prefix="demo-app") == ["Falco: no alert"]
+    assert ld.falco_summary(run)[-1] == "Falco: 4 alerts in all"            # unfiltered without a namespace
+
+
 def test_summaries_say_when_there_is_nothing_yet(tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()

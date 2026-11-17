@@ -169,12 +169,14 @@ service_alive() {          # NAME: is that service of this run folder running?
 services_running() { local s; for s in controller node alerts trust; do service_alive "$s" || return 1; done; }
 falco_running() { kubectl -n falco get pods -l app.kubernetes.io/name=falco --no-headers 2>/dev/null | grep -q Running; }
 falco_on() { [ "$FALCO" != off ] && { [ "$DRY_RUN" = 1 ] || service_alive falco; }; }
-show_falco() { if falco_on; then py falco --since "$1" | result; fi; }   # MARK: Falco's alerts since that line
-falco_settle() {           # MARK: Falco's alerts come through kubectl logs: wait up to 4 s for the first, then 1 s
+falco_app() { py falco --since "$1" --namespace "$NAMESPACE" --pod-prefix "$DEPLOY"; }   # MARK: the app's only
+falco_saw() { [[ "$(falco_app "$1")" != "Falco: no alert" ]]; }      # Falco also reports the VM's own programs
+show_falco() { if falco_on; then falco_app "$1" | result; fi; }
+falco_settle() {           # MARK: Falco's alerts come through kubectl logs: wait up to 4 s for the app's first, then 1 s
   falco_on && [ "$DRY_RUN" != 1 ] || return 0
   local end=$(( SECONDS + 4 ))
-  while [ "$SECONDS" -lt "$end" ] && [ "$(py lines)" -le "$1" ]; do sleep 0.5; done
-  [ "$(py lines)" -le "$1" ] || sleep 1
+  while [ "$SECONDS" -lt "$end" ] && ! falco_saw "$1"; do sleep 0.5; done
+  if falco_saw "$1"; then sleep 1; fi
 }
 
 cleanup() { stop_port_forward; }
