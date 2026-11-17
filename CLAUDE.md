@@ -9,6 +9,7 @@ Team repo for the SF9-26 PROVBIND 4-day prototype. Four roles share it. The team
 - Python 3.11. Tests use pytest; tests that need Docker or the cluster are marked `integration`.
 - Never read, print or commit private keys (`pipeline/keys/*.key`). Never commit `./run`.
 - stdout is for machine-readable output; logs go to stderr.
+- Commit messages: no `Co-Authored-By` line for Claude. Claude is not listed as a contributor.
 
 ## Role 2 (pipeline/, compiler/)
 Before working in `pipeline/` or `compiler/`, read `docs/ROLE2-HANDOFF.md`. It holds the tasks, algorithms and tests.
