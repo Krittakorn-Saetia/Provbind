@@ -197,3 +197,25 @@ scored:  ## Role 1's balanced scored run: ROUNDS x (benign, attack, trust, ph4-1
 
 demo:  ## the Sprint Handoff §1.1 demo, after make up and make demo-app (needs DEMO_REF=<ref@digest>)
 	./scripts/demo.sh
+
+# The live demo for an audience (docs/LIVE-DEMO.md) keeps its own run folder, never $(PROVBIND_RUN).
+DEMO_RUN ?= ./run-demo
+.PHONY: live-demo-check live-demo-prep live-demo-view live-demo live-demo-reset live-demo-stop
+
+live-demo-check:  ## live demo: are the cluster, sensor, registry and image ready? (docs/LIVE-DEMO.md)
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh check
+
+live-demo-prep:  ## live demo: fresh run folder, policies, PROVBIND's services, unsigned image (needs DEMO_REF)
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh prep
+
+live-demo-view:  ## live demo: the audience screen, in a second terminal
+	python3 -m eval.demo_view --run $(DEMO_RUN) --follow
+
+live-demo:  ## live demo: the six acts, Enter between them (needs DEMO_REF; AUTO=1 for a rehearsal)
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh run
+
+live-demo-reset:  ## live demo: undo the acts (advisory, log edit, test deployment); services keep running
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh reset
+
+live-demo-stop:  ## live demo: stop PROVBIND's services
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh stop
