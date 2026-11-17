@@ -260,7 +260,10 @@ As a last resort, record a rehearsal's screen (OBS, or `asciinema rec`) and keep
 
 ## 7. After the talk
 
-`make live-demo-stop` stops PROVBIND's services; they keep running between runs until then. With `FRESH=0`,
+`make live-demo-stop` stops PROVBIND's services; they keep running between runs until then. Then shut
+the VM down from Ubuntu's menu (Power Off), or close its window with "Save the machine state".
+VirtualBox's "Power off the machine" is like pulling the plug: the cluster usually recovers, but if it
+does not, follow Section 1, *After the PC restarts*. With `FRESH=0`,
 `make live-demo-reset` undoes the acts: it removes the advisory, makes the key active, restores the log and
 deletes the unsigned deployment.
 
