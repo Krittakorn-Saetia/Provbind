@@ -403,10 +403,13 @@ def test_stop_ends_only_its_own_services_never_a_reused_pid(tmp_path):
     stranger = subprocess.Popen(["sleep", "60"], start_new_session=True)
     try:
         time.sleep(0.2)                                     # let exec -a take effect
-        (run / "demo.pids").write_text(f"controller {ours.pid}\nnode {stranger.pid}\n")
+        gone = subprocess.Popen(["true"])
+        gone.wait()                                         # a PID that no longer exists, as after a reboot
+        (run / "demo.pids").write_text(f"controller {ours.pid}\nnode {stranger.pid}\nalerts {gone.pid}\n")
         r = source_and_run(tmp_path, "service_alive controller && echo ALIVE; service_alive node || echo NOT-OURS; "
                                      "stop_services")
         assert r.returncode == 0, r.stderr
+        assert "No such file" not in r.stderr, r.stderr     # a vanished PID is skipped quietly
         assert "ALIVE" in r.stdout and "NOT-OURS" in r.stdout
         assert ours.wait(timeout=5) is not None             # stopped
         assert stranger.poll() is None                      # left alone

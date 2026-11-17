@@ -169,7 +169,8 @@ is_ours() {                # NAME PID: is PID still that service? After a reboot
     controller) marker=controller.watch ;; node) marker=node.run ;; alerts) marker=alerts.run ;;
     trust) marker=alerts.trust ;; falco) marker=capture_falco ;; *) return 1 ;;
   esac
-  cmd=$(tr '\0' ' ' < "/proc/$2/cmdline" 2>/dev/null) || return 1
+  # the group's 2>/dev/null comes first, so a PID that is gone (after a reboot) prints nothing
+  cmd=$( { tr '\0' ' ' < "/proc/$2/cmdline"; } 2>/dev/null ) || return 1
   [[ "$cmd" == *"$marker"* ]]
 }
 service_alive() {          # NAME: is that service of this run folder running?
