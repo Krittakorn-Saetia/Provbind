@@ -176,9 +176,9 @@ Each act prints one caption line on the presenter's terminal, runs, then prints 
 
 | `ATTACK` | The request | The alert screen |
 |---|---|---|
-| `update` | `GET /update`: requestz-helper writes `/tmp/.x9` and runs it; it appends a line to `/etc/passwd` | **CRITICAL 90** `Undeclared program executed` for `/tmp/.x9`, from nothing in the signed image; then **HIGH 72** `Signed image file modified` for `/etc/passwd`, with its layer and `(same incident)` |
+| `update` | `GET /update`: requestz-helper writes `/tmp/.x9` and runs it; it appends a line to `/etc/passwd` | One incident, three cards: **CRITICAL 84** `Undeclared code loaded` and **CRITICAL 90** `Undeclared program executed` for `/tmp/.x9`, from nothing in the signed image; then **HIGH 72** `Signed image file modified` for `/etc/passwd`, with its layer |
 | `overwrite` | `GET /ru4`: the app overwrites `/usr/bin/ls` with `/bin/cat`'s bytes, runs it, then restores it | `Signed image file modified` for `/usr/bin/ls` |
-| `inject` | `GET /rk3`: an embedded harmless library is preloaded into `python3 -c pass` | `Undeclared library loaded` |
+| `inject` | `GET /rk3`: an embedded harmless library is preloaded into `python3 -c pass` | `Undeclared code loaded` |
 | `egress` | `GET /ru3`: a connection to 203.0.113.9:4444 (TEST-NET-3, never routed); nothing is sent | `Connection to an undeclared address` |
 
 - **Point at:** the alert is a fact about the signed evidence, not a statistical guess, and it names the

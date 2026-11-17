@@ -32,7 +32,7 @@ INDENT = " " * 10
 
 TITLES = {
     ("D_exec", "undeclared"): "Undeclared program executed",
-    ("D_load", "undeclared"): "Undeclared library loaded",
+    ("D_load", "undeclared"): "Undeclared code loaded",          # a library, or a program's own file
     ("D_exec", "outside_closure"): "Program outside the execution closure",
     ("D_load", "outside_closure"): "Library outside the execution closure",
     ("D_write", None): "Signed image file modified",

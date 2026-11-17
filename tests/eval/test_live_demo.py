@@ -421,7 +421,7 @@ def test_stop_ends_only_its_own_services_never_a_reused_pid(tmp_path):
 FAKE_KUBECTL = """#!/usr/bin/env bash
 echo "$*" >> "$FAKE_DIR/calls"
 case " $* " in
-  *" --sort-by"*) echo "demo-app-1/$(cat "$FAKE_DIR/app_t")" ;;
+  *" delete pod "*) echo "$*" >> "$FAKE_DIR/deleted" ;;
   *"name=tetragon -o json "*) cat "$FAKE_DIR/sensor.json" ;;
   *"app=demo-app -o json "*) cat "$FAKE_DIR/app.json" ;;
   *" exec "*) echo "$*" >> "$FAKE_DIR/written" ;;
@@ -437,8 +437,12 @@ def fake_cluster(tmp_path, app_t, sensor_t, ready_t, sees=True):
     (fake / "kubectl").write_text(FAKE_KUBECTL)
     (fake / "kubectl").chmod(0o755)
     (fake / "app_t").write_text(app_t)
-    (fake / "app.json").write_text(json.dumps({"items": [{"metadata": {"name": "demo-app-1"}, "status": {
-        "containerStatuses": [{"state": {"running": {"startedAt": app_t}}}]}}]}))
+    (fake / "app.json").write_text(json.dumps({"items": [
+        {"metadata": {"name": "demo-app-old", "creationTimestamp": "2026-11-17T15:00:00Z",   # shutting down
+                      "deletionTimestamp": "2026-11-17T15:46:00Z"},
+         "status": {"containerStatuses": [{"state": {"running": {"startedAt": "2026-11-17T15:00:01Z"}}}]}},
+        {"metadata": {"name": "demo-app-1", "creationTimestamp": "2026-11-17T15:44:59Z"}, "status": {
+            "containerStatuses": [{"state": {"running": {"startedAt": app_t}}}]}}]}))
     (fake / "sensor.json").write_text(json.dumps({"items": [{"metadata": {"name": "tetragon-x"}, "status": {
         "containerStatuses": [{"state": {"running": {"startedAt": sensor_t}}}],
         "conditions": [{"type": "Ready", "status": "True", "lastTransitionTime": ready_t}]}}]}))
@@ -453,7 +457,7 @@ def test_the_app_is_checked_once_and_left_alone_when_the_sensor_sees_it(tmp_path
     r = source_and_run(tmp_path, "ensure_app", **env)
     assert r.returncode == 0, r.stderr
     calls = (fake / "calls").read_text()
-    assert " exec deploy/demo-app" in calls and "rollout restart" not in calls
+    assert " exec demo-app-1 " in calls and "rollout restart" not in calls      # the new pod, by name
     assert (tmp_path / "run-demo.probe").read_text().strip() == "demo-app-1/2026-11-17T15:45:00Z"
     (fake / "calls").write_text("")
     r = source_and_run(tmp_path, "ensure_app", **env)                    # the next run: already checked
@@ -468,6 +472,7 @@ def test_an_app_that_started_with_the_sensor_is_restarted(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "the app started before the sensor was ready: restarting the app" in r.stdout
     assert "rollout restart deploy/demo-app" in (fake / "calls").read_text()
+    assert "delete pod demo-app-old --grace-period=1" in (fake / "deleted").read_text()   # not left to linger
 
 
 def test_an_app_the_sensor_cannot_see_is_restarted_once_then_reported(tmp_path):

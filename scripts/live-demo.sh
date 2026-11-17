@@ -235,15 +235,41 @@ sys.exit(0 if app and since and min(app) <= max(since) else 1)
 PY
 }
 
-restart_app() {            # WHY
+app_pods() {               # NEW|OLD: the newest app pod with its start ("name started"), or the pods shutting down
+  kubectl -n "$NAMESPACE" get pods -l "app=$DEPLOY" -o json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    items = json.load(sys.stdin).get("items") or []
+except ValueError:
+    items = []
+old = [p for p in items if (p.get("metadata") or {}).get("deletionTimestamp")]
+new = sorted((p for p in items if p not in old), key=lambda p: p["metadata"].get("creationTimestamp") or "")
+if sys.argv[1] == "old":
+    print(" ".join(p["metadata"]["name"] for p in old))
+elif new:
+    st = (new[-1].get("status") or {}).get("containerStatuses") or [{}]
+    print(new[-1]["metadata"]["name"], ((st[0].get("state") or {}).get("running") or {}).get("startedAt", ""))
+' "$1" || true             # a kubectl hiccup must not stop the demo: no pods listed
+}
+
+restart_app() {            # WHY: a new app pod, and no old one left that exec or port-forward could pick
+  local old
   tell "${D}$1: restarting the app (about 20 s)${N}"
   kubectl -n "$NAMESPACE" rollout restart "deploy/$DEPLOY" >/dev/null
   kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout=120s >/dev/null
+  # The app ignores SIGTERM (PID 1), so the old pod would linger 30 s, and `kubectl exec deploy/...` and
+  # `port-forward deploy/...` prefer the older pod: end it now
+  old=$(app_pods old)
+  if [ -n "$old" ]; then
+    # shellcheck disable=SC2086  # one argument per pod name
+    kubectl -n "$NAMESPACE" delete pod $old --grace-period=1 --wait=true --timeout=60s >/dev/null 2>&1 || true
+  fi
 }
 
 app_key() {                # the newest app pod and its start: the sensor check is done once per app start
-  kubectl -n "$NAMESPACE" get pods -l "app=$DEPLOY" --sort-by=.metadata.creationTimestamp \
-    -o jsonpath='{.items[-1:].metadata.name}/{.items[-1:].status.containerStatuses[0].state.running.startedAt}' 2>/dev/null
+  local name started
+  read -r name started <<< "$(app_pods new)"
+  [ -z "$name" ] || echo "$name/$started"
 }
 
 sensor_output() {          # the sensor's recent raw events
@@ -251,10 +277,12 @@ sensor_output() {          # the sensor's recent raw events
   else kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" --since=90s 2>/dev/null; fi
 }
 
-sensor_sees_app() {        # a write inside the app's container must reach the sensor (its namespaced policies)
-  local mark i
+sensor_sees_app() {        # a write inside the newest app pod must reach the sensor (its namespaced policies)
+  local mark i pod
+  read -r pod _ <<< "$(app_pods new)"
+  [ -n "$pod" ] || return 1
   mark=.provbind-probe-$(date +%s)
-  kubectl -n "$NAMESPACE" exec "deploy/$DEPLOY" -- sh -c \
+  kubectl -n "$NAMESPACE" exec "$pod" -- sh -c \
     "for i in 1 2 3; do echo probe >> /tmp/$mark; sleep 1; done; rm -f /tmp/$mark" >/dev/null 2>&1 || return 1
   for ((i = 0; i < ${PROBE_TRIES:-5}; i++)); do
     [ "$i" = 0 ] || sleep 1
