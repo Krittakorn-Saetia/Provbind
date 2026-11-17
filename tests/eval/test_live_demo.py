@@ -393,3 +393,26 @@ def test_diagnose_reports_what_the_last_run_saw(tmp_path):
     assert "detections: D_exec/undeclared x1, D_write/declared_file x1" in r.stdout
     assert "alerts: D_exec/undeclared x1" in r.stdout
     assert "loaded abc into Neo4j" in r.stdout
+
+
+def test_stop_ends_only_its_own_services_never_a_reused_pid(tmp_path):
+    """After a reboot the PIDs in demo.pids can belong to any program: only a matching one is stopped."""
+    run = tmp_path / "run-demo"
+    run.mkdir()
+    ours = subprocess.Popen(["bash", "-c", "exec -a controller.watch sleep 60"], start_new_session=True)
+    stranger = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    try:
+        time.sleep(0.2)                                     # let exec -a take effect
+        (run / "demo.pids").write_text(f"controller {ours.pid}\nnode {stranger.pid}\n")
+        r = source_and_run(tmp_path, "service_alive controller && echo ALIVE; service_alive node || echo NOT-OURS; "
+                                     "stop_services")
+        assert r.returncode == 0, r.stderr
+        assert "ALIVE" in r.stdout and "NOT-OURS" in r.stdout
+        assert ours.wait(timeout=5) is not None             # stopped
+        assert stranger.poll() is None                      # left alone
+        assert not (run / "demo.pids").exists()
+    finally:
+        for proc in (ours, stranger):
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()

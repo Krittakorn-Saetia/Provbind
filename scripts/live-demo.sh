@@ -163,10 +163,19 @@ envelope_decided() { local s; s=$(envelope_state); [[ "$s" == *"envelope compile
 has_binding() { [[ "$(py binding --pod-prefix "$1")" != "no binding yet"* ]]; }
 
 PIDS_FILE=$PROVBIND_RUN/demo.pids
+is_ours() {                # NAME PID: is PID still that service? After a reboot a saved PID can be any program
+  local cmd marker
+  case "$1" in
+    controller) marker=controller.watch ;; node) marker=node.run ;; alerts) marker=alerts.run ;;
+    trust) marker=alerts.trust ;; falco) marker=capture_falco ;; *) return 1 ;;
+  esac
+  cmd=$(tr '\0' ' ' < "/proc/$2/cmdline" 2>/dev/null) || return 1
+  [[ "$cmd" == *"$marker"* ]]
+}
 service_alive() {          # NAME: is that service of this run folder running?
   local name pid
   [ -f "$PIDS_FILE" ] || return 1
-  while read -r name pid; do [ "$name" = "$1" ] && kill -0 "$pid" 2>/dev/null && return 0; done < "$PIDS_FILE"
+  while read -r name pid; do [ "$name" = "$1" ] && is_ours "$name" "$pid" && return 0; done < "$PIDS_FILE"
   return 1
 }
 services_running() { local s; for s in controller node alerts trust; do service_alive "$s" || return 1; done; }
@@ -249,6 +258,7 @@ stop_services() {
   local name pid
   [ -f "$PIDS_FILE" ] || return 0
   while read -r name pid; do
+    is_ours "$name" "$pid" || continue          # already gone, or the PID now belongs to another program
     x kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
   done < "$PIDS_FILE"
   [ "$DRY_RUN" = 1 ] || rm -f "$PIDS_FILE"
