@@ -10,22 +10,54 @@ line, which wins: `make live-demo ATTACK=overwrite`.
 The demo was checked without a cluster (unit tests and dry runs of every act and setting). **Rehearse it on
 the demo PC before the talk** (Section 4).
 
-## 1. Quick start
+## 1. Step by step
 
-```bash
-make up && make demo-app  # only on a fresh machine: the cluster, the sensor, the signed image
-make live-demo-setup      # once: checks everything, deploys the signed app
-make live-demo-view       # terminal 1, the audience screen: leave it open
-make live-demo            # terminal 2: the demo; run it again whenever you like
-```
+### Once, on the demo PC
+
+Do this where there is internet: `make up` downloads charts and images, and signing writes to the public
+Rekor log.
+
+1. Get the code and the Python packages:
+   ```bash
+   cd ~/Provbind && git checkout claude/zen-hypatia-pyrg25 && git pull origin claude/zen-hypatia-pyrg25
+   source .venv/bin/activate && pip install -r requirements.txt
+   ```
+2. Put the team's signing key at `pipeline/keys/cosign.key`. Never commit it; `cosign.pub` is already in the
+   repository. Then `export COSIGN_PASSWORD=…` (an empty string if the key has no password).
+3. Start the cluster and sign the app. Skip either one if it is already done:
+   ```bash
+   make up          # kind with the local registry, Tetragon, Falco, Neo4j, namespace demo
+   make demo-app    # builds, signs and attests the demo app, and prints its ref@digest
+   ```
+4. Run `make live-demo-setup`. Every required line should show ✓. It deploys the signed app.
+
+### Every time you show it
+
+1. Open two terminals in `~/Provbind` and run `source .venv/bin/activate` in both.
+2. Terminal 1: `make live-demo-view`. Leave it open the whole time.
+3. Terminal 2: `make live-demo`. It takes about a minute and ends with `done in N s`.
+4. To show it again, run `make live-demo` again. There is nothing to reset in between.
+5. When you are finished: `make live-demo-stop`.
 
 Each `make live-demo`:
 1. Restarts PROVBIND on a fresh run folder. The previous run is kept as `run-demo.<date-time>` for plan B.
 2. Clears the audience screen, which starts over by itself.
 3. Runs five acts with 3 s between them.
-4. Ends with `done in N s`.
 
 Nothing needs undoing between runs: the advisory, the key state and the log edit all stay in the old folder.
+
+### If the venue has no internet
+
+The signature check also checks the image's entry in the public Rekor log. If the envelope act fails there,
+run `make live-demo PROVBIND_OFFLINE=1`. The signature and both attestations are still checked against
+the key; only the Rekor check is skipped, and the admission line no longer lists it. An image signed with
+`PROVBIND_OFFLINE=1 make demo-app` has no Rekor entry, so always run its demo with `PROVBIND_OFFLINE=1`.
+
+### After the PC restarts
+
+Run `make live-demo-check`. If the cluster does not answer, run `make up` again (it is safe to re-run). If
+the image is gone, run `make demo-app` too. If Tetragon came back after the app, the next `make live-demo`
+restarts the app by itself.
 
 ## 2. Change the demo
 
@@ -65,6 +97,16 @@ The times are estimates from the evaluation's measured delays; the script prints
 | `POLICY_SET` | `opt` | `opt`, `orig` | the sensor policies: the rate-limited set of the final runs, or the unfiltered set |
 | `DEMO_REF` | empty | `ref@digest` | the signed image; empty: the running deployment's image, else `demo-app:latest` in the local registry |
 | `NAMESPACE`, `DEPLOY` | `demo`, `demo-app` | | where the app runs |
+
+These are given on the command line only:
+
+| Setting | What it does |
+|---|---|
+| `AUTO=1` | skips every pause (a quick rehearsal) |
+| `DRY_RUN=1` | prints the commands instead of running them; needs no cluster |
+| `PROVBIND_OFFLINE=1` | checks signatures without the public Rekor log (Section 1) |
+| `DEMO_CONF=FILE` | reads another settings file, so you can keep variants: `cp testbed/live-demo.conf testbed/talk.conf`, edit it, then `make live-demo DEMO_CONF=testbed/talk.conf` |
+| `DEMO_RUN=DIR` | another run folder (default `./run-demo`); give the same one to `make live-demo-view` |
 
 A setting with a value the demo cannot use stops the run before anything starts, with a message naming
 the setting and its allowed values.
@@ -165,7 +207,7 @@ One live run is a demonstration, not a measurement.
 
 | When | What |
 |---|---|
-| Once on the demo PC | `make up` and `make demo-app` if the cluster is not set up, then `make live-demo-setup` |
+| Once on the demo PC | Section 1, *Once, on the demo PC* |
 | The day before | `make live-demo-view` in one terminal, then `make live-demo` twice in the other: the second run proves it repeats. Note the `done in N s`, and try the settings you plan to use |
 | 30 minutes before | `make live-demo-check`, then one `make live-demo`, which also gives plan B a fresh recording |
 | 5 minutes before | Open both terminals side by side, about 100 columns each, font about 20 pt; mute notifications |
@@ -179,7 +221,7 @@ only limit what an act can show, such as Falco's side of the comparison.
 |---|---|---|
 | `live-demo: ATTACK=…` or another setting named | Fix it on the command line and run again | The message lists the allowed values |
 | `no signed image found` | Plan B | `make demo-app`, or set `DEMO_REF` in the settings file |
-| No envelope after 90 s, or the app is NOT VERIFIED | Run `make live-demo` again; if it fails twice, plan B | `run-demo/logs/controller.log` |
+| No envelope after 90 s, or the app is NOT VERIFIED | Run `make live-demo` again; if it fails twice, plan B | `run-demo/logs/controller.log`. If it names Rekor or the network: `make live-demo PROVBIND_OFFLINE=1` |
 | The attack shows no alert | Run again, or plan B for that act | The script restarts the app when it sees that the app started before the sensor. If that is not the cause, check `run-demo/logs/node.log` and `alerts.log` |
 | `(waiting N s: …once a minute)` | Talk over it | Normal when `overwrite` or `inject` runs twice within a minute |
 | No Falco alert in the shell act | Say that Falco flagged it in all five recorded runs | Falco's shell rule needs a real terminal; `AUTO=1` has none |
