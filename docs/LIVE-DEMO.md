@@ -163,8 +163,9 @@ Each act prints one caption line on the presenter's terminal, runs, then prints 
   requestz-helper, one of the app's dependencies. Nothing in the container changes."
 - **Alert screen:** a `TRUST` card, `Trust withdrawn: component advisory`, with the package, its dependency
   depth and layer, then `raised … s after the change · the pod still runs as CONFORMING`.
-- **Point at:** the delay, 1 to 2 s (median 1.7 s in our runs). No runtime monitor can see this, because no
-  behaviour changed: PROVBIND distrusts the image before its payload ever runs.
+- **Point at:** the delay: under 2 s, because the trust loop checks every 2 s, so anything from 0.1 s to 2 s
+  is normal (median 1.7 s in our runs). No runtime monitor can see this, because no behaviour changed:
+  PROVBIND distrusts the image before its payload ever runs.
 - `TRUST=key` revokes the signing key instead. An `ADVISORY_ID` that is not `MAL-…` is reported and trust
   stays; the terminal says so. That is the trust policy, and it is worth showing.
 - Keep `trust` before `attack` in `ACTS`. After the attack, the pod is no longer CONFORMING, and the
