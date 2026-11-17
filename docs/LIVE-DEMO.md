@@ -60,7 +60,8 @@ the key; only the Rekor check is skipped, and the admission line no longer lists
    again.
 3. If it still shows !, start the cluster's container with `docker start kind-control-plane`, wait a minute
    and check again. If the registry shows !, run `docker start kind-registry`.
-4. Run one practice `make live-demo`. If Tetragon came back after the app, it restarts the app by itself.
+4. Run one practice `make live-demo`. The first run after a restart checks that the sensor sees the app,
+   and restarts the app if it does not (about 20 s more, once).
 
 Do not run `make up` while the cluster exists: `kind create cluster` stops with an error. `make up` is only
 for a machine with no cluster, where `kind get clusters` prints nothing.
@@ -234,6 +235,7 @@ only limit what an act can show, such as Falco's side of the comparison.
 | No envelope after 90 s, or the app is NOT VERIFIED | Run `make live-demo` again; if it fails twice, plan B | `run-demo/logs/controller.log`. If it names Rekor or the network: `make live-demo PROVBIND_OFFLINE=1` |
 | An act shows no alert, or a wait says `… did not arrive` | Run again, or plan B for that act | `make live-demo-diagnose` before the next run: start order of the app and the sensor, the writes the sensor saw, the detections and the alerts. The script restarts the app when it started before the sensor |
 | `(waiting N s: …once a minute)` | Talk over it | Normal when `overwrite` or `inject` runs twice within a minute |
+| `the sensor still does not see writes in the app` | Go on: the attack act still shows its CRITICAL alert, but not the `/etc/passwd` one | Tetragon's namespace-scoped policies do not match the app's pod. Role 3 saw this on their VM; their workaround is cluster-wide copies of the policies (`node/handoff/ROLE3-VM-TO-ROLE1.md`, §5.2) |
 | No Falco alert in the shell act | Say that Falco flagged it in all five recorded runs | Falco's shell rule needs a real terminal; `AUTO=1` has none |
 | No trust alert | Plan B for that act | The package must be in the image's SBOM, in the right ecosystem; see `run-demo/logs/trust.log` |
 | `the log is empty` | Skip it in one sentence | Put an act that alerts before `log` |
@@ -288,5 +290,11 @@ With `FRESH=1`, each run:
    to `run-demo/logs/`.
 
 The controller lists the running pods when it starts, so it verifies the running app and compiles its
-envelope without a redeploy. Tetragon reports only processes it saw start, so the script restarts the
-app first if the app started before Tetragon.
+envelope without a redeploy.
+
+Tetragon applies its write, library, capability and network checks only to pods it saw start. After a
+reboot, the app and Tetragon can start in the same second, and then the app's new programs are still
+reported but its writes are not. So before PROVBIND starts, the script:
+1. Restarts the app if it started before Tetragon was ready.
+2. Once after each app start, writes a test file inside the app and checks that Tetragon reports it.
+3. Restarts the app if it does not.

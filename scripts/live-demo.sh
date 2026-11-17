@@ -213,32 +213,83 @@ deploy_app() {
   xq kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout=120s
 }
 
-app_older_than_sensor() {  # true when the app's container started before Tetragon's, which then cannot see it
+app_older_than_sensor() {  # true when the app started before Tetragon was ready, so its checks may miss the app
   python3 - "$NAMESPACE" "$DEPLOY" <<'PY'
 import json, subprocess, sys
 ns, deploy = sys.argv[1:3]
-def started(args):
+def pods(args):
     out = subprocess.run(["kubectl", *args, "-o", "json"], capture_output=True, text=True, check=True).stdout
-    return [cs["state"]["running"]["startedAt"] for p in json.loads(out)["items"]
+    return json.loads(out)["items"]
+def started(items):
+    return [cs["state"]["running"]["startedAt"] for p in items
             for cs in (p.get("status") or {}).get("containerStatuses") or []
-            if (cs.get("state") or {}).get("running", {}).get("startedAt")]
-app = started(["-n", ns, "get", "pods", "-l", f"app={deploy}"])
-sensor = started(["-n", "kube-system", "get", "pods", "-l", "app.kubernetes.io/name=tetragon"])
-sys.exit(0 if app and sensor and min(app) < max(sensor) else 1)
+            if ((cs.get("state") or {}).get("running") or {}).get("startedAt")]
+def ready(items):
+    return [c["lastTransitionTime"] for p in items for c in (p.get("status") or {}).get("conditions") or []
+            if c.get("type") == "Ready" and c.get("status") == "True" and c.get("lastTransitionTime")]
+app = started([p for p in pods(["-n", ns, "get", "pods", "-l", f"app={deploy}"])
+               if not (p.get("metadata") or {}).get("deletionTimestamp")])
+sensor = pods(["-n", "kube-system", "get", "pods", "-l", "app.kubernetes.io/name=tetragon"])
+since = ready(sensor) or started(sensor)         # Tetragon needs seconds after its start to apply its policies
+sys.exit(0 if app and since and min(app) <= max(since) else 1)
 PY
 }
 
-ensure_app() {             # the app runs, and started after Tetragon (REDEPLOY=1: the envelope act deploys it)
-  [ "$REDEPLOY" = 1 ] && return 0
-  if [ "$DRY_RUN" = 1 ]; then x kubectl -n "$NAMESPACE" get deployment "$DEPLOY"; return 0; fi
+restart_app() {            # WHY
+  tell "${D}$1: restarting the app (about 20 s)${N}"
+  kubectl -n "$NAMESPACE" rollout restart "deploy/$DEPLOY" >/dev/null
+  kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout=120s >/dev/null
+}
+
+app_key() {                # the newest app pod and its start: the sensor check is done once per app start
+  kubectl -n "$NAMESPACE" get pods -l "app=$DEPLOY" --sort-by=.metadata.creationTimestamp \
+    -o jsonpath='{.items[-1:].metadata.name}/{.items[-1:].status.containerStatuses[0].state.running.startedAt}' 2>/dev/null
+}
+
+sensor_output() {          # the sensor's recent raw events
+  if [ "$EVENT_SOURCE" = file ]; then docker exec "$KIND_NODE" tail -n 5000 "$TETRAGON_LOG" 2>/dev/null
+  else kubectl logs -n kube-system ds/tetragon -c "$TETRAGON_CONTAINER" --since=90s 2>/dev/null; fi
+}
+
+sensor_sees_app() {        # a write inside the app's container must reach the sensor (its namespaced policies)
+  local mark i
+  mark=.provbind-probe-$(date +%s)
+  kubectl -n "$NAMESPACE" exec "deploy/$DEPLOY" -- sh -c \
+    "for i in 1 2 3; do echo probe >> /tmp/$mark; sleep 1; done; rm -f /tmp/$mark" >/dev/null 2>&1 || return 1
+  for ((i = 0; i < ${PROBE_TRIES:-5}; i++)); do
+    [ "$i" = 0 ] || sleep 1
+    if sensor_output | grep -q -- "$mark"; then return 0; fi
+  done
+  return 1
+}
+
+check_sensor_sees_app() {  # once per app start: restart the app if the sensor does not see its writes
+  local stamp=$PROVBIND_RUN.probe key
+  key=$(app_key)
+  if [ -n "$key" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$key" ]; then return 0; fi
+  tell "${D}checking that the sensor sees the app (once after each start)${N}"
+  if ! sensor_sees_app; then
+    restart_app "the sensor does not see the app's writes"
+    sensor_sees_app || warn "the sensor still does not see writes in the app: the attack act shows only its first alert (docs/LIVE-DEMO.md, section 5)"
+    key=$(app_key)
+  fi
+  echo "$key" > "$stamp"
+}
+
+ensure_app() {             # the app runs, started after the sensor was ready, and the sensor sees its writes
+  [ "$REDEPLOY" = 1 ] && return 0          # the envelope act deploys it
+  if [ "$DRY_RUN" = 1 ]; then
+    x kubectl -n "$NAMESPACE" get deployment "$DEPLOY"
+    printf '%s    (checks once after each app start that the sensor sees writes in the app)%s\n' "$D" "$N"
+    return 0
+  fi
   if ! kubectl -n "$NAMESPACE" get deployment "$DEPLOY" >/dev/null 2>&1; then
     tell "${D}deploying the signed app ($DEMO_REF), once${N}"
     deploy_app
   elif app_older_than_sensor; then
-    tell "${D}the app started before the sensor, which cannot see it: restarting the app${N}"
-    kubectl -n "$NAMESPACE" rollout restart "deploy/$DEPLOY" >/dev/null
-    kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOY" --timeout=120s >/dev/null
+    restart_app "the app started before the sensor was ready"
   fi
+  check_sensor_sees_app
 }
 
 # --- PROVBIND's services -----------------------------------------------------------------------------
@@ -287,7 +338,6 @@ new_run_folder() {         # move the last run aside (plan B replays it) and kee
 
 start_services() {
   [ "$DRY_RUN" = 1 ] || mkdir -p "$PROVBIND_RUN/logs"
-  apply_policies
   start_service controller python3 -m controller.watch --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --key "$PROVBIND_KEY"
   # shellcheck disable=SC2016  # the quotes are for the inner shell; $EGRESS expands here
   start_service node bash -c "$(events) | tee '$PROVBIND_RUN/rec.jsonl' | python3 -m node.run --run '$PROVBIND_RUN' ${EGRESS:+--egress '$EGRESS'}"
@@ -312,10 +362,13 @@ prepare() {                # FRESH=1, or nothing running: PROVBIND restarts on a
     if [ "$REDEPLOY" = 1 ]; then
       xq kubectl -n "$NAMESPACE" delete deployment "$DEPLOY" --ignore-not-found --wait=true
     fi
+    apply_policies         # before the sensor check, which needs them
+    ensure_app             # before PROVBIND starts, so the check leaves nothing in the run
     if [ "$FRESH" = 1 ] || [ ! -d "$PROVBIND_RUN" ]; then new_run_folder; fi
     start_services
+  else
+    ensure_app
   fi
-  ensure_app
 }
 
 wait_envelope() {          # show|quiet: wait for the app's envelope; 1 if the image did not verify or nothing came
@@ -600,8 +653,9 @@ diagnose() {               # what the last run saw: for an act that showed no al
   echo "${B}diagnose${N} ${D}($PROVBIND_RUN)${N}"
   echo "  start times (the app must start after the sensor):"
   kubectl -n "$NAMESPACE" get pods -l "app=$DEPLOY" -o jsonpath='{range .items[*]}    app     {.metadata.name}  {.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}' 2>&1 || true
-  kubectl -n kube-system get pods -l app.kubernetes.io/name=tetragon -o jsonpath='{range .items[*]}    sensor  {.metadata.name}  {.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}' 2>&1 || true
-  if app_older_than_sensor 2>/dev/null; then echo "    -> the app started BEFORE the sensor"; else echo "    -> order ok"; fi
+  kubectl -n kube-system get pods -l app.kubernetes.io/name=tetragon -o jsonpath='{range .items[*]}    sensor  {.metadata.name}  {.status.containerStatuses[0].state.running.startedAt}  ready {.status.conditions[?(@.type=="Ready")].lastTransitionTime}{"\n"}{end}' 2>&1 || true
+  if app_older_than_sensor 2>/dev/null; then echo "    -> the app started BEFORE the sensor was ready"; else echo "    -> order ok"; fi
+  echo "  last sensor check passed for: $(cat "$PROVBIND_RUN.probe" 2>/dev/null || echo 'none yet')"
   echo "  sensor policies in $NAMESPACE: $(kubectl get tracingpoliciesnamespaced -n "$NAMESPACE" -o name 2>/dev/null | tr '\n' ' ')"
   python3 - "$PROVBIND_RUN" <<'PY'
 import collections, json, sys
@@ -625,6 +679,13 @@ def classes(name):
 rec = lines("rec.jsonl")
 writes = [l for l in rec if "security_file_permission" in l]
 print(f"  sensor events: {len(rec)}; writes: {len(writes)}; writes to /etc/passwd: {sum('/etc/passwd' in l for l in writes)}")
+for line in writes[:8]:
+    try:
+        k = json.loads(line).get("process_kprobe") or {}
+        path = next((a["file_arg"].get("path") for a in k.get("args") or [] if "file_arg" in a), "?")
+        print(f"    write  {(k.get('process') or {}).get('binary', '?')} -> {path}")
+    except (ValueError, AttributeError, TypeError):
+        continue
 print(f"  detections: {classes('detections.jsonl')}")
 print(f"  alerts: {classes('alerts.jsonl')}")
 neo = [l.strip()[:150] for l in lines("logs/alerts.log") if "neo4j" in l.lower()]

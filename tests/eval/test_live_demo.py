@@ -416,3 +416,66 @@ def test_stop_ends_only_its_own_services_never_a_reused_pid(tmp_path):
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
+
+
+FAKE_KUBECTL = """#!/usr/bin/env bash
+echo "$*" >> "$FAKE_DIR/calls"
+case " $* " in
+  *" --sort-by"*) echo "demo-app-1/$(cat "$FAKE_DIR/app_t")" ;;
+  *"name=tetragon -o json "*) cat "$FAKE_DIR/sensor.json" ;;
+  *"app=demo-app -o json "*) cat "$FAKE_DIR/app.json" ;;
+  *" exec "*) echo "$*" >> "$FAKE_DIR/written" ;;
+  *" logs "*) if [ -f "$FAKE_DIR/sees" ]; then cat "$FAKE_DIR/written" 2>/dev/null; fi ;;
+esac
+exit 0
+"""
+
+
+def fake_cluster(tmp_path, app_t, sensor_t, ready_t, sees=True):
+    fake = tmp_path / "fake"
+    fake.mkdir()
+    (fake / "kubectl").write_text(FAKE_KUBECTL)
+    (fake / "kubectl").chmod(0o755)
+    (fake / "app_t").write_text(app_t)
+    (fake / "app.json").write_text(json.dumps({"items": [{"metadata": {"name": "demo-app-1"}, "status": {
+        "containerStatuses": [{"state": {"running": {"startedAt": app_t}}}]}}]}))
+    (fake / "sensor.json").write_text(json.dumps({"items": [{"metadata": {"name": "tetragon-x"}, "status": {
+        "containerStatuses": [{"state": {"running": {"startedAt": sensor_t}}}],
+        "conditions": [{"type": "Ready", "status": "True", "lastTransitionTime": ready_t}]}}]}))
+    if sees:
+        (fake / "sees").write_text("")
+    env = {"PATH": f"{fake}:{os.environ['PATH']}", "FAKE_DIR": str(fake), "PROBE_TRIES": "1"}
+    return fake, env
+
+
+def test_the_app_is_checked_once_and_left_alone_when_the_sensor_sees_it(tmp_path):
+    fake, env = fake_cluster(tmp_path, "2026-11-17T15:45:00Z", "2026-11-17T15:41:25Z", "2026-11-17T15:41:40Z")
+    r = source_and_run(tmp_path, "ensure_app", **env)
+    assert r.returncode == 0, r.stderr
+    calls = (fake / "calls").read_text()
+    assert " exec deploy/demo-app" in calls and "rollout restart" not in calls
+    assert (tmp_path / "run-demo.probe").read_text().strip() == "demo-app-1/2026-11-17T15:45:00Z"
+    (fake / "calls").write_text("")
+    r = source_and_run(tmp_path, "ensure_app", **env)                    # the next run: already checked
+    assert r.returncode == 0, r.stderr
+    assert " exec " not in (fake / "calls").read_text()
+
+
+def test_an_app_that_started_with_the_sensor_is_restarted(tmp_path):
+    # after a reboot both start in the same second; Tetragon is ready only later (seen on the demo VM)
+    fake, env = fake_cluster(tmp_path, "2026-11-17T15:41:25Z", "2026-11-17T15:41:25Z", "2026-11-17T15:41:40Z")
+    r = source_and_run(tmp_path, "ensure_app", **env)
+    assert r.returncode == 0, r.stderr
+    assert "the app started before the sensor was ready: restarting the app" in r.stdout
+    assert "rollout restart deploy/demo-app" in (fake / "calls").read_text()
+
+
+def test_an_app_the_sensor_cannot_see_is_restarted_once_then_reported(tmp_path):
+    fake, env = fake_cluster(tmp_path, "2026-11-17T15:45:00Z", "2026-11-17T15:41:25Z", "2026-11-17T15:41:40Z",
+                             sees=False)
+    r = source_and_run(tmp_path, "ensure_app", **env)
+    assert r.returncode == 0, r.stderr
+    assert "the sensor does not see the app's writes: restarting the app" in r.stdout
+    assert "the sensor still does not see writes in the app" in r.stdout
+    assert (fake / "calls").read_text().count("rollout restart") == 1
+    assert (tmp_path / "run-demo.probe").exists()                          # no restart loop on later runs
