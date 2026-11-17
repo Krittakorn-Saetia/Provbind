@@ -196,8 +196,11 @@ def trust_summary(run: Path) -> list[str]:
     lines = [f"trust withdrawn: {reasons}" + (f"; {where_from(a)}" if attr.get("package") or attr.get("layer") else "")]
     if isinstance(a.get("latency_s"), (int, float)):
         lines.append(f"raised {a['latency_s']:.1f} s after {'the advisory appeared' if 'comp' in why else 'the change'}")
-    if a.get("runtime_state"):
-        lines.append(f"runtime state of the pod: {str(a['runtime_state']).upper()} (its behaviour did not change)")
+    state = str(a.get("runtime_state") or "").upper()
+    if state == "CONFORMING":
+        lines.append("the pod still behaves as signed (CONFORMING): only its trust changed")
+    elif state:
+        lines.append(f"runtime state of the pod: {state} (from an earlier alert, not from this change)")
     return lines
 
 

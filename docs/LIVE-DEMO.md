@@ -73,9 +73,9 @@ Edit `testbed/live-demo.conf`, or give the setting for one run:
 |---|---|---|
 | The default | `make live-demo` | 1 min |
 | You set the pace; the script shows what to say | `make live-demo PAUSE=enter CAPTIONS=long` | as long as you talk |
-| The short version | `make live-demo ACTS="envelope attack trust" PAUSE=1` | 30 s |
+| The short version | `make live-demo ACTS="envelope trust attack" PAUSE=1` | 30 s |
 | Admission live: the app is deployed during the first act | `make live-demo REDEPLOY=1` | 1.5 min |
-| Add an unsigned image | `make live-demo ACTS="envelope shell attack trust log unsigned"` | 1.5–2 min |
+| Add an unsigned image | `make live-demo ACTS="envelope shell trust attack log unsigned"` | 1.5–2 min |
 | Another attack | `make live-demo ATTACK=egress` (or `overwrite`, `inject`) | 1 min |
 | Revoke the signing key instead of an advisory | `make live-demo TRUST=key` | 1 min |
 | An ordinary CVE: reported, trust stays | `make live-demo ADVISORY_ID=CVE-2026-0001` | 1 min |
@@ -85,7 +85,7 @@ The times are estimates from the evaluation's measured delays; the script prints
 
 | Setting | Default | Values | What it changes |
 |---|---|---|---|
-| `ACTS` | `envelope shell attack trust log` | any of `envelope shell attack trust log unsigned`, in any order | which acts run, in that order |
+| `ACTS` | `envelope shell trust attack log` | any of `envelope shell trust attack log unsigned`, in any order | which acts run, in that order |
 | `PAUSE` | `3` | seconds, or `enter` | the gap between acts; `enter` waits for you before each act |
 | `CAPTIONS` | `short` | `short`, `long` | one line per act, or also what to say and what to watch |
 | `ATTACK` | `update` | `update`, `overwrite`, `inject`, `egress` | the attack act (table in Section 3) |
@@ -100,6 +100,7 @@ The times are estimates from the evaluation's measured delays; the script prints
 | `WAIT_S` | `30` | seconds | how long an act waits for its alert |
 | `KEEP_RUNS` | `3` | a number | earlier run folders kept for plan B |
 | `FALCO` | `auto` | `auto`, `off` | Falco's alerts beside PROVBIND's, when Falco runs |
+| `NEO4J` | `off` | `off`, `on` | off: the cards take layer and package straight from the envelope, the same answer at once. on: each run's graph is first loaded into Neo4j, and alerts wait while it loads |
 | `POLICY_SET` | `opt` | `opt`, `orig` | the sensor policies: the rate-limited set of the final runs, or the unfiltered set |
 | `DEMO_REF` | empty | `ref@digest` | the signed image; empty: the running deployment's image, else `demo-app:latest` in the local registry |
 | `NAMESPACE`, `DEPLOY` | `demo`, `demo-app` | | where the app runs |
@@ -127,8 +128,8 @@ Each act prints one caption line on the presenter's terminal, runs, then prints 
 | (start) | PROVBIND restarts on a fresh folder | 5 s |
 | `envelope` | the admission checks, then the envelope card | 5–10 s |
 | `shell` | dim lines only on the alert screen; Falco alerts | 6 s |
+| `trust` | a TRUST card within about 2 s, while the pod still behaves | 3 s |
 | `attack` | the attack's alerts, with layer and package; Falco's | 8 s |
-| `trust` | a TRUST card within about 2 s | 3 s |
 | `log` | the log verifies, one character changes, then it fails at that record | 2 s |
 | `unsigned` | NOT VERIFIED, and a HIGH card | 30–40 s, plus about a minute once to build the image |
 
@@ -139,8 +140,9 @@ Each act prints one caption line on the presenter's terminal, runs, then prints 
 - **Presenter terminal:** the admission checks, then "envelope compiled in … s, from the signed evidence
   alone", the counts of layers, files, packages and programs in the execution closure, the builder, the
   commit and the Rekor entry.
-- **Point at:** the compile time, about 4 s in our measurements, with no training and no observation
-  period. DeSFAM needs about 30 minutes of profiling and Confine about 33 s (report, Fig. 3).
+- **Point at:** the compile time: seconds, with no training and no observation period. Say the number on
+  the screen; it was about 4 s in our measurements and can be slower on the first run after a restart.
+  DeSFAM needs about 30 minutes of profiling and Confine about 33 s (report, Fig. 3).
 - With the default `REDEPLOY=0`, PROVBIND compiles the envelope of the app that is already running. With
   `REDEPLOY=1`, the app is deployed by its digest during the act.
 
@@ -153,10 +155,23 @@ Each act prints one caption line on the presenter's terminal, runs, then prints 
 - **Point at:** in our evaluation both learned detectors flagged this in all five runs, and so did Falco.
   PROVBIND flagged none of the 30 benign runs.
 
+### trust: an advisory, while the app still behaves (contribution 4)
+
+- **Say:** "Before anything happens in the pod, a malicious-package advisory is published for
+  requestz-helper, one of the app's dependencies. Nothing in the container changes."
+- **Alert screen:** a `TRUST` card, `Trust withdrawn: component advisory`, with the package, its dependency
+  depth and layer, then `raised … s after the change · the pod still runs as CONFORMING`.
+- **Point at:** the delay, 1 to 2 s (median 1.7 s in our runs). No runtime monitor can see this, because no
+  behaviour changed: PROVBIND distrusts the image before its payload ever runs.
+- `TRUST=key` revokes the signing key instead. An `ADVISORY_ID` that is not `MAL-…` is reported and trust
+  stays; the terminal says so. That is the trust policy, and it is worth showing.
+- Keep `trust` before `attack` in `ACTS`. After the attack, the pod is no longer CONFORMING, and the
+  card says so.
+
 ### attack: the compromised dependency strikes (contributions 2 and 3)
 
-- **Say:** "requestz-helper is a dependency of the app: signed, in the SBOM, admitted. One request now
-  sets it off."
+- **Say:** "requestz-helper is signed, in the SBOM, and was admitted. Now its payload runs: one request to
+  the app sets it off."
 
 | `ATTACK` | The request | The alert screen |
 |---|---|---|
@@ -170,17 +185,6 @@ Each act prints one caption line on the presenter's terminal, runs, then prints 
 - With `POLICY_SET=opt`, the sensor reports an identical write or library load once a minute. When
   `overwrite` or `inject` runs again within a minute, the script waits out the rest of that minute and
   says so.
-
-### trust: an advisory, while the app runs (contribution 4)
-
-- **Say:** "Later that day, a malicious-package advisory is published for requestz-helper. Nothing in the
-  container changes."
-- **Alert screen:** a `TRUST` card, `Trust withdrawn: component advisory`, with the package, its dependency
-  depth and layer, then `raised … s after the change · the pod still runs as CONFORMING`.
-- **Point at:** the delay, 1 to 2 s (median 1.7 s in our runs). No runtime monitor can see this, because no
-  behaviour changed.
-- `TRUST=key` revokes the signing key instead. An `ADVISORY_ID` that is not `MAL-…` is reported and trust
-  stays; the terminal says so. That is the trust policy, and it is worth showing.
 
 ### log: can someone erase the evidence?
 
@@ -228,7 +232,7 @@ only limit what an act can show, such as Falco's side of the comparison.
 | `live-demo: ATTACK=…` or another setting named | Fix it on the command line and run again | The message lists the allowed values |
 | `no signed image found` | Plan B | `make demo-app`, or set `DEMO_REF` in the settings file |
 | No envelope after 90 s, or the app is NOT VERIFIED | Run `make live-demo` again; if it fails twice, plan B | `run-demo/logs/controller.log`. If it names Rekor or the network: `make live-demo PROVBIND_OFFLINE=1` |
-| The attack shows no alert | Run again, or plan B for that act | The script restarts the app when it sees that the app started before the sensor. If that is not the cause, check `run-demo/logs/node.log` and `alerts.log` |
+| An act shows no alert, or a wait says `… did not arrive` | Run again, or plan B for that act | `make live-demo-diagnose` before the next run: start order of the app and the sensor, the writes the sensor saw, the detections and the alerts. The script restarts the app when it started before the sensor |
 | `(waiting N s: …once a minute)` | Talk over it | Normal when `overwrite` or `inject` runs twice within a minute |
 | No Falco alert in the shell act | Say that Falco flagged it in all five recorded runs | Falco's shell rule needs a real terminal; `AUTO=1` has none |
 | No trust alert | Plan B for that act | The package must be in the image's SBOM, in the right ecosystem; see `run-demo/logs/trust.log` |
@@ -272,7 +276,7 @@ the restart by itself.
 | File | Role |
 |---|---|
 | `testbed/live-demo.conf` | The settings, with a comment on each |
-| `scripts/live-demo.sh` | `run` (the default), `act NAME`, `check`, `setup`, `settings`, `reset`, `stop`, `help`. `AUTO=1` skips every pause; `DRY_RUN=1` prints the commands without a cluster |
+| `scripts/live-demo.sh` | `run` (the default), `act NAME`, `check`, `setup`, `settings`, `reset`, `stop`, `diagnose`, `help`. `AUTO=1` skips every pause; `DRY_RUN=1` prints the commands without a cluster |
 | `eval/demo_view.py` | The alert screen: `--follow` live (it starts over when the run folder is replaced), `--replay FILE` for plan B |
 | `eval/live_demo.py` | The presenter terminal's counts and summaries, and the trust act's OSV advisory |
 | `testbed/scenarios/` | The scenario pieces the acts reuse: `lib.sh`, `deploy_lib.sh`, `tamper.sh` |

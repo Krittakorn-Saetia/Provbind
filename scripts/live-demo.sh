@@ -10,6 +10,7 @@
 #   scripts/live-demo.sh settings    the settings in use, and where each one comes from
 #   scripts/live-demo.sh reset       undo the acts when FRESH=0 (advisory, key, log edit, test deployment)
 #   scripts/live-demo.sh stop        stop PROVBIND's services
+#   scripts/live-demo.sh diagnose    what the last run saw, for an act that showed no alert (reads only)
 #
 # The audience screen, in a second terminal, starts over by itself at every run:
 #     python3 -m eval.demo_view --run ./run-demo --follow          (make live-demo-view)
@@ -20,7 +21,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # --- settings: built-in defaults < testbed/live-demo.conf < the command line and the environment ------
 SETTINGS="ACTS PAUSE CAPTIONS ATTACK TRUST ADVISORY_PACKAGE ADVISORY_VERSION ADVISORY_ECOSYSTEM ADVISORY_ID
-SHELL_CMD FRESH REDEPLOY WAIT_S KEEP_RUNS FALCO POLICY_SET DEMO_REF NAMESPACE DEPLOY"
+SHELL_CMD FRESH REDEPLOY WAIT_S KEEP_RUNS FALCO NEO4J POLICY_SET DEMO_REF NAMESPACE DEPLOY"
 CONF=${DEMO_CONF:-testbed/live-demo.conf}
 declare -A GIVEN=() FROM=()
 for k in $SETTINGS; do
@@ -35,7 +36,7 @@ elif [ -n "${DEMO_CONF:-}" ]; then
 fi
 for k in $SETTINGS; do [ -z "${!k+x}" ] || FROM[$k]=conf; done
 for k in "${!GIVEN[@]}"; do printf -v "$k" '%s' "${GIVEN[$k]}"; FROM[$k]="command line"; done
-: "${ACTS:=envelope shell attack trust log}"
+: "${ACTS:=envelope shell trust attack log}"
 : "${PAUSE:=3}"
 : "${CAPTIONS:=short}"
 : "${ATTACK:=update}"
@@ -50,6 +51,7 @@ for k in "${!GIVEN[@]}"; do printf -v "$k" '%s' "${GIVEN[$k]}"; FROM[$k]="comman
 : "${WAIT_S:=30}"
 : "${KEEP_RUNS:=3}"
 : "${FALCO:=auto}"
+: "${NEO4J:=off}"
 : "${POLICY_SET:=opt}"
 : "${DEMO_REF:=}"
 : "${NAMESPACE:=demo}"
@@ -89,6 +91,7 @@ validate() {               # stop before anything runs when a setting has a valu
   case "$WAIT_S" in ''|*[!0-9]*) bad+=("WAIT_S=$WAIT_S: use a whole number of seconds") ;; esac
   case "$KEEP_RUNS" in ''|*[!0-9]*) bad+=("KEEP_RUNS=$KEEP_RUNS: use a whole number") ;; esac
   case "$FALCO" in auto|off) ;; *) bad+=("FALCO=$FALCO: use auto or off") ;; esac
+  case "$NEO4J" in on|off) ;; *) bad+=("NEO4J=$NEO4J: use off or on") ;; esac
   case "$POLICY_SET" in opt|orig) ;; *) bad+=("POLICY_SET=$POLICY_SET: use opt or orig") ;; esac
   [ -n "$ADVISORY_PACKAGE" ] && [ -n "$ADVISORY_ID" ] || bad+=("ADVISORY_PACKAGE and ADVISORY_ID must not be empty")
   local eco=${ADVISORY_ECOSYSTEM%%:*}       # the trust loop reads "Debian:12" as Debian
@@ -147,7 +150,7 @@ wait_until() {             # SECONDS WHAT -- COMMAND...: poll COMMAND twice a se
   if [ "$DRY_RUN" = 1 ]; then printf '%s    (waits up to %s s for %s)%s\n' "$D" "$secs" "$what" "$N"; return 0; fi
   deadline=$(( $(date +%s) + secs ))
   while ! "$@" >/dev/null 2>&1; do
-    if [ "$(date +%s)" -ge "$deadline" ]; then printf '\r%60s\r' ''; warn "no $what after ${secs} s"; return 1; fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then printf '\r%60s\r' ''; warn "$what did not arrive within ${secs} s"; return 1; fi
     printf '\r      %s waiting for %s ' "${spin:i++%4:1}" "$what"
     sleep 0.5
   done
@@ -278,7 +281,9 @@ start_services() {
   start_service controller python3 -m controller.watch --run "$PROVBIND_RUN" --namespace "$NAMESPACE" --key "$PROVBIND_KEY"
   # shellcheck disable=SC2016  # the quotes are for the inner shell; $EGRESS expands here
   start_service node bash -c "$(events) | tee '$PROVBIND_RUN/rec.jsonl' | python3 -m node.run --run '$PROVBIND_RUN' ${EGRESS:+--egress '$EGRESS'}"
-  start_service alerts python3 -m alerts.run --run "$PROVBIND_RUN"
+  # NEO4J=off: attribution straight from the envelope (alerts/attribute.py: the same answer), so the
+  # alert engine never stops to load a fresh run's graph into Neo4j while alerts wait
+  start_service alerts env "PROVBIND_NEO4J=$NEO4J" python3 -m alerts.run --run "$PROVBIND_RUN"
   start_service trust python3 -m alerts.trust --run "$PROVBIND_RUN" --poll 2
   if [ "$FALCO" != off ] && { [ "$DRY_RUN" = 1 ] || falco_running; }; then start_service falco ./eval/capture_falco.sh; fi
   sleep_s 2
@@ -375,7 +380,7 @@ act_attack() {
   attack_plan
   intro "$CAPTION" \
     "requestz-helper stands in for a compromised dependency: it is signed, in the SBOM, and was" \
-    "admitted. One request to the app now sets it off." \
+    "admitted. Now its payload runs: one request to the app sets it off." \
     -- "alert screen: what the action contradicts in the signed evidence, with the layer and package"
   go
   rate_limit_wait
@@ -411,8 +416,8 @@ act_trust() {
       -- "alert screen: TRUST withdrawn within about 2 s, while the pod still behaves as signed"
   else
     intro "advisory $ADVISORY_ID names $ADVISORY_PACKAGE ${ADVISORY_VERSION:-(every version)}, while the app runs" \
-      "Nothing in the container changes. An advisory for one of the image's packages appears in" \
-      "the feed, and PROVBIND's trust loop checks the running image again." \
+      "Before anything happens in the pod, an advisory for one of the image's packages appears in" \
+      "the feed. Nothing in the container changes; PROVBIND's trust loop checks the image again." \
       -- "alert screen: TRUST withdrawn within about 2 s, while the pod still behaves as signed"
   fi
   go
@@ -559,7 +564,9 @@ check_ready() {            # one line per item; returns 1 if something required 
   if has_act unsigned; then
     item required "docker and crane are installed (the unsigned act)" -- command -v docker crane
   fi
-  item optional "Neo4j answers (without it, attribution uses the envelope's layer field)" -- curl -sf http://localhost:7474
+  if [ "$NEO4J" = on ]; then
+    item optional "Neo4j answers (NEO4J=on loads each run's graph into it)" -- curl -sf http://localhost:7474
+  fi
   return "$missing"
 }
 
@@ -577,6 +584,42 @@ show_settings() {
   echo "${B}settings${N} ${D}(command line or environment > $CONF > default)${N}"
   for k in $SETTINGS; do printf '  %-19s %-36s %s%s%s\n' "$k" "${!k}" "$D" "${FROM[$k]:-default}" "$N"; done
   printf '  %-19s %s\n' PROVBIND_RUN "$PROVBIND_RUN"
+}
+
+diagnose() {               # what the last run saw: for an act that showed no alert (reads only)
+  echo "${B}diagnose${N} ${D}($PROVBIND_RUN)${N}"
+  echo "  start times (the app must start after the sensor):"
+  kubectl -n "$NAMESPACE" get pods -l "app=$DEPLOY" -o jsonpath='{range .items[*]}    app     {.metadata.name}  {.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}' 2>&1 || true
+  kubectl -n kube-system get pods -l app.kubernetes.io/name=tetragon -o jsonpath='{range .items[*]}    sensor  {.metadata.name}  {.status.containerStatuses[0].state.running.startedAt}{"\n"}{end}' 2>&1 || true
+  if app_older_than_sensor 2>/dev/null; then echo "    -> the app started BEFORE the sensor"; else echo "    -> order ok"; fi
+  echo "  sensor policies in $NAMESPACE: $(kubectl get tracingpoliciesnamespaced -n "$NAMESPACE" -o name 2>/dev/null | tr '\n' ' ')"
+  python3 - "$PROVBIND_RUN" <<'PY'
+import collections, json, sys
+from pathlib import Path
+run = Path(sys.argv[1])
+def lines(name):
+    try:
+        return (run / name).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+def classes(name):
+    c = collections.Counter()
+    for line in lines(name):
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(d, dict):
+            c[f"{d.get('class')}/{d.get('subclass')}"] += 1
+    return ", ".join(f"{k} x{v}" for k, v in sorted(c.items())) or "none"
+rec = lines("rec.jsonl")
+writes = [l for l in rec if "security_file_permission" in l]
+print(f"  sensor events: {len(rec)}; writes: {len(writes)}; writes to /etc/passwd: {sum('/etc/passwd' in l for l in writes)}")
+print(f"  detections: {classes('detections.jsonl')}")
+print(f"  alerts: {classes('alerts.jsonl')}")
+neo = [l.strip()[:150] for l in lines("logs/alerts.log") if "neo4j" in l.lower()]
+print("  alert engine and Neo4j:" + ("".join(f"\n    {l}" for l in neo[:4]) or " no Neo4j lines"))
+PY
 }
 
 reset_demo() {
@@ -598,6 +641,7 @@ case "${1:-run}" in
   settings) show_settings ;;
   reset) reset_demo ;;
   stop) stop_services; ok "PROVBIND's services stopped" ;;
+  diagnose) diagnose ;;
   help|-h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0" ;;
-  *) echo "unknown command: $1 (try: run, act NAME, check, setup, settings, reset, stop, help)" >&2; exit 2 ;;
+  *) echo "unknown command: $1 (try: run, act NAME, check, setup, settings, reset, stop, diagnose, help)" >&2; exit 2 ;;
 esac

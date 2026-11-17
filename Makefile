@@ -202,7 +202,7 @@ demo:  ## the Sprint Handoff §1.1 demo, after make up and make demo-app (needs 
 # Its settings are in testbed/live-demo.conf; one given here wins for that run: make live-demo ATTACK=overwrite
 DEMO_RUN ?= ./run-demo
 .PHONY: live-demo live-demo-view live-demo-setup live-demo-check live-demo-settings live-demo-act \
-        live-demo-reset live-demo-stop
+        live-demo-reset live-demo-stop live-demo-diagnose
 
 live-demo:  ## live demo: about a minute, hands-free; settings in testbed/live-demo.conf (docs/LIVE-DEMO.md)
 	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh run
@@ -227,3 +227,6 @@ live-demo-reset:  ## live demo with FRESH=0: undo the acts (advisory, key, log e
 
 live-demo-stop:  ## live demo: stop PROVBIND's services
 	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh stop
+
+live-demo-diagnose:  ## live demo: what the last run saw, for an act that showed no alert (reads only)
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh diagnose

@@ -115,6 +115,15 @@ def test_since_lists_the_new_alerts_one_line_each_and_counts_the_low_records(tmp
     assert ld.since_summary(run, since=4) == ["no alert"]
 
 
+def test_trust_summary_after_an_attack_does_not_claim_the_pod_behaves(tmp_path):
+    run = make_run(tmp_path, [{"class": "trust", "subclass": "comp", "bucket": "high", "trust_reason": ["comp"],
+                               "latency_s": 1.6, "runtime_state": "deviating", "attribution": {"package": "p"}}])
+    out = ld.trust_summary(run)
+    assert out[-1] == "runtime state of the pod: DEVIATING (from an earlier alert, not from this change)"
+    run = make_run(tmp_path / "ok", [{"class": "trust", "trust_reason": ["comp"], "runtime_state": "conforming"}])
+    assert ld.trust_summary(run)[-1] == "the pod still behaves as signed (CONFORMING): only its trust changed"
+
+
 def test_trust_summary_for_a_revoked_key_names_no_package(tmp_path):
     run = make_run(tmp_path, [{"class": "trust", "subclass": "key", "bucket": "high", "trust_reason": ["key"],
                                "latency_s": 1.2, "runtime_state": "conforming",
@@ -192,7 +201,7 @@ def test_summaries_say_when_there_is_nothing_yet(tmp_path):
 
 
 SETTINGS = ("ACTS PAUSE CAPTIONS ATTACK TRUST ADVISORY_PACKAGE ADVISORY_VERSION ADVISORY_ECOSYSTEM ADVISORY_ID "
-            "SHELL_CMD FRESH REDEPLOY WAIT_S KEEP_RUNS FALCO POLICY_SET DEMO_REF NAMESPACE DEPLOY").split()
+            "SHELL_CMD FRESH REDEPLOY WAIT_S KEEP_RUNS FALCO NEO4J POLICY_SET DEMO_REF NAMESPACE DEPLOY").split()
 SCRIPT = ROOT / "scripts" / "live-demo.sh"
 CONF = ROOT / "testbed" / "live-demo.conf"
 
@@ -229,7 +238,8 @@ def test_one_command_restarts_provbind_on_a_fresh_folder_and_runs_five_acts(tmp_
     assert "kubectl delete --ignore-not-found -f node/tetragon/write.yaml" in out
     for service in ("controller.watch", "node.run", "alerts.run", "alerts.trust", "capture_falco.sh"):
         assert service in out
-    heads = ["[1/5] envelope", "[2/5] shell", "[3/5] attack", "[4/5] trust", "[5/5] log"]
+    assert "env PROVBIND_NEO4J=off python3 -m alerts.run" in out      # no graph load holding alerts back
+    heads = ["[1/5] envelope", "[2/5] shell", "[3/5] trust", "[4/5] attack", "[5/5] log"]   # trust while it behaves
     assert all(h in out for h in heads)
     assert [out.index(h) for h in heads] == sorted(out.index(h) for h in heads)
     assert "+ curl_app /update" in out and "--id MAL-2026-9001" in out and "tamper.sh" in out
@@ -310,9 +320,10 @@ def test_redeploy_without_the_envelope_act_still_deploys_the_app(tmp_path):
     assert out.index("delete deployment demo-app") < out.index("create deployment 'demo-app'") < out.index("[1/1] attack")
 
 
-def test_redeploy_policy_set_and_falco_settings(tmp_path):
-    r = run_script(tmp_path, ACTS="envelope", REDEPLOY="1", POLICY_SET="orig", FALCO="off")
+def test_redeploy_policy_set_falco_and_neo4j_settings(tmp_path):
+    r = run_script(tmp_path, ACTS="envelope", REDEPLOY="1", POLICY_SET="orig", FALCO="off", NEO4J="on")
     assert r.returncode == 0, r.stderr
+    assert "env PROVBIND_NEO4J=on python3 -m alerts.run" in r.stdout
     assert "delete deployment demo-app" in r.stdout and "create deployment 'demo-app'" in r.stdout
     assert "kubectl apply -f node/tetragon/write.yaml" in r.stdout
     assert "delete --ignore-not-found -f node/tetragon/opt/write.yaml" in r.stdout
@@ -363,3 +374,22 @@ def test_a_repeated_overwrite_waits_out_the_sensors_rate_limit(tmp_path):
     for env in ({"ATTACK": "update"}, {"ATTACK": "overwrite", "POLICY_SET": "orig"}):
         r = source_and_run(tmp_path, "rate_limit_wait", DRY_RUN="1", **env)
         assert r.returncode == 0 and "waiting" not in r.stdout
+
+
+def test_diagnose_reports_what_the_last_run_saw(tmp_path):
+    run = tmp_path / "run-demo"
+    (run / "logs").mkdir(parents=True)
+    (run / "rec.jsonl").write_text(
+        '{"process_exec": {}}\n'
+        '{"process_kprobe": {"function_name": "security_file_permission", "args": [{"file_arg": {"path": "/tmp/x"}}]}}\n'
+        '{"process_kprobe": {"function_name": "security_file_permission", "args": [{"file_arg": {"path": "/etc/passwd"}}]}}\n')
+    (run / "detections.jsonl").write_text(json.dumps({"class": "D_exec", "subclass": "undeclared"}) + "\n"
+                                          + json.dumps({"class": "D_write", "subclass": "declared_file"}) + "\n")
+    (run / "alerts.jsonl").write_text(json.dumps({"class": "D_exec", "subclass": "undeclared"}) + "\nnot json\n")
+    (run / "logs" / "alerts.log").write_text("12:00:01 INFO attribute: loaded abc into Neo4j: 8 layers\n")
+    r = run_script(tmp_path, "diagnose")
+    assert r.returncode == 0, r.stderr
+    assert "sensor events: 3; writes: 2; writes to /etc/passwd: 1" in r.stdout
+    assert "detections: D_exec/undeclared x1, D_write/declared_file x1" in r.stdout
+    assert "alerts: D_exec/undeclared x1" in r.stdout
+    assert "loaded abc into Neo4j" in r.stdout
