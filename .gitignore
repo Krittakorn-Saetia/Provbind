@@ -4,7 +4,7 @@ pipeline/keys/*.key
 # Generated at runtime
 run/
 run-demo/
-run-demo.*/
+run-demo.*
 ml/data/raw/
 eval/mlc/data/
 

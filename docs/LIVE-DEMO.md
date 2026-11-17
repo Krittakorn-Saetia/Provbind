@@ -1,176 +1,240 @@
 # The live demo
 
-For whoever presents PROVBIND live, in about 10 minutes. It runs on the demo PC (kind, Tetragon, Falco,
-the local registry), and everything the audience sees is real: the cluster, the sensor and PROVBIND's
-services. The only exception is plan B, a replay of the rehearsal, and the screen says so.
+One command, about a minute, the same every time. It runs on the demo PC (kind, Tetragon, Falco, the
+local registry), and everything the audience sees is real: the cluster, the sensor and PROVBIND's
+services. The only exception is plan B, a replay of an earlier run, and the screen says so.
 
-The demo was checked without a cluster (unit tests and a dry run of every act). **Rehearse it once on the
-demo PC before the talk.**
+The settings are in `testbed/live-demo.conf`. Any setting can also be given for one run on the command
+line, which wins: `make live-demo ATTACK=overwrite`.
 
-## 1. What the audience sees
+The demo was checked without a cluster (unit tests and dry runs of every act and setting). **Rehearse it on
+the demo PC before the talk** (Section 4).
 
-Two terminals side by side, large font (about 20 pt), each about 100 columns wide:
+## 1. Quick start
 
-| Terminal | Command | Shows |
+```bash
+make up && make demo-app  # only on a fresh machine: the cluster, the sensor, the signed image
+make live-demo-setup      # once: checks everything, deploys the signed app
+make live-demo-view       # terminal 1, the audience screen: leave it open
+make live-demo            # terminal 2: the demo; run it again whenever you like
+```
+
+Each `make live-demo`:
+1. Restarts PROVBIND on a fresh run folder. The previous run is kept as `run-demo.<date-time>` for plan B.
+2. Clears the audience screen, which starts over by itself.
+3. Runs five acts with 3 s between them.
+4. Ends with `done in N s`.
+
+Nothing needs undoing between runs: the advisory, the key state and the log edit all stay in the old folder.
+
+## 2. Change the demo
+
+Edit `testbed/live-demo.conf`, or give the setting for one run:
+
+| Goal | Command | About |
 |---|---|---|
-| Alert screen | `make live-demo-view` | One card per alert as it arrives: what happened, which layer and package of the signed image it concerns, where it ran. A dim line is logged but is not an alert. |
-| Presenter | `make live-demo` | The six acts. Each act prints a caption, waits for Enter, runs, then prints what happened. |
+| The default | `make live-demo` | 1 min |
+| You set the pace; the script shows what to say | `make live-demo PAUSE=enter CAPTIONS=long` | as long as you talk |
+| The short version | `make live-demo ACTS="envelope attack trust" PAUSE=1` | 30 s |
+| Admission live: the app is deployed during the first act | `make live-demo REDEPLOY=1` | 1.5 min |
+| Add an unsigned image | `make live-demo ACTS="envelope shell attack trust log unsigned"` | 1.5–2 min |
+| Another attack | `make live-demo ATTACK=egress` (or `overwrite`, `inject`) | 1 min |
+| Revoke the signing key instead of an advisory | `make live-demo TRUST=key` | 1 min |
+| An ordinary CVE: reported, trust stays | `make live-demo ADVISORY_ID=CVE-2026-0001` | 1 min |
+| See what is in use, and where it comes from | `make live-demo-settings` | |
 
-The captions are written so they can be on screen; read them or say them in your own words.
+The times are estimates from the evaluation's measured delays; the script prints the real total at the end.
 
-## 2. Before the talk
+| Setting | Default | Values | What it changes |
+|---|---|---|---|
+| `ACTS` | `envelope shell attack trust log` | any of `envelope shell attack trust log unsigned`, in any order | which acts run, in that order |
+| `PAUSE` | `3` | seconds, or `enter` | the gap between acts; `enter` waits for you before each act |
+| `CAPTIONS` | `short` | `short`, `long` | one line per act, or also what to say and what to watch |
+| `ATTACK` | `update` | `update`, `overwrite`, `inject`, `egress` | the attack act (table in Section 3) |
+| `TRUST` | `advisory` | `advisory`, `key` | an advisory appears, or the signing key is revoked |
+| `ADVISORY_PACKAGE` | `requestz-helper` | a package in the image's SBOM | the package the advisory names |
+| `ADVISORY_VERSION` | `0.1.0` | a version; empty means every version | |
+| `ADVISORY_ECOSYSTEM` | `PyPI` | PyPI, npm, Debian, Ubuntu, Go, crates.io, Maven, RubyGems, NuGet, Packagist, Alpine | |
+| `ADVISORY_ID` | `MAL-2026-9001` | `MAL-…` withdraws trust; any other id (`CVE-…`) is only reported | |
+| `SHELL_CMD` | `ls /; cat /etc/hostname` | a shell command | what the operator runs in the shell act |
+| `FRESH` | `1` | `1`, `0` | 1: a fresh run folder and fresh services every run. 0: keep both (then `make live-demo-reset` undoes the acts) |
+| `REDEPLOY` | `0` | `0`, `1` | 1: the envelope act deploys the app, so admission happens live |
+| `WAIT_S` | `30` | seconds | how long an act waits for its alert |
+| `KEEP_RUNS` | `3` | a number | earlier run folders kept for plan B |
+| `FALCO` | `auto` | `auto`, `off` | Falco's alerts beside PROVBIND's, when Falco runs |
+| `POLICY_SET` | `opt` | `opt`, `orig` | the sensor policies: the rate-limited set of the final runs, or the unfiltered set |
+| `DEMO_REF` | empty | `ref@digest` | the signed image; empty: the running deployment's image, else `demo-app:latest` in the local registry |
+| `NAMESPACE`, `DEPLOY` | `demo`, `demo-app` | | where the app runs |
 
-`DEMO_REF` is the `ref@digest` that `make demo-app` printed (for example
-`localhost:5001/demo-app@sha256:…`). Keep it in a note; every command below needs it.
+A setting with a value the demo cannot use stops the run before anything starts, with a message naming
+the setting and its allowed values.
 
-| When | What | Commands |
+## 3. The acts
+
+Each act prints one caption line on the presenter's terminal, runs, then prints what happened. With
+`CAPTIONS=long` it also prints what to say and what to watch.
+
+| Act | The audience sees | About |
 |---|---|---|
-| The day before | A full rehearsal | `make up` and `make demo-app` if the cluster is down; `export DEMO_REF=…`; `make live-demo-check`; `make live-demo-prep`; `make live-demo-view` in a second terminal; `AUTO=1 make live-demo`; `make live-demo-stop` |
-| 30 minutes before | Check, then prepare | `make live-demo-check`, then `make live-demo-prep` (about 2 minutes) |
-| 5 minutes before | Open both terminals, set the font size, mute notifications | `make live-demo-view` in one, `make live-demo` ready in the other |
+| (start) | PROVBIND restarts on a fresh folder | 5 s |
+| `envelope` | the admission checks, then the envelope card | 5–10 s |
+| `shell` | dim lines only on the alert screen; Falco alerts | 6 s |
+| `attack` | the attack's alerts, with layer and package; Falco's | 8 s |
+| `trust` | a TRUST card within about 2 s | 3 s |
+| `log` | the log verifies, one character changes, then it fails at that record | 2 s |
+| `unsigned` | NOT VERIFIED, and a HIGH card | 30–40 s, plus about a minute once to build the image |
 
-`make live-demo-check` only reads. It lists what is ready (✓) and what is missing (!); optional items (-)
-only limit acts 2, 3 and 5.
+### envelope: the signed evidence becomes an envelope (contribution 1)
 
-`make live-demo-prep`:
-- moves the previous `run-demo` folder aside as `run-demo.<date-time>`, which plan B can replay;
-- deletes the demo deployment, so act 1 deploys a fresh pod while Tetragon is running;
-- applies one sensor policy set: `opt`, the rate-limited set of the final runs;
-- starts the controller, the node, the alert engine, the trust loop and the Falco capture (logs in `run-demo/logs/`);
-- builds an unsigned copy of the app for act 5.
+- **Say:** "Our pipeline signed this image and attested its SBOM and build provenance. PROVBIND checks
+  them and compiles the envelope: every file, layer, package and program the evidence allows."
+- **Presenter terminal:** the admission checks, then "envelope compiled in … s, from the signed evidence
+  alone", the counts of layers, files, packages and programs in the execution closure, the builder, the
+  commit and the Rekor entry.
+- **Point at:** the compile time, about 4 s in our measurements, with no training and no observation
+  period. DeSFAM needs about 30 minutes of profiling and Confine about 33 s (report, Fig. 3).
+- With the default `REDEPLOY=0`, PROVBIND compiles the envelope of the app that is already running. With
+  `REDEPLOY=1`, the app is deployed by its digest during the act.
 
-It ends with `READY.`
-
-The alert screen picks up the fresh folder by itself, so it can stay open through prep.
-
-## 3. The six acts
-
-Times include a sentence or two of talk. Press Enter when the caption says `[Enter]`.
-
-| Act | About | Time |
-|---|---|---|
-| 1 | A signed image is verified and compiled into its envelope | 1 min |
-| 2 | An operator opens a shell: logged, not an alert | 1 min |
-| 3 | The compromised dependency drops and runs a program | 1 min |
-| 4 | An advisory names that dependency while it runs | 1 min |
-| 5 | An unsigned image is deployed | 1 min |
-| 6 | Someone edits the violation log | 1 min |
-
-### Act 1: a signed image arrives (contribution 1)
-
-- **Say:** "This is our demo app. Our pipeline signed its image and attested an SBOM and the build
-  provenance. We deploy it by its digest."
-- **Presenter terminal:** the rollout, then a card: the admission checks (signature, SBOM, provenance,
-  transparency log), "envelope compiled in … s", and the counts of layers, files, packages and programs in the
-  execution closure, with the builder, commit and Rekor entry.
-- **Point at:** the compile time, about 4 s in our measurements, with no training and no observation period.
-  DeSFAM needs about 30 minutes of profiling and Confine about 33 s (report, Fig. 3).
-- **Meanwhile:** a 30-second check that the sensor sees the app runs in the background. It raises no alert,
-  and its result prints at the start of act 2.
-
-### Act 2: an operator opens a shell (precision, contribution 2)
+### shell: an operator opens a shell (precision, contribution 2)
 
 - **Say:** "Something legitimate but unusual: a team member opens a shell in the container."
-- **Alert screen:** only dim lines such as `logged, not an alert (Low …): /usr/bin/ls …`. The programs are in
-  the signed image, outside the entrypoint's closure, so PROVBIND records them and stays quiet.
-- **Presenter terminal:** `PROVBIND: 0 new alerts` and Falco's alert (its rule for a terminal shell in a container).
+- **Alert screen:** only dim lines such as `logged, not an alert (Low …): /usr/bin/ls …`. The programs are
+  in the signed image but outside the entrypoint's closure, so PROVBIND records them and stays quiet.
+- **Presenter terminal:** `PROVBIND: 0 alerts; N Low records, logged`, then Falco's alert.
 - **Point at:** in our evaluation both learned detectors flagged this in all five runs, and so did Falco.
   PROVBIND flagged none of the 30 benign runs.
 
-### Act 3: the compromised dependency strikes (contributions 2 and 3)
+### attack: the compromised dependency strikes (contributions 2 and 3)
 
 - **Say:** "requestz-helper is a dependency of the app: signed, in the SBOM, admitted. One request now
-  triggers its payload."
-- **Alert screen:**
-  - **CRITICAL 90:** `Undeclared program executed`, for `/tmp/.x9`, from nothing in the signed image.
-  - **HIGH 72:** `Signed image file modified`, for `/etc/passwd`, with the image layer it came from and the
-    marker `(same incident)`.
-- **Presenter terminal:** the same two alerts in short form, then Falco's rules.
-- **Point at:** the first alert is a fact about the signed evidence, not a statistical guess; both alerts are
-  one incident. Falco also catches it, but names no package or layer. `/etc/passwd` is created at install
-  time, so the SBOM may name no package for it; act 4 shows a package and its depth.
+  sets it off."
 
-### Act 4: an advisory, while the app runs (contribution 4)
+| `ATTACK` | The request | The alert screen |
+|---|---|---|
+| `update` | `GET /update`: requestz-helper writes `/tmp/.x9` and runs it; it appends a line to `/etc/passwd` | **CRITICAL 90** `Undeclared program executed` for `/tmp/.x9`, from nothing in the signed image; then **HIGH 72** `Signed image file modified` for `/etc/passwd`, with its layer and `(same incident)` |
+| `overwrite` | `GET /ru4`: the app overwrites `/usr/bin/ls` with `/bin/cat`'s bytes, runs it, then restores it | `Signed image file modified` for `/usr/bin/ls` |
+| `inject` | `GET /rk3`: an embedded harmless library is preloaded into `python3 -c pass` | `Undeclared library loaded` |
+| `egress` | `GET /ru3`: a connection to 203.0.113.9:4444 (TEST-NET-3, never routed); nothing is sent | `Connection to an undeclared address` |
+
+- **Point at:** the alert is a fact about the signed evidence, not a statistical guess, and it names the
+  layer and package. Falco also catches the attack, but names no package or layer.
+- With `POLICY_SET=opt`, the sensor reports an identical write or library load once a minute. When
+  `overwrite` or `inject` runs again within a minute, the script waits out the rest of that minute and
+  says so.
+
+### trust: an advisory, while the app runs (contribution 4)
 
 - **Say:** "Later that day, a malicious-package advisory is published for requestz-helper. Nothing in the
   container changes."
-- **Alert screen:** a `TRUST` card saying `Trust withdrawn: component advisory`, with the package
-  `requestz-helper 0.1.0`, its dependency depth and layer, then `raised … s after the change · the pod still
-  runs as CONFORMING`.
-- **Point at:** the delay, 1 to 2 s (median 1.7 s in our runs), and that no runtime monitor can see this,
-  because no behaviour changed.
+- **Alert screen:** a `TRUST` card, `Trust withdrawn: component advisory`, with the package, its dependency
+  depth and layer, then `raised … s after the change · the pod still runs as CONFORMING`.
+- **Point at:** the delay, 1 to 2 s (median 1.7 s in our runs). No runtime monitor can see this, because no
+  behaviour changed.
+- `TRUST=key` revokes the signing key instead. An `ADVISORY_ID` that is not `MAL-…` is reported and trust
+  stays; the terminal says so. That is the trust policy, and it is worth showing.
 
-### Act 5: an unsigned image (admission)
+### log: can someone erase the evidence?
 
-- **Say:** "Someone deploys a copy of the app that was built outside the pipeline: no signature, no attestations."
+- **Say:** "Every alert goes into a hash-chained log. We change one character in one record, as someone
+  covering their tracks would."
+- **Presenter terminal:** `log check: OK: N records`, `one character changed in record k=…`, then
+  `log check: BROKEN at record k=…`. The original log is then restored.
+- The log needs an alert first, so put `log` after `shell`, `attack` or `trust` in `ACTS`.
+
+### unsigned: an image built outside the pipeline (admission)
+
+- **Say:** "Someone deploys a copy of the app built outside the pipeline: no signature, no attestations."
 - **Presenter terminal:** `demo-app-unsigned-…: NOT VERIFIED: …` and `envelope: none`.
 - **Alert screen:** `HIGH 60 Image failed verification`, once the pod's first event arrives.
 - **Say it accurately:** the prototype verifies and flags; it does not stop the pod, since there is no
   admission webhook. Say "fails verification", not "is blocked".
-
-### Act 6: can someone erase the evidence?
-
-- **Say:** "Every alert goes into a hash-chained log. We change one character in one record, as someone
-  covering their tracks would."
-- **Presenter terminal:** `[verify_log] OK: N records`, then `edited record k=…`, then
-  `[verify_log] BROKEN at record k=…`. The original log is then restored.
+- `make live-demo-setup` builds the unsigned copy when `ACTS` has `unsigned`; otherwise the act builds it
+  the first time, which takes about a minute.
 
 ### Closing
 
-The script prints a one-paragraph summary. Then move to the slides for the numbers:
-- **Detection:** 50 of 65 attack runs with no false alarm, F1 0.87 against 0.58.
+Move to the slides for the numbers:
+- **Detection:** 50 of 65 attack runs with no false alarm; F1 0.87 against 0.58.
 - **Trust:** all 25 trust problems caught.
 - **Cost:** within 10% of an unmonitored app.
 
 One live run is a demonstration, not a measurement.
 
-## 4. If something goes wrong
+## 4. Before the talk
 
-To repeat one act: `PROVBIND_RUN=./run-demo scripts/live-demo.sh act N` (with `DEMO_REF` set).
+| When | What |
+|---|---|
+| Once on the demo PC | `make up` and `make demo-app` if the cluster is not set up, then `make live-demo-setup` |
+| The day before | `make live-demo-view` in one terminal, then `make live-demo` twice in the other: the second run proves it repeats. Note the `done in N s`, and try the settings you plan to use |
+| 30 minutes before | `make live-demo-check`, then one `make live-demo`, which also gives plan B a fresh recording |
+| 5 minutes before | Open both terminals side by side, about 100 columns each, font about 20 pt; mute notifications |
+
+`make live-demo-check` only reads. It lists what is ready (✓) and what is missing (!). Optional items (-)
+only limit what an act can show, such as Falco's side of the comparison.
+
+## 5. If something goes wrong
 
 | Symptom | On stage | Afterwards |
 |---|---|---|
-| Act 1 times out waiting for the envelope | Run act 1 again; if it fails twice, plan B | `run-demo/logs/controller.log` |
-| Act 2 says the sensor does NOT see the app | `kubectl -n demo rollout restart deploy/demo-app`, then act 1 again | `run-demo/logs/probe.log` (happens when Tetragon restarted after the app) |
-| Act 3 shows no alert after 90 s | Plan B for the rest | `run-demo/logs/node.log`, `alerts.log` |
-| Act 2 shows no Falco alert | Say Falco flagged the shell in all five recorded runs | Falco's shell rule needs a real terminal: none in `AUTO=1` |
-| Act 5 says skipped | Skip it in one sentence | `run-demo/logs/unsigned-build.log` (needs docker and crane) |
-| The cluster or VM is gone | Plan B | `make up`, `make demo-app`, `make live-demo-prep` |
+| `live-demo: ATTACK=…` or another setting named | Fix it on the command line and run again | The message lists the allowed values |
+| `no signed image found` | Plan B | `make demo-app`, or set `DEMO_REF` in the settings file |
+| No envelope after 90 s, or the app is NOT VERIFIED | Run `make live-demo` again; if it fails twice, plan B | `run-demo/logs/controller.log` |
+| The attack shows no alert | Run again, or plan B for that act | The script restarts the app when it sees that the app started before the sensor. If that is not the cause, check `run-demo/logs/node.log` and `alerts.log` |
+| `(waiting N s: …once a minute)` | Talk over it | Normal when `overwrite` or `inject` runs twice within a minute |
+| No Falco alert in the shell act | Say that Falco flagged it in all five recorded runs | Falco's shell rule needs a real terminal; `AUTO=1` has none |
+| No trust alert | Plan B for that act | The package must be in the image's SBOM, in the right ecosystem; see `run-demo/logs/trust.log` |
+| `the log is empty` | Skip it in one sentence | Put an act that alerts before `log` |
+| One act needs repeating | `make live-demo-act ACT=attack` | It runs on the services that are already running |
+| The cluster or the VM is gone | Plan B | `make up`, `make demo-app`, `make live-demo-setup` |
 
-## 5. Plan B: replay the rehearsal
+## 6. Plan B: replay an earlier run
 
-`make live-demo-prep` keeps each earlier run as `run-demo.<date-time>`. On the alert screen, stop the live
-view (Ctrl-C) and replay the rehearsal, one act per Enter:
+Every run keeps the one before it as `run-demo.<date-time>`, up to `KEEP_RUNS`. On the alert screen, stop
+the live view (Ctrl-C) and replay a good run, one act per Enter:
 
 ```bash
 python3 -m eval.demo_view --replay run-demo.<date-time>/alerts.jsonl --step
 ```
 
-The header says `REPLAY of a recorded run, not live`; say so to the audience too. `--speed 2` replays with
-the recorded timing instead, twice as fast.
+The header says `REPLAY of a recorded run, not live`; tell the audience too. `--speed 2` replays with the
+recorded timing instead, twice as fast.
 
-As a last resort, record the rehearsal's screen (OBS, or `asciinema rec`) and keep the video on the laptop.
+As a last resort, record a rehearsal's screen (OBS, or `asciinema rec`) and keep the video on the laptop.
 
-## 6. After the talk
+## 7. After the talk
 
-`make live-demo-stop` stops PROVBIND's services. `make live-demo-reset` undoes the acts: it removes the
-advisory, restores the log and deletes the unsigned deployment. The demo deployment stays; remove it with
-`kubectl -n demo delete deployment demo-app`.
+`make live-demo-stop` stops PROVBIND's services; they keep running between runs until then. With `FRESH=0`,
+`make live-demo-reset` undoes the acts: it removes the advisory, makes the key active, restores the log and
+deletes the unsigned deployment.
 
-## 7. What the demo does not show
+The demo deployment stays. The `update` attack appends one line to `/etc/passwd` in that container on each
+run. `kubectl -n demo rollout restart deploy/demo-app` gives a clean container, and the next run notices
+the restart by itself.
+
+## 8. What the demo does not show
 
 - **The behavioural path (ML-B):** it needs a model trained on 7 hours of traffic. The report gives its
   result: it catches the in-envelope burst.
 - **Measurements:** the numbers come from 95 recorded runs (report, Section VI), not from this run.
 - **Blocking at admission:** the prototype verifies and flags; it does not reject pods.
-- **Key revocation:** it can replace act 4. `make trust2` revokes the key and `RESTORE=1 make trust2` undoes
-  it, with `PROVBIND_RUN=./run-demo`.
 
-## 8. The pieces
+## 9. How it works
 
 | File | Role |
 |---|---|
-| `scripts/live-demo.sh` | `check`, `prep`, `run`, `act N`, `reset`, `stop`; `AUTO=1` without pauses, `SKIP="2 5"` to leave acts out, `DRY_RUN=1` to print the commands without a cluster |
-| `eval/demo_view.py` | The alert screen: `--follow` live, `--replay FILE` for plan B |
-| `eval/live_demo.py` | The presenter terminal's counts and summaries |
-| `testbed/scenarios/` | The scenario steps the acts reuse: `lib.sh`, `deploy_lib.sh`, `trust.sh`, `tamper.sh` |
+| `testbed/live-demo.conf` | The settings, with a comment on each |
+| `scripts/live-demo.sh` | `run` (the default), `act NAME`, `check`, `setup`, `settings`, `reset`, `stop`, `help`. `AUTO=1` skips every pause; `DRY_RUN=1` prints the commands without a cluster |
+| `eval/demo_view.py` | The alert screen: `--follow` live (it starts over when the run folder is replaced), `--replay FILE` for plan B |
+| `eval/live_demo.py` | The presenter terminal's counts and summaries, and the trust act's OSV advisory |
+| `testbed/scenarios/` | The scenario pieces the acts reuse: `lib.sh`, `deploy_lib.sh`, `tamper.sh` |
+
+With `FRESH=1`, each run:
+1. Stops the previous run's services.
+2. Moves `run-demo` aside and applies one sensor policy set.
+3. Starts the controller, the node, the alert engine, the trust loop and the Falco capture. Their logs go
+   to `run-demo/logs/`.
+
+The controller lists the running pods when it starts, so it verifies the running app and compiles its
+envelope without a redeploy. Tetragon reports only processes it saw start, so the script restarts the
+app first if the app started before Tetragon.

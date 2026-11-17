@@ -2,6 +2,8 @@
 import io
 import json
 import os
+import threading
+import time
 
 from eval import demo_view as dv
 
@@ -141,3 +143,43 @@ def test_a_replaced_alerts_file_is_noticed(tmp_path):
     assert dv.replaced(path, inode)
     path.unlink()
     assert dv.replaced(path, inode)
+
+
+def test_a_new_run_folder_starts_the_screen_over(tmp_path):
+    """Each `make live-demo` moves run-demo aside and starts a fresh one; the live screen follows it."""
+    run = tmp_path / "run-demo"
+    run.mkdir()
+    old = det("D_exec", "undeclared", "critical", 90, "file_set: /tmp/old: in no layer")
+    new = det("D_exec", "undeclared", "critical", 90, "file_set: /tmp/new: in no layer")
+    (run / "alerts.jsonl").write_text(json.dumps(old) + "\n")
+    seen, starts, done = [], [], {}
+
+    class Stop(Exception):
+        pass
+
+    class Recorder(dv.Screen):
+        def show(self, a):
+            seen.append(dv.clause_parts(a)[0])
+            if a["violated_clause"] == new["violated_clause"]:
+                raise Stop
+
+    def watch():
+        try:
+            dv.follow(run, Recorder(dv.Layers(None), False, 100, True), True, poll=0.01,
+                      on_new_run=lambda: starts.append(len(seen)))
+        except Stop:
+            done["stopped"] = True
+
+    t = threading.Thread(target=watch, daemon=True)
+    t.start()
+    deadline = time.time() + 5
+    while not seen and time.time() < deadline:
+        time.sleep(0.01)
+    run.rename(tmp_path / "run-demo.20261117-064000")       # what live-demo.sh does
+    time.sleep(0.05)
+    run.mkdir()
+    (run / "alerts.jsonl").write_text(json.dumps(new) + "\n")
+    t.join(timeout=5)
+    assert done.get("stopped"), "the screen did not pick up the new run folder"
+    assert seen == ["/tmp/old", "/tmp/new"]
+    assert starts == [1]                                       # started over once, after the old alert

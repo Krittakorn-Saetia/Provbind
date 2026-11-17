@@ -1,23 +1,31 @@
 """Helpers for scripts/live-demo.sh: counts and short summaries read from the run folder.
 
     python -m eval.live_demo count    --run R [--cls D_exec] [--sub undeclared] [--low | --alerts]
-    python -m eval.live_demo envelope --run R [--pod-prefix demo-app]          # act 1
-    python -m eval.live_demo incident --run R                                  # act 3
-    python -m eval.live_demo trust    --run R                                  # act 4
-    python -m eval.live_demo binding  --run R --pod-prefix demo-app-unsigned   # act 5
+    python -m eval.live_demo envelope --run R [--pod-prefix demo-app]          # envelope act
+    python -m eval.live_demo since    --run R --since N   # the alerts after the first N (attack act)
+    python -m eval.live_demo incident --run R                                  # attack-1's two alerts
+    python -m eval.live_demo trust    --run R                                  # trust act
+    python -m eval.live_demo binding  --run R --pod-prefix demo-app-unsigned   # unsigned act
     python -m eval.live_demo falco    --run R --since N   # Falco's alerts after line N of falco.jsonl
     python -m eval.live_demo lines    --file F            # number of lines, 0 when F does not exist
+    python -m eval.live_demo advisory --run R --id MAL-2026-9001 --ecosystem PyPI --package requestz-helper \
+                                      [--pkg-version 0.1.0]  # write the trust act's advisory; prints its path
 
-Reads only, and prints plain text for the presenter's terminal (docs/LIVE-DEMO.md). A summary whose
-data is not there yet prints one line saying so; every command exits 0, so the demo goes on.
+Prints plain text for the presenter's terminal (docs/LIVE-DEMO.md). Every command but `advisory` only
+reads. A summary whose data is not there yet prints one line saying so; every command exits 0, so the
+demo goes on.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import sys
+import time
 from pathlib import Path
+
+from eval.demo_view import clause_parts, title_of
 
 CHECK_NAMES = {"v_sig": "signature", "v_M": "manifest", "v_C": "config", "v_B": "SBOM", "v_P": "provenance",
                "v_trans": "transparency log", "v_trust": "signer trusted"}
@@ -109,7 +117,8 @@ def envelope_summary(run: Path, prefix: str = "demo-app") -> list[str]:
         return lines
     compile_s = sum(v for v in (env.get("timings_ms") or {}).values() if isinstance(v, (int, float))) / 1000
     image = env.get("image") or {}
-    lines.append(f"envelope compiled in {compile_s:.1f} s, before the app served a single request:")
+    lines.append(f"envelope compiled in {compile_s:.1f} s, from the signed evidence alone "
+                 f"(no training, no observation period):")
     lines.append(f"  {len(env.get('layers') or [])} layers · {len(env.get('files') or {}):,} files · "
                  f"{len(env.get('packages') or {}):,} packages · {len(env.get('closure') or [])} programs and "
                  f"libraries in the execution closure")
@@ -150,14 +159,42 @@ def incident_summary(run: Path) -> list[str]:
     return lines
 
 
+def since_summary(run: Path, since: int = 0) -> list[str]:
+    """One line per alert above Low after the first `since` alerts, then how many Low records came."""
+    new = alerts(run)[since:]
+    shown = [a for a in new if not is_low(a)]
+    lines, prev_chain = [], None
+    for a in shown:
+        if a.get("class") == "trust":
+            label = "TRUST"
+            what = "Trust withdrawn: " + (", ".join(TRUST_REASONS.get(r, r) for r in a.get("trust_reason") or [])
+                                          or "trust check failed")
+        else:
+            label = f"{str(a.get('bucket') or '').upper()} {a.get('score')}"
+            path, _ = clause_parts(a)
+            what = f"{title_of(a)}: {path}" if path else title_of(a)
+        chain = a.get("chain_id")
+        same = bool(chain) and chain == prev_chain
+        prev_chain = chain
+        lines.append(f"{label}  {what} -> {where_from(a)}" + ("  (same incident)" if same else ""))
+    if not shown:
+        lines.append("no alert")
+    lows = len(new) - len(shown)
+    if lows:
+        lines.append(f"(and {lows} Low record{'s' if lows != 1 else ''}: logged, not alerts)")
+    return lines
+
+
 def trust_summary(run: Path) -> list[str]:
     a = newest(run, "trust")
     if not a:
         return ["no trust alert yet"]
-    reasons = ", ".join(TRUST_REASONS.get(r, r) for r in a.get("trust_reason") or []) or "trust check failed"
-    lines = [f"trust withdrawn: {reasons}; {where_from(a)}"]
+    why = a.get("trust_reason") or []
+    reasons = ", ".join(TRUST_REASONS.get(r, r) for r in why) or "trust check failed"
+    attr = a.get("attribution") or {}
+    lines = [f"trust withdrawn: {reasons}" + (f"; {where_from(a)}" if attr.get("package") or attr.get("layer") else "")]
     if isinstance(a.get("latency_s"), (int, float)):
-        lines.append(f"raised {a['latency_s']:.1f} s after the advisory appeared")
+        lines.append(f"raised {a['latency_s']:.1f} s after {'the advisory appeared' if 'comp' in why else 'the change'}")
     if a.get("runtime_state"):
         lines.append(f"runtime state of the pod: {str(a['runtime_state']).upper()} (its behaviour did not change)")
     return lines
@@ -191,6 +228,28 @@ def falco_summary(run: Path, since: int = 0, limit: int = 3) -> list[str]:
     return lines
 
 
+def write_advisory(run: Path, aid: str, ecosystem: str, package: str, version: str | None = None) -> Path:
+    """An OSV advisory for one package in the trust loop's local feed, run/advisories/<package>.json,
+    written to a temporary name first so the loop never reads half a file. No version: every version.
+    A MAL- id withdraws trust; any other id is only reported (alerts/trust.py)."""
+    affected: dict = {"package": {"ecosystem": ecosystem, "name": package}}
+    if version:
+        affected["versions"] = [version]
+    malicious = aid.upper().startswith("MAL-")
+    doc = {"id": aid,
+           "summary": f"{package} is malicious (PROVBIND live-demo advisory)" if malicious
+           else f"{package} has a vulnerability (PROVBIND live-demo advisory)",
+           "modified": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "affected": [affected],
+           "database_specific": {"provbind_test": True}}
+    path = Path(run) / "advisories" / (re.sub(r"[^A-Za-z0-9._-]+", "_", package).strip("._") + ".json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")          # not *.json, so the loop's glob skips it
+    tmp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+    return path
+
+
 def lines_in(path: Path) -> int:
     try:
         with open(path, "rb") as f:
@@ -202,7 +261,8 @@ def lines_in(path: Path) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m eval.live_demo", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("what", choices=("count", "envelope", "incident", "trust", "binding", "falco", "lines"))
+    ap.add_argument("what", choices=("count", "envelope", "since", "incident", "trust", "binding", "falco", "lines",
+                                     "advisory"))
     ap.add_argument("--run", default=os.environ.get("PROVBIND_RUN", "./run"))
     ap.add_argument("--cls")
     ap.add_argument("--sub")
@@ -210,16 +270,25 @@ def main(argv=None) -> int:
     group.add_argument("--low", action="store_true", help="count: Low records only")
     group.add_argument("--alerts", action="store_true", help="count: alerts above Low only")
     ap.add_argument("--pod-prefix", default="demo-app")
-    ap.add_argument("--since", type=int, default=0)
+    ap.add_argument("--since", type=int, default=0, help="since: alerts already shown; falco: lines already shown")
     ap.add_argument("--file")
+    ap.add_argument("--id", help="advisory: its id (MAL-... withdraws trust)")
+    ap.add_argument("--ecosystem", default="PyPI", help="advisory: the OSV ecosystem (default PyPI)")
+    ap.add_argument("--package", help="advisory: the package name")
+    ap.add_argument("--pkg-version", default="", help="advisory: the affected version (default: every version)")
     args = ap.parse_args(argv)
     run = Path(args.run)
     if args.what == "count":
         print(count(run, args.cls, args.sub, "low" if args.low else "alerts" if args.alerts else "any"))
     elif args.what == "lines":
         print(lines_in(Path(args.file or run / "falco.jsonl")))
+    elif args.what == "advisory":
+        if not args.id or not args.package:
+            ap.error("advisory needs --id and --package")
+        print(write_advisory(run, args.id, args.ecosystem, args.package, args.pkg_version or None))
     else:
         out = {"envelope": lambda: envelope_summary(run, args.pod_prefix),
+               "since": lambda: since_summary(run, args.since),
                "incident": lambda: incident_summary(run),
                "trust": lambda: trust_summary(run),
                "binding": lambda: binding_summary(run, args.pod_prefix),

@@ -249,25 +249,41 @@ def bursts(alerts: list[dict], gap_s: float = 8.0) -> list[list[dict]]:
 
 
 def replaced(path: Path, inode: int) -> bool:
-    """True when the file at path is gone or is another file (live-demo.sh prep made a fresh run folder)."""
+    """True when the file at path is gone or is another file (each live-demo.sh run starts a fresh run folder)."""
     try:
         return os.stat(path).st_ino != inode
     except OSError:
         return True
 
 
-def follow(path: Path, screen: Screen, keep_going: bool, poll: float = 0.5) -> None:
+def follow(run: Path, screen: Screen, keep_going: bool, poll: float = 0.5, on_new_run=None) -> None:
+    """Show run/alerts.jsonl as it grows. When the run folder is replaced (each `make live-demo` starts
+    a fresh one), call on_new_run() and go on with the new folder's alerts."""
+    path = run / "alerts.jsonl"
     first = True
     while True:
-        while not path.exists():
+        while not run.exists():
             if not keep_going:
                 print(f"no alerts yet ({path})", file=sys.stderr)
                 return
             time.sleep(poll)
+        run_inode = os.stat(run).st_ino
         if not first:
-            print("\n" + paint("--- a new run folder: showing its alerts ---", "dim", screen.colour), flush=True)
             screen.last_chain = None
+            if on_new_run:
+                on_new_run()
         first = False
+        new_folder = False
+        while not path.exists():
+            if not keep_going:
+                print(f"no alerts yet ({path})", file=sys.stderr)
+                return
+            if replaced(run, run_inode):
+                new_folder = True
+                break
+            time.sleep(poll)
+        if new_folder:
+            continue
         buf = ""
         with open(path, encoding="utf-8") as f:
             inode = os.fstat(f.fileno()).st_ino
@@ -283,7 +299,7 @@ def follow(path: Path, screen: Screen, keep_going: bool, poll: float = 0.5) -> N
                     continue
                 if not keep_going:
                     return
-                if replaced(path, inode):
+                if replaced(path, inode) or replaced(run, run_inode):
                     break
                 time.sleep(poll)
 
@@ -335,9 +351,18 @@ def main(argv=None) -> int:
         return 0
     run = Path(args.run)
     screen = Screen(Layers(run), colour, width, not args.hide_low)
-    for line in header(f"run {run}", False, colour, width):
-        print(line, flush=True)
-    follow(run / "alerts.jsonl", screen, args.follow)
+
+    def start(clear: bool) -> None:
+        if clear and colour:
+            print("\033[2J\033[H", end="")            # a fresh screen for a fresh run
+        elif clear:
+            print("\n" + "=" * min(width, 100))
+        for line in header(f"run {run}", False, colour, width):
+            print(line, flush=True)
+        screen.layers = Layers(run)                      # the new folder's envelopes
+
+    start(False)
+    follow(run, screen, args.follow, on_new_run=lambda: start(True))
     return 0
 
 

@@ -21,7 +21,7 @@ extras) and how to run them on the VM: `docs/NEXT-EXPERIMENTS.md`.
 | `docs/ROLE1-SUPERVISOR-QUESTIONS-2026-10-05.md` | The evaluation's final results: accuracy, runtime cost, the zero-day method, preparation time |
 | `docs/FIGURES-HOWTO.md` | How to draw the paper figures from the repository, and where the final numbers are |
 | `docs/REPORT-DS3-FIXES.md` | What to fix in the report draft DS3 before submitting, with replacement text ready to paste |
-| `docs/LIVE-DEMO.md` | The live demo for an audience: six acts with what to say, the two screens, and plan B (`make live-demo`) |
+| `docs/LIVE-DEMO.md` | The live demo for an audience: one command, about a minute, the same every time; settings in `testbed/live-demo.conf`, what to say, and plan B (`make live-demo`) |
 | `docs/ROLE2-HANDOFF.md` (v0.2) | Role 2 spec: evidence pipeline, envelope compiler, ML-A |
 | `docs/PROVBIND-Explanation-and-Review.md` | The design behind every phase, and the 31 fail points in the draft |
 | `docs/PROVBIND-Source-Answers.md` | Project questions answered from the documents, with sources |

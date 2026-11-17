@@ -199,22 +199,30 @@ demo:  ## the Sprint Handoff §1.1 demo, after make up and make demo-app (needs 
 	./scripts/demo.sh
 
 # The live demo for an audience (docs/LIVE-DEMO.md) keeps its own run folder, never $(PROVBIND_RUN).
+# Its settings are in testbed/live-demo.conf; one given here wins for that run: make live-demo ATTACK=overwrite
 DEMO_RUN ?= ./run-demo
-.PHONY: live-demo-check live-demo-prep live-demo-view live-demo live-demo-reset live-demo-stop
+.PHONY: live-demo live-demo-view live-demo-setup live-demo-check live-demo-settings live-demo-act \
+        live-demo-reset live-demo-stop
 
-live-demo-check:  ## live demo: are the cluster, sensor, registry and image ready? (docs/LIVE-DEMO.md)
-	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh check
-
-live-demo-prep:  ## live demo: fresh run folder, policies, PROVBIND's services, unsigned image (needs DEMO_REF)
-	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh prep
-
-live-demo-view:  ## live demo: the audience screen, in a second terminal
-	python3 -m eval.demo_view --run $(DEMO_RUN) --follow
-
-live-demo:  ## live demo: the six acts, Enter between them (needs DEMO_REF; AUTO=1 for a rehearsal)
+live-demo:  ## live demo: about a minute, hands-free; settings in testbed/live-demo.conf (docs/LIVE-DEMO.md)
 	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh run
 
-live-demo-reset:  ## live demo: undo the acts (advisory, log edit, test deployment); services keep running
+live-demo-view:  ## live demo: the audience screen, in a second terminal (starts over at every run)
+	python3 -m eval.demo_view --run $(DEMO_RUN) --follow
+
+live-demo-setup:  ## live demo, once: check everything, deploy the signed app, build the unsigned copy if ACTS has it
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh setup
+
+live-demo-check:  ## live demo: are the cluster, sensor, registry and image ready? (reads only)
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh check
+
+live-demo-settings:  ## live demo: the settings in use, and where each one comes from
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh settings
+
+live-demo-act:  ## live demo: one act again on the running services, e.g. make live-demo-act ACT=attack
+	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh act $(ACT)
+
+live-demo-reset:  ## live demo with FRESH=0: undo the acts (advisory, key, log edit, test deployment)
 	PROVBIND_RUN=$(DEMO_RUN) ./scripts/live-demo.sh reset
 
 live-demo-stop:  ## live demo: stop PROVBIND's services
