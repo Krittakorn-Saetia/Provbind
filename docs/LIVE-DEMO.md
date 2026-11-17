@@ -55,9 +55,15 @@ the key; only the Rekor check is skipped, and the admission line no longer lists
 
 ### After the PC restarts
 
-Run `make live-demo-check`. If the cluster does not answer, run `make up` again (it is safe to re-run). If
-the image is gone, run `make demo-app` too. If Tetragon came back after the app, the next `make live-demo`
-restarts the app by itself.
+1. In a terminal: `cd ~/Provbind && source .venv/bin/activate`, then `make live-demo-check`.
+2. If the cluster or Tetragon shows !, wait a minute or two, because Kubernetes is still starting, then check
+   again.
+3. If it still shows !, start the cluster's container with `docker start kind-control-plane`, wait a minute
+   and check again. If the registry shows !, run `docker start kind-registry`.
+4. Run one practice `make live-demo`. If Tetragon came back after the app, it restarts the app by itself.
+
+Do not run `make up` while the cluster exists: `kind create cluster` stops with an error. `make up` is only
+for a machine with no cluster, where `kind get clusters` prints nothing.
 
 ## 2. Change the demo
 
